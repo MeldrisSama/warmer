@@ -1,0 +1,93 @@
+<?php
+declare(strict_types=1);
+
+// Read only literal database settings; never execute the wiki configuration.
+function wikiDatabaseCredentials(string $path): array {
+    $tokens=token_get_all(file_get_contents($path)); $values=[];
+    $wanted=['$wgDBserver','$wgDBuser','$wgDBpassword'];
+    for($i=0;$i<count($tokens);$i++) {
+        if(!is_array($tokens[$i]) || $tokens[$i][0]!==T_VARIABLE || !in_array($tokens[$i][1],$wanted,true)) continue;
+        $key=$tokens[$i][1]; $j=$i+1;
+        while(isset($tokens[$j]) && is_array($tokens[$j]) && in_array($tokens[$j][0],[T_WHITESPACE,T_COMMENT,T_DOC_COMMENT],true)) $j++;
+        if(($tokens[$j]??null)!=='=') continue; $j++;
+        while(isset($tokens[$j]) && is_array($tokens[$j]) && $tokens[$j][0]===T_WHITESPACE) $j++;
+        if(!isset($tokens[$j]) || !is_array($tokens[$j]) || $tokens[$j][0]!==T_CONSTANT_ENCAPSED_STRING) continue;
+        $literal=$tokens[$j][1]; $end=$j+1;
+        while(isset($tokens[$end]) && is_array($tokens[$end]) && $tokens[$end][0]===T_WHITESPACE) $end++;
+        if(($tokens[$end]??null)!==';') continue;
+        $inner=substr($literal,1,-1);
+        $values[$key]=$literal[0]==="'"?str_replace(["\\'","\\\\"],["'","\\"],$inner):stripcslashes($inner);
+    }
+    if(count($values)!==3) throw new RuntimeException('Database settings unavailable');
+    return $values;
+}
+
+final class SectorStorage {
+    private PDO $pdo;
+    private string $driver;
+    private array $snapshot=[];
+    private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
+    private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
+    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until']];
+    public function __construct(array $config) {
+        $this->driver=$config['driver']??'mysql';
+        if($this->driver==='sqlite') {
+            $this->pdo=new PDO('sqlite:'.$config['path']);
+            $this->pdo->exec('PRAGMA busy_timeout=5000');
+        } else {
+            $credentials=wikiDatabaseCredentials(dirname(__DIR__).'/wiki/LocalSettings.php');
+            if($credentials['$wgDBuser']!==$config['user'] || $credentials['$wgDBserver']!==$config['host']) throw new RuntimeException('Unexpected database account');
+            $this->pdo=new PDO('mysql:host='.$config['host'].';dbname='.$config['name'].';charset=utf8mb4',$config['user'],$credentials['$wgDBpassword'],[PDO::ATTR_TIMEOUT=>10]);
+        }
+        $this->pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
+        $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
+        $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES,false);
+        if($this->driver==='mysql') {
+            $stmt=$this->pdo->prepare('SELECT GET_LOCK(?, 10)');$stmt->execute(['w40k_'.$config['name']]);
+            if((int)$stmt->fetchColumn()!==1) throw new RuntimeException('Database busy');
+        }
+        $definitions=[
+            'users'=>'`id` VARCHAR(24) PRIMARY KEY, `username` VARCHAR(32) NOT NULL UNIQUE, `name` VARCHAR(60) NOT NULL UNIQUE, `password` VARCHAR(255) NOT NULL, `admin` INT NOT NULL',
+            'matches'=>'`id` VARCHAR(24) PRIMARY KEY, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24) NOT NULL, `scoreA` INT NOT NULL, `scoreB` INT NOT NULL, `date` VARCHAR(10) NOT NULL, `mission` VARCHAR(120) NOT NULL, `photo` VARCHAR(255), `by` VARCHAR(24) NOT NULL, `void` INT NOT NULL, `created` VARCHAR(40) NOT NULL, `request` VARCHAR(64) NOT NULL, `updatedBy` VARCHAR(24), `updated` VARCHAR(40)',
+            'lists'=>'`id` VARCHAR(24) PRIMARY KEY, `owner` VARCHAR(24) NOT NULL, `name` VARCHAR(100) NOT NULL, `faction` VARCHAR(80) NOT NULL, `text` MEDIUMTEXT NOT NULL, `date` VARCHAR(10) NOT NULL, `size` INT NOT NULL',
+            'invites'=>'`hash` VARCHAR(64) PRIMARY KEY, `expires` BIGINT NOT NULL, `used` INT NOT NULL',
+            'attempts'=>'`ip` VARCHAR(64) PRIMARY KEY, `count` INT NOT NULL, `until` BIGINT NOT NULL'
+        ];
+        foreach($definitions as $name=>$columns) $this->pdo->exec('CREATE TABLE IF NOT EXISTS `w40k_'.$name.'` ('.$columns.')'.($this->driver==='mysql'?' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci':''));
+    }
+    public function load(): array {
+        $data=[];
+        foreach(self::KEYS as $table=>$key) {
+            $data[$table]=[];
+            foreach($this->pdo->query('SELECT * FROM `w40k_'.$table.'`') as $row) {
+                foreach(self::BOOLS[$table]??[] as $c) $row[$c]=(bool)$row[$c];
+                foreach(self::INTS[$table]??[] as $c) $row[$c]=(int)$row[$c];
+                $this->snapshot[$table][$row[$key]]=$row;
+                if($table==='attempts') { $ip=$row['ip'];unset($row['ip']);$data[$table][$ip]=$row; } else $data[$table][]=$row;
+            }
+        }
+        return $data;
+    }
+    public function save(array $data): void {
+        $this->pdo->beginTransaction();
+        try {
+            foreach(self::KEYS as $table=>$key) {
+                $next=[];
+                foreach($data[$table] as $index=>$row) {
+                    if($table==='attempts') $row['ip']=$index;
+                    $id=$row[$key];$next[$id]=$row;
+                    if(($this->snapshot[$table][$id]??null)===$row) continue;
+                    $columns=array_keys($row);
+                    $quoted=array_map(fn($c)=>'`'.$c.'`',$columns);
+                    $sql='INSERT INTO `w40k_'.$table.'` ('.implode(',',$quoted).') VALUES ('.implode(',',array_fill(0,count($columns),'?')).')';
+                    $updates=array_map(fn($c)=>'`'.$c.'`='.($this->driver==='mysql'?'VALUES(`'.$c.'`)':'excluded.`'.$c.'`'),array_filter($columns,fn($c)=>$c!==$key));
+                    $sql.=($this->driver==='mysql'?' ON DUPLICATE KEY UPDATE ':' ON CONFLICT (`'.$key.'`) DO UPDATE SET ').implode(',',$updates);
+                    $this->pdo->prepare($sql)->execute(array_map(fn($v)=>is_bool($v)?(int)$v:$v,array_values($row)));
+                }
+                if(in_array($table,['attempts','invites'],true)) foreach($this->snapshot[$table]??[] as $id=>$row) if(!isset($next[$id])) $this->pdo->prepare('DELETE FROM `w40k_'.$table.'` WHERE `'.$key.'`=?')->execute([$id]);
+                $pending[$table]=$next;
+            }
+            $this->pdo->commit();$this->snapshot=$pending;
+        } catch(Throwable $e) { if($this->pdo->inTransaction()) $this->pdo->rollBack(); throw $e; }
+    }
+}
