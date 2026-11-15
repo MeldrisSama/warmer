@@ -19,4 +19,6 @@ It creates a temporary application copy with a generated configuration, SQLite d
 
 Two executable TODO cases document existing problems: orphan photos after a rejected match and unauthenticated static photo access. They currently fail as TODOs without failing the suite. When each problem is fixed, remove its `todo` option so it becomes a required regression test.
 
-MySQL locking and SQL compatibility, SQLite concurrency, hosting HTTPS, backups, and browser rendering are not covered. SQLite integration tests do not establish MySQL correctness.
+Transport tests simulate IIS HTTPS server variables and remote HTTP requests. They verify redirects, rejected HTTP writes, Secure cookies, and HSTS. The loopback-only PHP development server continues to support HTTP.
+
+MySQL locking and SQL compatibility, SQLite concurrency, deployed TLS certificates, backups, and browser rendering are not covered. SQLite integration tests do not establish MySQL correctness.

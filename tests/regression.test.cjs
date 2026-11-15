@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'api.php', 'storage.php', 'config.php', '../tests/storage.php']) {
+    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -89,7 +89,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'storage.php', 'app.js', 'style.css']) {
+  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'app.js', 'style.css']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   const setupCode = 'isolated-test-setup';
@@ -105,7 +105,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const base = `http://127.0.0.1:${port}`;
   const env = { ...process.env };
   delete env.PHP_CLI_SERVER_WORKERS;
-  server = spawn(php, ['-d', `session.save_path=${join(directory, 'sessions')}`, '-S', `127.0.0.1:${port}`, '-t', application], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+  server = spawn(php, ['-d', `session.save_path="${join(directory, 'sessions').replaceAll('\\', '/')}"`, '-S', `127.0.0.1:${port}`, '-t', application, join(__dirname, 'transport-router.php')], { env, stdio: ['ignore', 'ignore', 'pipe'] });
   let serverLog = '';
   server.stderr.on('data', chunk => { serverLog = (serverLog + chunk).slice(-8000); });
   server.on('error', error => { serverLog += error.message; });
@@ -121,6 +121,37 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await delay(50);
   }
   assert.ok(ready, `PHP server did not start: ${serverLog}`);
+
+  await t.test('HTTP pages redirect to the canonical HTTPS URL', async () => {
+    for (const method of ['GET', 'HEAD']) {
+      const response = await fetch(`${base}/transport/plain/index.php?next=partita`, {
+        method, redirect: 'manual', headers: { Host: 'untrusted.example', 'X-Forwarded-Proto': 'https' }
+      });
+      await response.text();
+      assert.equal(response.status, 308);
+      assert.equal(response.headers.get('location'), 'https://cangiolone.com/warmer/index.php?next=partita');
+      assert.equal(response.headers.get('set-cookie'), null);
+    }
+  });
+
+  await t.test('HTTP login requests are rejected before a session is created', async () => {
+    const response = await fetch(`${base}/transport/plain/api.php?action=login`, {
+      method: 'POST', body: JSON.stringify({ username: 'alice', password }),
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' }, redirect: 'manual'
+    });
+    assert.equal(response.status, 426);
+    assert.equal(typeof (await response.json()).error, 'string');
+    assert.equal(response.headers.get('set-cookie'), null);
+    assert.equal(response.headers.get('location'), null);
+  });
+
+  await t.test('HTTPS requests use Secure cookies and HSTS', async () => {
+    const response = await fetch(`${base}/transport/secure/api.php?action=state`);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).user, null);
+    assert.match(response.headers.get('set-cookie'), /; secure/i);
+    assert.equal(response.headers.get('strict-transport-security'), 'max-age=31536000');
+  });
 
   function client() {
     let cookie = '';

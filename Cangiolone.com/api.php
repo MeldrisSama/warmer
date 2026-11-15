@@ -5,7 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
-$https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+$https = require __DIR__.'/https.php';
 session_name('sector_session');
 session_set_cookie_params(['lifetime'=>0, 'path'=>rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\').'/', 'secure'=>$https, 'httponly'=>true, 'samesite'=>'Strict']);
 ini_set('session.use_strict_mode','1');
