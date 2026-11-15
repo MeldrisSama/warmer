@@ -1,0 +1,31 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor settings and temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+vendor/
+node_modules/
+
+# Logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+
+# Runtime match uploads (existing tracked files remain tracked)
+/Cangiolone.com/uploads/matches/*
+!/Cangiolone.com/uploads/matches/README.txt
