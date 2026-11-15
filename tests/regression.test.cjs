@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -89,7 +89,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'app.js', 'style.css']) {
+  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'router.php', 'app.js', 'style.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   const setupCode = 'isolated-test-setup';
@@ -170,9 +170,11 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       for (const value of response.headers.getSetCookie()) {
         if (value.startsWith('sector_session=')) cookie = value.split(';')[0];
       }
-      const text = await response.text();
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const text = bytes.toString();
       assert.equal(response.status, status, `${action}: ${text}`);
-      const value = response.headers.get('content-type')?.startsWith('application/json') ? JSON.parse(text) : text;
+      const contentType = response.headers.get('content-type') || '';
+      const value = contentType.startsWith('image/') ? bytes : contentType.startsWith('application/json') ? JSON.parse(text) : text;
       if (value.csrf) csrf = value.csrf;
       if (status >= 400) assert.equal(typeof value.error, 'string');
       return value;
@@ -183,7 +185,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const alice = client();
   const bob = client();
   const guest = client();
-  let adminId, aliceId, bobId, matchId, photoPath;
+  let adminId, aliceId, bobId, matchId, photoPath, photoUrl;
   const state = () => admin('state');
   const match = overrides => ({ a: aliceId, b: bobId, scoreA: 80, scoreB: 50, date: '2020-01-01', mission: 'Test mission', request: randomUUID(), ...overrides });
   const registration = (username, code) => ({ username, name: username, password, code });
@@ -308,27 +310,63 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
 
   const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1sAAAAASUVORK5CYII=';
   await t.test('Images validate content and persist with the match', async () => {
-    for (const photo of ['data:image/png;base64,!!!', 'data:image/png;base64,aGVsbG8=', 'data:text/html;base64,aGVsbG8=']) {
+    for (const photo of [42, {}, 'data:image/png;base64,!!!', 'data:image/png;base64,aGVsbG8=', 'data:text/html;base64,aGVsbG8=']) {
       await alice('match', match({ photo }), 422);
     }
     await alice('match', match({ photo: png }));
     const saved = (await state()).matches.find(value => value.photo);
-    photoPath = saved.photo;
-    assert.match(photoPath, /^uploads\/matches\/[a-f0-9]{24}\.png$/);
+    photoUrl = saved.photo;
+    assert.equal(photoUrl, `api.php?action=photo&id=${saved.id}`);
+    photoPath = `uploads/matches/${saved.id}.png`;
     const bytes = await readFile(join(application, photoPath));
     assert.deepEqual(bytes, Buffer.from(png.split(',')[1], 'base64'));
   });
 
-  await t.test('Rejected matches leave no orphan photo', { todo: 'Known bug: photo is saved before mission validation; fix in the upload change.' }, async () => {
+  await t.test('Rejected matches leave no orphan photo', async () => {
     const uploads = join(application, 'uploads/matches');
     const before = await readdir(uploads);
     await alice('match', match({ photo: png, mission: 'x'.repeat(121) }), 422);
     assert.deepEqual(await readdir(uploads), before);
   });
 
-  await t.test('Photo downloads require authentication', { todo: 'Known gap: static uploads bypass API authentication.' }, async () => {
-    const response = await fetch(`${base}/${photoPath}`, { signal: AbortSignal.timeout(5000) });
-    await response.arrayBuffer();
-    assert.equal(response.status, 401);
+  await t.test('Failed database writes remove their new photo', async () => {
+    const uploads = join(application, 'uploads/matches');
+    const before = await readdir(uploads);
+    const count = (await state()).matches.length;
+    function sql(statement) {
+      const result = spawnSync(php, ['-r', '$pdo=new PDO("sqlite:".$argv[1]);$pdo->exec($argv[2]);', join(application, 'api.sqlite'), statement], { encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+    }
+    sql("CREATE TRIGGER reject_match BEFORE INSERT ON w40k_matches BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+    try {
+      await alice('match', match({ photo: png }), 503);
+      assert.deepEqual(await readdir(uploads), before);
+      assert.equal((await state()).matches.length, count);
+    } finally {
+      sql('DROP TRIGGER reject_match');
+    }
+    await alice('match', match({ photo: png }));
+    assert.equal((await state()).matches.length, count + 1);
+  });
+
+  await t.test('Photo downloads require authentication and preserve existing file paths', async () => {
+    const action = photoUrl.split('action=')[1];
+    await guest(action, undefined, 401);
+    const photo = await bob(action);
+    assert.deepEqual(photo, Buffer.from(png.split(',')[1], 'base64'));
+    await alice(`photo&id=${matchId}`, undefined, 404);
+    await alice('photo&id=missing', undefined, 404);
+    await alice('photo&id[]=invalid', undefined, 404);
+    await alice('photo&id=../../config.php', undefined, 404);
+  });
+
+  await t.test('Raw upload URLs are blocked', async () => {
+    for (const path of [photoPath, photoPath.replace('uploads', '%75ploads')]) {
+      const response = await fetch(`${base}/${path}`, { signal: AbortSignal.timeout(5000) });
+      await response.arrayBuffer();
+      assert.equal(response.status, 404);
+    }
+    const result = spawnSync(php, ['-r', '$xml=simplexml_load_file($argv[1]);exit(count($xml->xpath($argv[2]))===1?0:1);', join(application, 'web.config'), '/configuration/system.webServer/security/requestFiltering/hiddenSegments/add[@segment="uploads"]'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
   });
 });

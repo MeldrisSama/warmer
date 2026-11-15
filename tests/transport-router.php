@@ -12,4 +12,4 @@ if (preg_match('#^/transport/(plain|secure)/(index|api)\.php$#', $path, $match))
     return true;
 }
 
-return false;
+return require $_SERVER['DOCUMENT_ROOT'].'/router.php';

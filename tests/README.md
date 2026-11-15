@@ -17,7 +17,7 @@ The suite checks source syntax, storage persistence and rollback, literal wiki c
 
 It creates a temporary application copy with a generated configuration, SQLite databases, sessions, and uploads. The HTTP server binds only to `127.0.0.1` on a temporary port. The deployed configuration and existing uploads are never copied or used. The temporary directory and server are removed after the run.
 
-Two executable TODO cases document existing problems: orphan photos after a rejected match and unauthenticated static photo access. They currently fail as TODOs without failing the suite. When each problem is fixed, remove its `todo` option so it becomes a required regression test.
+Photo tests enforce authentication, reject direct upload URLs, and verify cleanup after validation or database failures. The temporary server uses the application's development router. The IIS access rule is checked as XML, with its behavior on the deployed IIS server still requiring verification.
 
 Transport tests simulate IIS HTTPS server variables and remote HTTP requests. They verify redirects, rejected HTTP writes, Secure cookies, and HSTS. The loopback-only PHP development server continues to support HTTP.
 

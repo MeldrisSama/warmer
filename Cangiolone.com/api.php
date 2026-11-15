@@ -74,7 +74,9 @@ function saveMatchPhoto(?string $photo, string $matchId): ?string {
 
     $path=$directory.'/'.$filename;
 
-    if(file_put_contents($path,$data,LOCK_EX)===false) {
+    if(file_put_contents($path,$data,LOCK_EX)!==strlen($data)) {
+
+        if(is_file($path) && !unlink($path)) error_log('Warhammer incomplete photo cleanup failed');
         throw new RuntimeException('Impossibile salvare la foto');
     }
 
@@ -95,8 +97,33 @@ if($me && time()-($_SESSION['seen']??0)>43200) { unset($_SESSION['uid']); $me=nu
 if($me) $_SESSION['seen']=time();
 if($action==='state') {
     if(!$me) result(['user'=>null,'setup'=>count($db['users'])===0,'csrf'=>$_SESSION['csrf']]);
-    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$db['matches'],'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+    $matches=array_map(function(array $match): array {
+        if(!empty($match['photo'])) $match['photo']='api.php?action=photo&id='.rawurlencode($match['id']);
+        return $match;
+    },$db['matches']);
+
+    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
+if($action==='photo') {
+    if(!$me) fail('Accedi per vedere la foto.',401);
+    $id=$_GET['id']??'';
+    if(!is_string($id)) fail('Foto non trovata.',404);
+    foreach($db['matches'] as $match) if($match['id']===$id) {
+        $photo=$match['photo']??null;
+        if(!is_string($photo) || !preg_match('#^uploads/matches/[a-f0-9]{24}\.(jpg|png|webp)$#D',$photo,$parts)) fail('Foto non trovata.',404);
+        $file=@fopen(__DIR__.'/'.$photo,'rb');
+        if($file===false) fail('Foto non trovata.',404);
+        $types=['jpg'=>'image/jpeg','png'=>'image/png','webp'=>'image/webp'];
+        header('Content-Type: '.$types[$parts[1]]);
+        header('Content-Length: '.fstat($file)['size']);
+        session_write_close();
+        fpassthru($file);
+        fclose($file);
+        exit;
+    }
+    fail('Foto non trovata.',404);
+}
+
 if($action==='download') {
     if(!$me) fail('Accedi per scaricare la lista.',401);
     foreach($db['lists'] as $l) if($l['id']===($_GET['id']??'')) {
@@ -166,6 +193,9 @@ try {
         foreach($db['matches'] as $m) if($m['request']===$request && $m['by']===$me['id']) result(['ok'=>true]);
         $matchId=ident();
 
+        $mission=field($in,'mission',120,false);
+        if(isset($in['photo']) && !is_string($in['photo'])) fail('Foto non valida.');
+
         $photo=saveMatchPhoto(
         isset($in['photo']) && is_string($in['photo'])
             ? $in['photo']
@@ -180,7 +210,7 @@ try {
         'scoreA'=>$in['scoreA'],
         'scoreB'=>$in['scoreB'],
         'date'=>$date,
-        'mission'=>field($in,'mission',120,false),
+        'mission'=>$mission,
         'photo'=>$photo,
         'by'=>$me['id'],
         'void'=>false,
@@ -188,7 +218,12 @@ try {
         'request'=>$request
         ];
 
-        save();
+        try {
+            save();
+        } catch(Throwable $error) {
+            if($photo!==null && !unlink(__DIR__.'/'.$photo)) error_log('Warhammer photo cleanup failed');
+            throw $error;
+        }
 
         result(['ok'=>true]);
     }
