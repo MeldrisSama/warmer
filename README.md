@@ -19,9 +19,9 @@ Il router protegge gli upload durante lo sviluppo. Su IIS va pubblicato anche `C
 Le foto vengono servite dall'API dopo il login. I percorsi delle foto già salvate restano compatibili.
 Repository che si dedicherà alla costruzione della sezione warmer di cangiolone.com
 
-## Army Builder (prima versione)
+## Army Builder sperimentale nel repository
 
-La pagina **Army Builder** è disponibile dopo il login, nel menu principale. Funziona senza nuove dipendenze e mantiene separate le vecchie liste `.txt`.
+Questa sezione documenta il prototipo integrato nel codice. Per trovare **Army Builder** nel menu dopo il login serve un’installazione che includa il prototipo. Per creare un’armata, un amministratore deve prima importare un catalogo per l’edizione scelta. Le liste `.txt` del campionato si gestiscono separatamente.
 
 - Cataloghi per edizione (`10` e `11`) con fonte, licenza, numero di versione e snapshot storico. Nessun datasheet commerciale è incluso.
 - Importazione JSON riservata agli amministratori, con conferma esplicita sui diritti di utilizzo e ripubblicazione.

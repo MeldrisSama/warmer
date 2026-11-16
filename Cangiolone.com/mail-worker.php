@@ -17,8 +17,8 @@ function renderSectorEmail(array $message): array {
     foreach(['results'=>['Risultati',['Giocatore','Esito','Avversario']],'standings'=>['Classifica aggiornata',['Giocatore','Punti','Diff.']]] as $key=>[$heading,$columns]) {
         $rows=$message['report'][$key]??[];
         if(!$rows) continue;
-        $report.='<h2 style="font:normal 20px Georgia,serif;margin:24px 0 8px">'.$heading.'</h2><table width="100%" style="border-collapse:collapse;text-align:left"><thead><tr>';
-        foreach($columns as $column) $report.='<th scope="col" style="padding:8px;color:#415247">'.$column.'</th>';
+        $report.='<h2 style="font:normal 20px Georgia,serif;color:#25523a;margin:24px 0 8px">'.$heading.'</h2><table width="100%" style="border-collapse:collapse;text-align:left"><thead><tr>';
+        foreach($columns as $column) $report.='<th scope="col" style="padding:8px;background:#e0eee4;color:#25523a">'.$column.'</th>';
         $report.='</tr></thead><tbody>';
         $text.="\n\n".$heading;
         foreach($rows as $row) {
@@ -32,12 +32,12 @@ function renderSectorEmail(array $message): array {
     $html=<<<HTML
 <!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>$title</title></head>
-<body style="margin:0;background:#eef1eb;color:#17231d;font:16px/1.6 Arial,sans-serif">
-<table role="presentation" width="100%"><tr><td align="center" style="padding:24px 10px">
-<table role="presentation" width="100%" style="max-width:580px;background:#ffffff;border:1px solid #d3d9d1;text-align:left">
-<tr><td style="background:#17231d;border-bottom:3px solid #c2a66b;padding:18px 24px;color:#e9d6a9;font:20px Georgia,serif">Cronache del settore</td></tr>
+<body style="margin:0;background:#e4efe6;color:#17231d;font:16px/1.6 Arial,sans-serif">
+<table role="presentation" width="100%" style="background:#e4efe6"><tr><td align="center" style="padding:24px 10px">
+<table role="presentation" width="100%" style="max-width:580px;background:#ffffff;border:1px solid #acc4b1;text-align:left">
+<tr><td style="background:#215b40;border-bottom:3px solid #c2a66b;padding:18px 24px;color:#f4dfaf;font:20px Georgia,serif">Cronache del settore</td></tr>
 <tr><td style="padding:24px">
-<h1 style="font:normal 27px/1.2 Georgia,serif;margin:0 0 16px;overflow-wrap:anywhere">$title</h1>
+<h1 style="font:normal 27px/1.2 Georgia,serif;color:#25523a;margin:0 0 16px;overflow-wrap:anywhere">$title</h1>
 <p style="margin:0;overflow-wrap:anywhere">$body</p>
 $report
 <p style="margin:24px 0 0"><a href="$url" style="display:inline-block;background:#c2a66b;color:#111714;font-weight:bold;text-decoration:none;padding:11px 16px;border-radius:3px">$label</a></p>
