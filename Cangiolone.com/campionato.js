@@ -12,6 +12,7 @@ const action = (name, label, kind = 'primary') =>
 let state;
 let selectedRound;
 let openFixture;
+let lineupRequest;
 
 async function request(name, data) {
   const response = await fetch(`api.php?action=${name}`, data ? {
@@ -47,7 +48,9 @@ function renderOverview(total, current) {
     return;
   }
 
-  $('season-caption').textContent = `${league.name} · Girone unico di sola andata`;
+  $('season-title').textContent = league.name;
+  document.title = `${league.name} · Cronache del settore`;
+  $('season-caption').textContent = 'Warhammer 40.000 · Girone unico di sola andata';
   board.hidden = false;
   if (!league.start) {
     board.innerHTML = `<p class="eyebrow">Iscrizioni aperte</p>
@@ -68,10 +71,7 @@ function renderOverview(total, current) {
   }
 
   const next = state.fixtures.find(fixture => mine(fixture) && !fixture.result);
-  actions.innerHTML = `<div class="action-row">
-    <a href="#giornate" class="primary">Consulta il calendario</a>
-    <a class="jump" href="#classifica">Vedi la classifica <span aria-hidden="true">↓</span></a>
-  </div>`;
+  actions.replaceChildren();
 
   if (next) {
     board.innerHTML = `
@@ -103,9 +103,12 @@ function renderStandings() {
       <th scope="col"><abbr title="Partite giocate">PG</abbr></th>
       <th scope="col"><abbr title="Differenza punti vittoria">Diff.</abbr></th>
       <th scope="col">Punti</th></tr></thead>
-    <tbody>${standings.map(row => `<tr${row.id === state.user.id ? ' class="you"' : ''}>
-      <td class="placement">${row.rank}</td><th scope="row">${escapeHtml(row.name)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}</th><td>${row.played}</td>
-      <td>${row.diff > 0 ? '+' : ''}${row.diff}</td><td>${row.points}</td></tr>`).join('')}</tbody>
+    <tbody>${standings.map(row => {
+      const podium = matches.length && row.rank <= 3 ? ` podium podium-${row.rank}` : '';
+      return `<tr class="${row.id === state.user.id ? 'you' : ''}${podium}">
+        <td class="placement"><span>${row.rank}</span></td><th scope="row">${escapeHtml(row.name)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}</th><td>${row.played}</td>
+        <td>${row.diff > 0 ? '+' : ''}${row.diff}</td><td>${row.points}</td></tr>`;
+    }).join('')}</tbody>
     </table>
     <p class="fine-print">Vittoria 3 · Pareggio 1 · Sconfitta 0. A parità di punti conta la differenza punti vittoria.</p>`;
 }
@@ -113,11 +116,10 @@ function renderStandings() {
 function listPanel(fixture) {
   const { mine: submitted, opponent } = fixture.lineups;
   if (submitted && opponent) {
-    const download = id => `api.php?action=leagueDownload&amp;fixture=${fixture.id}&amp;player=${id}`;
     const other = fixture.a === state.user.id ? fixture.b : fixture.a;
     return `<div class="fixture-block"><h3>Liste esercito</h3><p>Entrambe le liste sono state consegnate.</p>
-      <div class="action-row"><a class="secondary" href="${download(state.user.id)}">Scarica la tua lista</a>
-      <a class="secondary" href="${download(other)}">Scarica la lista di ${player(other)}</a></div></div>`;
+      <div class="action-row"><button type="button" class="secondary" data-lineup="${state.user.id}">Leggi la tua lista</button>
+      <button type="button" class="secondary" data-lineup="${other}">Leggi la lista di ${player(other)}</button></div></div>`;
   }
   return `<div class="fixture-block">
     <h3>Liste esercito</h3>
@@ -178,11 +180,24 @@ function fixtureRow(fixture) {
   </details>`;
 }
 
-function renderRound() {
-  const fixtures = state.fixtures.filter(fixture => fixture.round === selectedRound);
-  const played = fixtures.filter(confirmed).length;
-  $('round').innerHTML = `<p class="round-meta">${played}/${fixtures.filter(playable).length} confermate</p>
-    <div class="match-list">${fixtures.map(fixtureRow).join('')}</div>`;
+function renderRounds(total, current) {
+  const rounds = Array.from({ length: total }, () => []);
+  for (const fixture of state.fixtures) rounds[fixture.round - 1].push(fixture);
+  $('round').innerHTML = rounds.map((fixtures, index) => {
+    const number = index + 1;
+    const active = number === current;
+    return `<section class="round-group${active ? ' current-round' : ''}" id="giornata-${number}">
+      <div class="round-head"><h3>Giornata ${number}${active ? ' <small>In corso</small>' : ''}</h3>
+        <p class="round-meta">${fixtures.filter(confirmed).length}/${fixtures.filter(playable).length} confermate</p></div>
+      <div class="match-list">${fixtures.map(fixtureRow).join('')}</div>
+    </section>`;
+  }).join('');
+}
+
+function goToRound(number) {
+  selectedRound = number;
+  $('round-picker').value = number;
+  $('round').scrollTop = $('giornata-' + number).offsetTop;
 }
 
 function render() {
@@ -198,11 +213,10 @@ function render() {
   $('giornate').hidden = !total;
   if (state.league) renderStandings();
   if (!total) return;
-  selectedRound ??= current ?? total;
   $('round-picker').innerHTML = Array.from({ length: total }, (_, index) =>
     `<option value="${index + 1}">${index + 1}${current === index + 1 ? ' · corrente' : ''}</option>`).join('');
-  $('round-picker').value = selectedRound;
-  renderRound();
+  renderRounds(total, current);
+  goToRound(selectedRound ?? current ?? total);
 }
 
 const notices = {
@@ -272,20 +286,64 @@ document.addEventListener('submit', async event => {
 });
 
 $('round-picker').addEventListener('change', event => {
-  selectedRound = Number(event.target.value);
-  openFixture = null;
-  renderRound();
+  goToRound(Number(event.target.value));
+});
+
+$('round').addEventListener('scroll', event => {
+  const panel = event.currentTarget;
+  for (const [index, group] of Array.from(panel.children).entries()) {
+    if (group.offsetTop > panel.scrollTop + 1) break;
+    selectedRound = index + 1;
+  }
+  $('round-picker').value = selectedRound;
 });
 
 $('season-board').addEventListener('click', event => {
   const link = event.target.closest('[data-round]');
   if (!link) return;
-  selectedRound = Number(link.dataset.round);
   event.preventDefault();
-  openFixture = link.dataset.fixture;
-  $('round-picker').value = selectedRound;
-  renderRound();
-  $('round').querySelector(`[data-fixture="${openFixture}"] summary`)?.focus();
+  const fixture = $('round').querySelector(`[data-fixture="${link.dataset.fixture}"]`);
+  if (!fixture) return;
+  fixture.open = true;
+  goToRound(Number(link.dataset.round));
+  fixture.querySelector('summary').focus();
+});
+
+$('round').addEventListener('click', async event => {
+  const button = event.target.closest('[data-lineup]');
+  if (!button) return;
+  const fixture = button.closest('[data-fixture]').dataset.fixture;
+  const url = `api.php?action=leagueDownload&fixture=${fixture}&player=${button.dataset.lineup}`;
+  const reader = $('lineup-reader');
+  const status = $('lineup-status');
+  const text = $('lineup-text');
+  const download = $('lineup-download');
+  lineupRequest?.abort();
+  const controller = new AbortController();
+  lineupRequest = controller;
+  $('lineup-title').textContent = button.dataset.lineup === state.user.id
+    ? 'La tua lista' : state.users.find(user => user.id === button.dataset.lineup)?.name || 'Lista avversario';
+  status.textContent = 'Caricamento della lista…';
+  text.hidden = download.hidden = true;
+  text.textContent = '';
+  reader.showModal();
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error();
+    const content = await response.text();
+    if (controller.signal.aborted) return;
+    text.textContent = content;
+    status.textContent = '';
+    text.hidden = download.hidden = false;
+    download.href = url;
+  } catch {
+    if (!controller.signal.aborted) status.textContent = 'Lista non disponibile. Riapri l’incontro per riprovare.';
+  }
+});
+
+$('lineup-close').addEventListener('click', () => $('lineup-reader').close());
+$('lineup-reader').addEventListener('close', event => {
+  if (!event.currentTarget.open) lineupRequest?.abort();
 });
 
 request('league').then(data => {

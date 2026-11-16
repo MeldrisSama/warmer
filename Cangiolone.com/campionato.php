@@ -34,8 +34,7 @@ header('Cache-Control: no-store');
     <section class="hero" id="panoramica" data-enter>
       <div class="wrap hero-layout">
         <div class="hero-title">
-          <p class="eyebrow">Warhammer 40.000</p>
-          <h1>Campionato</h1>
+          <h1 id="season-title">Campionato Warhammer 40.000</h1>
           <p id="season-caption">Calendario, classifica e risultati.</p>
           <div id="season-actions"><p>Caricamento del campionato…</p></div>
         </div>
@@ -52,7 +51,7 @@ header('Cache-Control: no-store');
             <select id="round-picker"></select>
           </div>
         </div>
-        <div id="round"></div>
+        <div id="round" class="round-scroll" tabindex="0" role="region" aria-label="Elenco delle giornate"></div>
       </section>
       <section id="classifica" aria-labelledby="standings-heading">
         <div class="section-head"><h2 id="standings-heading">Classifica</h2></div>
@@ -60,5 +59,14 @@ header('Cache-Control: no-store');
       </section>
     </div>
   </main>
+  <dialog id="lineup-reader" aria-labelledby="lineup-title">
+    <div class="reader-head">
+      <h2 id="lineup-title">Lista esercito</h2>
+      <button class="secondary" id="lineup-close" type="button">Chiudi</button>
+    </div>
+    <p id="lineup-status" role="status"></p>
+    <pre id="lineup-text" tabindex="0" aria-label="Testo della lista" hidden></pre>
+    <a class="jump" id="lineup-download" hidden>Scarica il .txt</a>
+  </dialog>
 </body>
 </html>

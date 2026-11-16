@@ -90,17 +90,27 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.ok(!main.innerHTML.includes('<img src=x'));
   });
 
-  await t.test('League rounds follow outstanding games and only played fixtures show dates', async () => {
+  await t.test('League opens at the current round, keeps other rounds visible and reads revealed lists', async () => {
     const nodes = new Map();
     const context = vm.createContext({
       document: {
         getElementById(id) {
-          if (!nodes.has(id)) nodes.set(id, { innerHTML: '', addEventListener() {} });
+          if (!nodes.has(id)) nodes.set(id, {
+            offsetTop: id === 'giornata-2' ? 180 : 0,
+            innerHTML: '',
+            events: {},
+            addEventListener(name, listener) { this.events[name] = listener; },
+            replaceChildren() { this.innerHTML = ''; },
+            showModal() { this.open = true; }
+          });
           return nodes.get(id);
         },
         addEventListener() {}
       },
-      fetch: () => new Promise(() => {})
+      AbortController,
+      fetch: url => url.includes('leagueDownload')
+        ? Promise.resolve({ ok: true, text: async () => '<img src=x>\nArmy' })
+        : new Promise(() => {})
     });
     for (const file of ['standings.js', 'campionato.js']) {
       vm.runInContext(await readFile(join(root, 'Cangiolone.com', file), 'utf8'), context);
@@ -114,12 +124,33 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       fixtures: [first, { ...first, id: 'two', round: 2 }]
     };
     vm.runInContext('state = demo; render();', context);
+    assert.equal(nodes.get('season-title').textContent, 'Test');
+    assert.equal(nodes.get('season-actions').innerHTML, '');
     assert.match(nodes.get('round-picker').innerHTML, /1 · corrente/);
+    assert.match(nodes.get('round').innerHTML, /id="giornata-2"/);
+    assert.doesNotMatch(nodes.get('league-standings').innerHTML, /podium-1/);
     assert.doesNotMatch(nodes.get('round').innerHTML, /<time/);
     first.result = { scoreA: 45, scoreB: 32, date: '2026-11-16' };
     vm.runInContext('render();', context);
     assert.match(nodes.get('round-picker').innerHTML, /2 · corrente/);
     assert.match(nodes.get('round').innerHTML, /<time datetime="2026-11-16">/);
+    assert.match(nodes.get('league-standings').innerHTML, /podium-1/);
+    assert.match(nodes.get('league-standings').innerHTML, /podium-2/);
+
+    vm.runInContext('selectedRound = undefined; render();', context);
+    assert.equal(nodes.get('round-picker').value, 2);
+    assert.equal(nodes.get('round').scrollTop, 180);
+    nodes.get('round-picker').events.change({ target: { value: '1' } });
+    assert.equal(nodes.get('round').scrollTop, 0);
+    assert.match(nodes.get('round').innerHTML, /id="giornata-2"/);
+
+    await nodes.get('round').events.click({ target: { closest: () => ({
+      dataset: { lineup: 'alice' },
+      closest: () => ({ dataset: { fixture: 'one' } })
+    }) } });
+    assert.equal(nodes.get('lineup-reader').open, true);
+    assert.equal(nodes.get('lineup-text').textContent, '<img src=x>\nArmy');
+    assert.equal(nodes.get('lineup-text').innerHTML, '');
   });
 
   const application = join(directory, 'app');
