@@ -147,7 +147,8 @@ function render(){
   const p=page();
 
   nav.innerHTML=[
-    ['classifica','Classifica'],
+    ['classifica','Classifica'],
+    ['campionati','Campionati'],
     ['partita','Nuova partita'],
     ['liste','Liste']
   ].map(
@@ -163,6 +164,8 @@ function render(){
     matchPage();
   }else if(p==='liste'){
     listsPage();
+  }else if(p==='campionati'){
+    leaguesPage();
   }else if(p==='inviti'&&state.user.admin){
     invitePage();
   }else{
@@ -380,9 +383,14 @@ function bindForm(id,handler){
     );
 }
 
+function leagueLink(league){
+  return 'campionato.php?id='+encodeURIComponent(league.id);
+}
+
 function leagueBanner(){
-  const league=state.league;
-  if(!league && !state.user.admin) return '';
+  const active=state.leagues.filter(league=>!league.closed);
+  const league=active.find(league=>league.joined) || active.find(league=>!league.start);
+  if(!league && (active.length || !state.user.admin)) return '';
   const label=!league ? 'Organizza il campionato' : !league.start && !league.joined
     ? 'Iscriviti al campionato' : 'Vai al campionato';
   const status=league?.start ? 'Calendario pubblicato' : league?.joined
@@ -392,10 +400,34 @@ function leagueBanner(){
       <strong id="league-banner-name">${esc(league?.name || 'Campionato Warhammer 40.000')}</strong>
       ${status ? `<span class="league-banner-status">${status}</span>` : ''}
     </div>
-    <a class="button primary league-banner-link" href="campionato.php">
+    <a class="button primary league-banner-link" href="${league ? leagueLink(league) : 'campionato.php?new=1'}">
       ${label}<span aria-hidden="true">→</span>
     </a>
   </aside>`;
+}
+
+function leaguesPage(){
+  const groups=[
+    ['In corso',league=>league.start && !league.closed],
+    ['Da iniziare',league=>!league.start && !league.closed],
+    ['Conclusi',league=>league.closed]
+  ];
+  main.innerHTML=`<section class="panel league-directory">
+    <div class="heading"><h1>Campionati</h1>
+      ${state.user.admin ? '<a class="button primary" href="campionato.php?new=1">Crea campionato</a>' : ''}
+    </div>
+    ${state.leagues.length ? groups.map(([title,filter])=>{
+      const leagues=state.leagues.filter(filter);
+      if(!leagues.length) return '';
+      return `<section class="league-group"><h2>${title}</h2><ul>
+        ${leagues.map(league=>`<li><a href="${leagueLink(league)}">
+          <strong>${esc(league.name)}</strong>
+          <small>${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
+          <span aria-hidden="true">→</span>
+        </a></li>`).join('')}
+      </ul></section>`;
+    }).join('') : empty('trophy','Nessun campionato','I campionati compariranno qui all’apertura delle iscrizioni.')}
+  </section>`;
 }
 
 function standings(){
@@ -610,8 +642,7 @@ function standings(){
                         }
 
                         ${
-                          state.user.admin ||
-                          m.by===state.user.id
+                          !m.leagueClosed && (state.user.admin || m.by===state.user.id)
                             ? `
                               <button
                                 class="small-button"

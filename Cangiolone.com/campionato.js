@@ -10,15 +10,20 @@ const action = (name, label, kind = 'primary') =>
   `<button type="submit" class="${kind}" name="action" value="${name}">${label}</button>`;
 const narrowLayout = matchMedia('(max-width: 850px)');
 const panelHeadings = { classifica: 'standings-heading', giornate: 'round-heading' };
+const leagueQuery = new URLSearchParams(window.location.search);
 
 let state;
 let leagueView = 'classifica';
 let selectedRound;
 let openFixture;
 let lineupRequest;
+let openingToken;
 
 async function request(name, data) {
-  const response = await fetch(`api.php?action=${name}`, data ? {
+  const id = leagueQuery.get('id');
+  const query = name !== 'league' ? '' : id ? '&id=' + encodeURIComponent(id)
+    : leagueQuery.get('new') === '1' ? '&new=1' : '';
+  const response = await fetch(`api.php?action=${name}${query}`, data ? {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf },
     body: JSON.stringify(data)
@@ -42,7 +47,7 @@ function renderOverview(total, current) {
     $('season-caption').textContent = 'Le iscrizioni non sono ancora aperte.';
     if (user.admin) {
       actions.innerHTML = `<form class="inline-form">
-        <label>Nome del campionato<input name="name" required maxlength="100" value="Stagione 1"></label>
+        <label>Nome del campionato<input name="name" required maxlength="100"></label>
         ${action('leagueOpen', 'Apri le iscrizioni')}
       </form>`;
     } else {
@@ -55,6 +60,13 @@ function renderOverview(total, current) {
   document.title = `${league.name} · Cronache del settore`;
   $('season-caption').textContent = 'Warhammer 40.000 · Girone unico di sola andata';
   board.hidden = false;
+  if (league.closed) {
+    actions.replaceChildren();
+    board.innerHTML = `<p class="eyebrow">Campionato concluso</p>
+      <p>${state.fixtures.filter(confirmed).length} risultati confermati</p>`;
+    return;
+  }
+  const closeForm = user.admin ? `<form>${action('leagueClose', 'Chiudi campionato', 'secondary')}</form>` : '';
   if (!league.start) {
     board.innerHTML = `<p class="eyebrow">Iscrizioni aperte</p>
       <strong class="display-number">${players.length}</strong>
@@ -70,11 +82,12 @@ function renderOverview(total, current) {
         ${action('leagueStart', 'Chiudi iscrizioni e pubblica')}
       </form>`);
     }
+    actions.insertAdjacentHTML('beforeend', closeForm);
     return;
   }
 
   const next = state.fixtures.find(fixture => mine(fixture) && !fixture.result);
-  actions.replaceChildren();
+  actions.innerHTML = closeForm;
 
   if (next) {
     board.innerHTML = `
@@ -85,7 +98,7 @@ function renderOverview(total, current) {
         <a href="#giornate" class="jump" data-round="${next.round}" data-fixture="${next.id}">Apri l’incontro <span aria-hidden="true">↗</span></a>
       </div>`;
   } else {
-    board.innerHTML = `<p class="eyebrow">${current ? 'Giornata corrente' : 'Campionato concluso'}</p>
+    board.innerHTML = `<p class="eyebrow">${current ? 'Giornata corrente' : 'Giornate completate'}</p>
       <strong class="display-number">${current ?? total}</strong>
       <p>${state.fixtures.filter(confirmed).length} risultati confermati</p>`;
   }
@@ -124,6 +137,7 @@ function listPanel(fixture) {
       <div class="action-row"><button type="button" class="secondary" data-lineup="${state.user.id}">Leggi la tua lista</button>
       <button type="button" class="secondary" data-lineup="${other}">Leggi la lista di ${player(other)}</button></div></div>`;
   }
+  if (state.league.closed) return '<div class="fixture-block"><h3>Liste esercito</h3><p>Liste non rivelate.</p></div>';
   return `<div class="fixture-block">
     <h3>Liste esercito</h3>
     <p>${submitted ? 'La tua lista è stata consegnata. In attesa dell’avversario.' : opponent
@@ -143,6 +157,7 @@ function resultPanel(fixture) {
       <p>${fixture.result.void ? 'Partita annullata' : 'Risultato confermato'} · ${formatDate(fixture.result.date)}
       ${fixture.result.mission ? ` · ${escapeHtml(fixture.result.mission)}` : ''}</p></div>`;
   }
+  if (state.league.closed) return '<div class="fixture-block"><p>Incontro chiuso senza risultato confermato.</p></div>';
   if (fixture.pending) {
     const { by, scoreA, scoreB, date, mission, token } = fixture.pending;
     const own = by === state.user.id;
@@ -170,7 +185,7 @@ function resultPanel(fixture) {
 function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
     <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
-  const status = fixture.result?.void ? 'Annullata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
+  const status = fixture.result?.void ? 'Annullata' : state.league.closed ? 'Non disputata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
   const contents = `<span class="pair"><strong>${player(fixture.a)}</strong><span>vs</span><strong>${player(fixture.b)}</strong></span>
     <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
   if (!playable(fixture)) {
@@ -230,7 +245,7 @@ function render() {
     return;
   }
   const total = Math.max(0, ...state.fixtures.map(fixture => fixture.round));
-  const current = state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
+  const current = state.league?.closed ? undefined : state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
   renderOverview(total, current);
   $('league-content').hidden = !state.league;
   showLeagueView(leagueView);
@@ -246,6 +261,7 @@ const notices = {
   leagueOpen: 'Iscrizioni aperte.',
   leagueJoin: 'Iscrizione confermata.',
   leagueStart: 'Calendario pubblicato.',
+  leagueClose: 'Campionato chiuso.',
   leagueLineup: 'Lista consegnata.',
   leaguePropose: 'Risultato inviato all’avversario.',
   leagueConfirm: 'Risultato confermato.',
@@ -265,11 +281,18 @@ document.addEventListener('submit', async event => {
   const form = event.target;
   const button = event.submitter || form.querySelector('button[type=submit]');
   if (!button || form.getAttribute('aria-busy') === 'true') return;
+  const name = button.value;
+  if (name === 'leagueClose' &&
+      !window.confirm('Chiudere il campionato? Classifica e calendario resteranno consultabili. Gli incontri ancora aperti non potranno più essere completati.')) return;
   const buttons = [...form.querySelectorAll('button')];
   buttons.forEach(control => control.disabled = true);
   form.setAttribute('aria-busy', 'true');
-  const name = button.value;
   const data = Object.fromEntries(new FormData(form));
+  if (state.league) data.league = state.league.id;
+  if (name === 'leagueOpen') {
+    openingToken ??= window.crypto.randomUUID().replaceAll('-', '').slice(0, 24);
+    data.request = openingToken;
+  }
   const fixture = form.closest('[data-fixture]');
   if (fixture) data.fixture = fixture.dataset.fixture;
   try {
@@ -293,7 +316,13 @@ document.addEventListener('submit', async event => {
       data.scoreA = Number(data.scoreA);
       data.scoreB = Number(data.scoreB);
     }
-    await request(name, data);
+    const result = await request(name, data);
+    if (name === 'leagueOpen') {
+      openingToken = null;
+      leagueQuery.delete('new');
+      leagueQuery.set('id', result.id);
+      window.history.replaceState(null, '', 'campionato.php?' + leagueQuery);
+    }
     state = await request('league');
     openFixture = fixture?.dataset.fixture;
     render();

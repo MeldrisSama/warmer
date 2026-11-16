@@ -43,6 +43,28 @@ foreach([8,9] as $count) {
 }
 
 $directory = $argv[1];
+$legacyConfig = ['driver'=>'sqlite','path'=>$directory.'/legacy.sqlite'];
+$legacy = new PDO('sqlite:'.$legacyConfig['path'],null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$legacy->exec("CREATE TABLE w40k_league (id TEXT PRIMARY KEY, name TEXT NOT NULL, start TEXT);
+CREATE TABLE w40k_league_entries (player TEXT PRIMARY KEY, joined TEXT NOT NULL);
+CREATE TABLE w40k_league_fixtures (id TEXT PRIMARY KEY, round INT, a TEXT, b TEXT, pending TEXT, match_id TEXT);
+CREATE TABLE w40k_league_lineups (id TEXT PRIMARY KEY, fixture TEXT, player TEXT, text TEXT);
+INSERT INTO w40k_league VALUES ('legacy', 'Campionato pubblicato', '2026-11-16');
+INSERT INTO w40k_league_entries VALUES ('alice', '2026-11-16'), ('bob', '2026-11-16');
+INSERT INTO w40k_league_fixtures VALUES ('fixture', 1, 'alice', 'bob', NULL, 'match');
+INSERT INTO w40k_league_lineups VALUES ('fixture:alice', 'fixture', 'alice', 'Army list');");
+$legacy = null;
+$migrated = new SectorStorage($legacyConfig);
+$seasons = $migrated->load('league');
+check($seasons['league'][0]['closed']===null,'Legacy season must stay open');
+check(array_column($seasons['league_members'],'id')===['legacy:alice','legacy:bob'],'Legacy signups must carry over');
+check($seasons['league_fixtures'][0]['league_id']==='legacy' && $seasons['league_fixtures'][0]['match_id']==='match','Legacy fixture and result link must carry over');
+check($migrated->leagueLineupText('fixture:alice')==='Army list','Legacy list must remain readable');
+$seasons['league'][]=['id'=>'new','name'=>'Nuovo campionato','start'=>null,'closed'=>null];
+$migrated->save($seasons);
+$seasons = (new SectorStorage($legacyConfig))->load('league');
+check(count($seasons['league'])===2 && count($seasons['league_members'])===2,'The migration must not be reapplied');
+
 $config = ['driver'=>'sqlite', 'path'=>$directory.'/storage.sqlite'];
 $storage = new SectorStorage($config);
 $data = $storage->load();

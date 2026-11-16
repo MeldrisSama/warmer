@@ -27,7 +27,7 @@ header('Cache-Control: no-store');
   <header class="nav masthead">
     <nav class="wrap masthead-inner" aria-label="Navigazione del campionato">
       <a href="index.php" class="wordmark">Cronache del settore</a>
-      <a href="index.php#classifica" class="back"><span aria-hidden="true">←</span> Classifica generale</a>
+      <a href="index.php#campionati" class="back"><span aria-hidden="true">←</span> Tutti i campionati</a>
     </nav>
   </header>
   <main id="campionato" tabindex="-1">
