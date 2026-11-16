@@ -41,3 +41,25 @@
 @media (prefers-reduced-motion: reduce) {
   .league-banner-link span { transition: none; }
 }
+
+.league-directory .heading { flex-wrap: wrap; }
+.league-group + .league-group { margin-top: 26px; }
+.league-group h2 { margin-bottom: 8px; }
+.league-group ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+.league-group a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.league-group a:hover strong { color: var(--gold); }
+.league-group small { grid-column: 1; }
+.league-group a > span { grid-area: 1 / 2 / span 2; align-self: center; color: var(--gold); }
+@media (max-width: 400px) {
+  #nav { flex-wrap: wrap; }
+  #nav a { padding-inline: 5px; }
+}

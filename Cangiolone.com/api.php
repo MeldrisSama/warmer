@@ -103,12 +103,12 @@ require __DIR__.'/storage.php';
 require __DIR__.'/league.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=['leagueOpen','leagueJoin','leagueStart','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
-    if($leagueWrite && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
-    $scope=($leagueWrite || $action==='league' || $action==='leagueDownload') ? 'league' : ($action==='state' ? 'state' : 'archive');
+    if(($leagueWrite || $action==='void') && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    $scope=($leagueWrite || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
 }
 catch(Throwable $e) { error_log('Warhammer database connection failed'); fail('Database non disponibile. Contatta l’amministratore.',503); }
@@ -120,18 +120,23 @@ if($me && time()-($_SESSION['seen']??0)>43200) { unset($_SESSION['uid']); $me=nu
 if($me) $_SESSION['seen']=time();
 if($action==='state') {
     if(!$me) result(['user'=>null,'setup'=>count($db['users'])===0,'csrf'=>$_SESSION['csrf']]);
-    $matches=array_map(function(array $match): array {
+    $leagues=leagueSummaries($db,$me['id']);
+    $locked=leagueMatchLocks($db);
+    $matches=array_map(function(array $match) use($locked): array {
+        if(isset($locked[$match['id']])) $match['leagueLocked']=true;
         if(!empty($match['photo'])) $match['photo']='api.php?action=photo&id='.rawurlencode($match['id']);
         return $match;
     },$db['matches']);
 
-    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>leagueSummary($db,$me['id']),'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if($action==='leagueDownload') leagueDownload($storage,$db,$me['id']);
-    result(leagueState($db,$me));
+    $id=$_GET['id']??null;
+    if($id!==null && !is_string($id)) fail('Campionato non trovato.',404);
+    result(leagueState($db,$me,$id,($_GET['new']??null)==='1'));
 }
 if($action==='photo') {
     if(!$me) fail('Accedi per vedere la foto.',401);
@@ -204,9 +209,9 @@ try {
     }
     if(!$me) fail('Accedi per continuare.',401);
     if($leagueWrite) {
-        updateLeague($action,$in,$me,$db);
+        $leagueId=updateLeague($action,$in,$me,$db);
         save();
-        result(['ok'=>true]);
+        result($leagueId===null ? ['ok'=>true] : ['ok'=>true,'id'=>$leagueId]);
     }
     if($action==='logout') { $_SESSION=[]; session_destroy(); result(['ok'=>true]); }
     if($action==='invite') {
@@ -264,7 +269,9 @@ try {
         foreach($db['matches'] as &$m) if($m['id']===$id) {
             if(!$me['admin'] && $m['by']!==$me['id']) fail('Solo l’autore o l’amministratore può annullare questa partita.',403);
             if(!isset($in['void']) || !is_bool($in['void'])) fail('Stato non valido.');
-            $m['void']=$in['void']; $m['updatedBy']=$me['id']; $m['updated']=date(DATE_ATOM); save(); result(['ok'=>true]);
+            $locked=leagueMatchLocks($db);
+            if(isset($locked[$id])) fail($locked[$id],409);
+            $m['void']=$in['void']; $m['updatedBy']=$me['id']; $m['updated']=date(DATE_ATOM); save(); result(['ok'=>true]);
         }
         fail('Partita non trovata.',404);
     }

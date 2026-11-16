@@ -61,7 +61,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const users = ['Alice', 'Bob', 'Carlo', 'Dana'].map(name => ({ id: name, name }));
     function standings(matches) {
       context.fixture = {
-        user: { id: 'viewer', admin: false }, users,
+        user: { id: 'viewer', admin: false }, users, leagues: [],
         matches: matches.map((match, index) => ({ id: `match-${index}`, date: '2020-01-01', created: '2020-01-01T12:00:00+01:00', ...match }))
       };
       vm.runInContext('state = fixture; standings();', context);
@@ -89,19 +89,26 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.ok(main.innerHTML.includes('&lt;img src=x onerror=alert(1)&gt;'));
     assert.ok(!main.innerHTML.includes('<img src=x'));
 
-    const banner = (league, admin = false) => {
-      context.fixture.league = league;
+    const banner = (leagues, admin = false) => {
+      context.fixture.leagues = leagues;
       context.fixture.user.admin = admin;
       return vm.runInContext('leagueBanner()', context);
     };
-    assert.equal(banner(null), '');
-    assert.match(banner(null, true), /Organizza il campionato/);
-    const open = banner({ name: '<War in Heaven>' });
-    assert.match(open, /&lt;War in Heaven&gt;/);
-    assert.match(open, /Iscrizioni aperte/);
-    assert.match(open, /Iscriviti al campionato/);
-    assert.match(banner({ name: '40k', joined: true }), /Iscrizione confermata/);
-    assert.match(banner({ name: '40k', start: '2026-11-16' }), /Calendario pubblicato/);
+    assert.equal(banner([]), '');
+    assert.match(banner([], true), /Organizza il campionato/);
+    const open = { id: 'open', name: '<War in Heaven>', entrants: 8 };
+    assert.match(banner([open]), /&lt;War in Heaven&gt;/);
+    assert.match(banner([open]), /Iscrizioni aperte/);
+    assert.match(banner([open]), /Iscriviti al campionato/);
+    const first = { id: 'first', name: 'Prima', start: '2026-11-16', entrants: 7, joined: true };
+    const second = { id: 'second', name: 'Seconda', start: '2026-11-16', entrants: 2, joined: true };
+    const closed = { id: 'closed', name: 'Archivio', closed: '2026-11-16', entrants: 9, joined: true };
+    const paused = { id: 'paused', name: 'Sospeso', paused: '2026-11-16', start: '2026-11-16', entrants: 9, joined: true };
+    assert.match(banner([open, paused, first, second, closed]), /campionato.php\?id=first/);
+    assert.match(banner([closed], true), /campionato.php\?new=1/);
+    banner([open, first, paused, closed], true);
+    vm.runInContext('leaguesPage()', context);
+    for (const label of ['In corso', 'Da iniziare', 'In pausa', 'Conclusi', 'Crea campionato']) assert.ok(main.innerHTML.includes(label));
   });
 
   await t.test('League shows responsive tabs, opens at the current round and reads revealed lists', async () => {
@@ -127,6 +134,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         },
         addEventListener() {}
       },
+      window: { location: { search: '' } },
+      URLSearchParams,
       matchMedia: () => narrow,
       AbortController,
       fetch: url => url.includes('leagueDownload')
@@ -197,6 +206,17 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(nodes.get('lineup-reader').open, true);
     assert.equal(nodes.get('lineup-text').textContent, '<img src=x>\nArmy');
     assert.equal(nodes.get('lineup-text').innerHTML, '');
+    context.demo.user.admin = true;
+    vm.runInContext('render();', context);
+    assert.match(nodes.get('season-actions').innerHTML, /Metti in pausa/);
+    context.demo.league.paused = '2026-11-16';
+    vm.runInContext('render();', context);
+    assert.match(nodes.get('season-actions').innerHTML, /Riprendi campionato/);
+    assert.match(nodes.get('season-board').innerHTML, /Campionato in pausa/);
+    context.demo.league.paused = null;
+    context.demo.league.closed = '2026-11-16';
+    vm.runInContext('render();', context);
+    assert.match(nodes.get('season-actions').innerHTML, /Riapri campionato/);
   });
 
   const application = join(directory, 'app');
@@ -463,7 +483,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal((await state()).league, null);
     await guest('league', undefined, 401);
     await alice('leagueOpen', { name: 'Test' }, 403);
-    await admin('leagueOpen', { name: 'Stagione di prova' });
+    const firstLeague = (await admin('leagueOpen', { name: 'Stagione di prova' })).id;
     assert.equal((await alice('state')).league.joined, false);
     await admin('leagueStart', {}, 422);
     for (const account of [alice, bob, admin]) await account('leagueJoin', {});
@@ -484,7 +504,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(new Set(schedule.filter(fixture => fixture.b === null).map(fixture => fixture.a)).size, 3);
     assert.equal(new Set(schedule.filter(fixture => fixture.b).map(fixture => [fixture.a, fixture.b].sort().join())).size, 3);
     const { id } = schedule.find(fixture => [fixture.a, fixture.b].includes(aliceId) && [fixture.a, fixture.b].includes(bobId));
-    const fixtureFor = async account => (await account('league')).fixtures.find(fixture => fixture.id === id);
+    const fixtureFor = async account => (await account('league&id=' + firstLeague)).fixtures.find(fixture => fixture.id === id);
     const list = text => ({ fixture: id, filename: 'army.txt', text });
     const download = owner => 'leagueDownload&fixture=' + id + '&player=' + owner;
     await spectator('leagueLineup', list('Army'), 403);
@@ -541,6 +561,75 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await admin('void', { id: saved.id, void: true });
     assert.equal((await fixtureFor(spectator)).result.void, true);
     await admin('void', { id: saved.id, void: false });
+
+    const secondLeague = (await admin('leagueOpen', { name: 'Girone parallelo' })).id;
+    await alice('leagueJoin', { league: secondLeague });
+    await bob('leagueJoin', { league: secondLeague });
+    await admin('leagueStart', { league: secondLeague });
+    const parallel = await alice('league&id=' + secondLeague);
+    assert.equal(parallel.league.entrants, 2);
+    assert.equal(parallel.fixtures.length, 1);
+    assert.equal(parallel.fixtures[0].result, null);
+    assert.deepEqual(parallel.fixtures[0].lineups, { mine: false, opponent: false });
+    await alice('leagueLineup', { fixture: parallel.fixtures[0].id, league: firstLeague, text: 'Wrong season' }, 404);
+    await alice('leagueClose', { league: firstLeague }, 403);
+
+    const draftRequest = { name: 'Prossimo girone', request: '2'.repeat(24) };
+    const draft = (await admin('leagueOpen', draftRequest)).id;
+    assert.equal((await admin('leagueOpen', draftRequest)).id, draft);
+    await admin('leagueOpen', { ...draftRequest, name: 'Duplicato' }, 409);
+    const summary = (await alice('state')).leagues;
+    assert.equal(summary.find(league => league.id === firstLeague).entrants, 3);
+    assert.equal(summary.find(league => league.id === secondLeague).joined, true);
+    assert.equal(summary.find(league => league.id === draft).start, null);
+    assert.equal((await admin('league&new=1')).league, null);
+    await alice('league&id=unknown', undefined, 404);
+
+    const unfinished = schedule.find(fixture => fixture.b !== null && fixture.id !== id && [fixture.a, fixture.b].includes(aliceId));
+    await alice('leaguePropose', { ...score, fixture: unfinished.id, league: firstLeague });
+    const pendingFixture = async () => (await alice('league&id=' + firstLeague)).fixtures.find(fixture => fixture.id === unfinished.id);
+    const proposal = (await pendingFixture()).pending.token;
+    await alice('leaguePause', { league: firstLeague }, 403);
+    await admin('leaguePause', { league: firstLeague });
+    assert.ok((await alice('league&id=' + firstLeague)).league.paused);
+    assert.equal((await pendingFixture()).pending.token, proposal);
+    await admin('leagueConfirm', { fixture: unfinished.id, league: firstLeague, proposal }, 409);
+    await admin('void', { id: saved.id, void: true }, 409);
+    assert.equal(await bob(download(aliceId)), 'Army A final');
+    await admin('leagueResume', { league: firstLeague });
+    assert.equal((await alice('league&id=' + firstLeague)).league.paused, null);
+    assert.equal((await pendingFixture()).pending.token, proposal);
+
+    await admin('leagueClose', { league: firstLeague });
+    const archived = await alice('league&id=' + firstLeague);
+    assert.ok(archived.league.closed);
+    assert.equal(archived.fixtures.length, 6);
+    assert.equal(archived.fixtures.find(fixture => fixture.id === unfinished.id).awaiting, false);
+    assert.equal((await fixtureFor(spectator)).result.scoreA, 67);
+    assert.equal(await bob(download(aliceId)), 'Army A final');
+    await alice('leagueLineup', list('Archived'), 409);
+    await alice('leaguePropose', { ...score, fixture: unfinished.id, league: firstLeague }, 409);
+    await admin('void', { id: saved.id, void: true }, 409);
+    assert.ok((await state()).matches.find(match => match.id === saved.id).leagueLocked);
+    await alice('leaguePropose', { ...score, fixture: parallel.fixtures[0].id, league: secondLeague });
+    await admin('leagueResume', { league: firstLeague }, 409);
+    await alice('leagueReopen', { league: firstLeague }, 403);
+    await admin('leagueReopen', { league: firstLeague });
+    assert.equal((await alice('league&id=' + firstLeague)).league.closed, null);
+    assert.equal((await pendingFixture()).pending.token, proposal);
+    await admin('leagueConfirm', { fixture: unfinished.id, league: firstLeague, proposal });
+    assert.equal((await pendingFixture()).result.scoreA, score.scoreA);
+
+    await admin('leaguePause', { league: draft });
+    await alice('leagueJoin', { league: draft }, 409);
+    await admin('leagueStart', { league: draft }, 409);
+    await admin('leagueResume', { league: draft });
+    await alice('leagueJoin', { league: draft });
+    await admin('leagueClose', { league: draft });
+    await admin('leagueReopen', { league: draft });
+    await bob('leagueJoin', { league: draft });
+    assert.equal((await bob('league&id=' + draft)).league.start, null);
+
 
     const page = await fetch(`${base}/campionato.php`);
     assert.equal(page.status, 200);

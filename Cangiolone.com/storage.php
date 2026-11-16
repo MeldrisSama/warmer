@@ -27,7 +27,7 @@ final class SectorStorage {
     private string $driver;
     private array $snapshot=[];
     private bool $sqliteWrite=false;
-    private const LEAGUE_KEYS=['league'=>'id','league_entries'=>'player','league_fixtures'=>'id','league_lineups'=>'id'];
+    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id'];
     private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
     private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
     private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round']];
@@ -54,13 +54,66 @@ final class SectorStorage {
             'lists'=>'`id` VARCHAR(24) PRIMARY KEY, `owner` VARCHAR(24) NOT NULL, `name` VARCHAR(100) NOT NULL, `faction` VARCHAR(80) NOT NULL, `text` MEDIUMTEXT NOT NULL, `date` VARCHAR(10) NOT NULL, `size` INT NOT NULL',
             'invites'=>'`hash` VARCHAR(64) PRIMARY KEY, `expires` BIGINT NOT NULL, `used` INT NOT NULL',
             'attempts'=>'`ip` VARCHAR(64) PRIMARY KEY, `count` INT NOT NULL, `until` BIGINT NOT NULL',
-            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10)',
+            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10), `closed` VARCHAR(40), `paused` VARCHAR(40)',
             'league_entries'=>'`player` VARCHAR(24) PRIMARY KEY, `joined` VARCHAR(40) NOT NULL',
-            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24)',
+            'league_members'=>'`id` VARCHAR(49) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `joined` VARCHAR(40) NOT NULL',
+            'schema_migrations'=>'`id` VARCHAR(64) PRIMARY KEY',
+            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL',
             'league_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `fixture` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `text` MEDIUMTEXT NOT NULL'
         ];
         foreach($definitions as $name=>$columns) $this->pdo->exec('CREATE TABLE IF NOT EXISTS `w40k_'.$name.'` ('.$columns.')'.($this->driver==='mysql'?' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci':''));
+        $this->migrateLeagues();
     }
+    private function migrateLeagues(): void {
+        $marker='league-pause';
+        $check=$this->pdo->prepare('SELECT 1 FROM w40k_schema_migrations WHERE id=?');
+        $check->execute([$marker]);
+        if($check->fetchColumn()) return;
+
+        $sqlite=$this->driver==='sqlite';
+        if($sqlite) $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $check->execute([$marker]);
+            if(!$check->fetchColumn()) {
+                // MySQL DDL commits implicitly; check each column so a retry can resume.
+                foreach([['league','closed','VARCHAR(40)'],['league_fixtures','league_id','VARCHAR(24)'],['league','paused','VARCHAR(40)']] as [$name,$column,$type]) {
+                    $table='w40k_'.$name;
+                    $columns=$sqlite ? $this->pdo->query('PRAGMA table_info('.$table.')') : $this->pdo->query('SHOW COLUMNS FROM `'.$table.'`');
+                    if(!in_array($column,array_column($columns->fetchAll(),$sqlite?'name':'Field'),true)) {
+                        $this->pdo->exec('ALTER TABLE `'.$table.'` ADD COLUMN `'.$column.'` '.$type);
+                    }
+                }
+
+                if(!$sqlite) $this->pdo->beginTransaction();
+                $check->execute(['multiple-leagues']);
+                if(!$check->fetchColumn()) $this->migrateLegacyLeague();
+                $this->pdo->prepare('INSERT INTO w40k_schema_migrations (id) VALUES (?)')->execute([$marker]);
+            }
+            if($sqlite) $this->pdo->exec('COMMIT');
+            elseif($this->pdo->inTransaction()) $this->pdo->commit();
+        } catch(Throwable $error) {
+            if($sqlite) $this->pdo->exec('ROLLBACK');
+            elseif($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
+    }
+
+    private function migrateLegacyLeague(): void {
+        $seasonIds=$this->pdo->query('SELECT id FROM w40k_league')->fetchAll(PDO::FETCH_COLUMN);
+        if(count($seasonIds)>1) throw new RuntimeException('Ambiguous legacy season');
+        $legacy=$this->pdo->query('SELECT player, joined FROM w40k_league_entries')->fetchAll();
+        if(!$seasonIds && ($legacy || $this->pdo->query('SELECT COUNT(*) FROM w40k_league_fixtures')->fetchColumn())) {
+            throw new RuntimeException('Missing legacy season');
+        }
+        if($seasonIds) {
+            $season=$seasonIds[0];
+            $copy=$this->pdo->prepare('INSERT INTO w40k_league_members (id,league_id,player,joined) VALUES (?,?,?,?)');
+            foreach($legacy as $entry) $copy->execute([$season.':'.$entry['player'],$season,$entry['player'],$entry['joined']]);
+            $this->pdo->prepare('UPDATE w40k_league_fixtures SET league_id=? WHERE league_id IS NULL')->execute([$season]);
+        }
+        $this->pdo->exec("INSERT INTO w40k_schema_migrations (id) VALUES ('multiple-leagues')");
+    }
+
     public function beginLeagueUpdate(): void {
         if($this->driver==='sqlite') {
             $this->pdo->exec('BEGIN IMMEDIATE');
@@ -71,7 +124,7 @@ final class SectorStorage {
     public function load(string $scope='archive'): array {
         $keys=match($scope) {
             'league'=>['users'=>'id','matches'=>'id']+self::LEAGUE_KEYS,
-            'state'=>self::KEYS+array_intersect_key(self::LEAGUE_KEYS,['league'=>true,'league_entries'=>true]),
+            'state'=>self::KEYS+array_intersect_key(self::LEAGUE_KEYS,['league'=>true,'league_members'=>true,'league_fixtures'=>true]),
             default=>self::KEYS
         };
         $data=[];
