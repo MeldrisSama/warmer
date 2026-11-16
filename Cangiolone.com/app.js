@@ -248,7 +248,8 @@ function render(){
 
     account.innerHTML='Per amici.<br>Per il 41° millennio.';
 
-    auth();
+    if(state.mailEnabled && ['recupera-password','reset-password','verify-email'].includes(page())) emailAccountPage(page());
+    else auth();
 
     return;
 
@@ -260,6 +261,7 @@ function render(){
 
     ${esc(state.user.name)}
 
+    <a href="#profilo">Profilo</a>
     <button id="logout" type="button">Esci</button>
 
   `;
@@ -333,6 +335,10 @@ function render(){
 
     builderPage();
 
+  }else if(p==='profilo'){
+    profilePage();
+  }else if(['verify-email','reset-password'].includes(p)&&state.mailEnabled){
+    emailAccountPage(p);
   }else if(p==='campionati'){
     leaguesPage();
   }else if(p==='inviti'&&state.user.admin){
@@ -348,6 +354,76 @@ function render(){
 }
 
 
+
+function emailAccountPage(route){
+  const action=route==='recupera-password'?'passwordForgot':route==='reset-password'?'passwordReset':'emailVerify';
+  const title=route==='recupera-password'?'Recupera la password':route==='reset-password'?'Scegli una nuova password':'Verifica indirizzo email';
+  const token=new URLSearchParams(location.hash.split('?')[1]).get('token')||'';
+  const fields=action==='passwordForgot'
+    ? '<label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email"></label>'
+    : action==='passwordReset'
+      ? '<label class="field">Nuova password<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>'
+      : '';
+  main.innerHTML=`<section class="panel narrow">
+    <h1>${title}</h1>
+    <form id="email-account-form">
+      <p class="error-inline" role="alert" hidden></p>
+      ${fields}
+      <button class="primary" type="submit">${title}</button>
+    </form>
+    <p class="actions"><a href="#classifica">Torna a Cronache del settore</a></p>
+  </section>`;
+  bindForm('email-account-form',async form=>{
+    const data=Object.fromEntries(new FormData(form));
+    if(action!=='passwordForgot') data.token=token;
+    await api(action,data);
+    if(action==='passwordForgot'){
+      notify('Se l’indirizzo è associato a un account, riceverai un link per reimpostare la password.');
+      return;
+    }
+    location.hash=action==='emailVerify'&&state.user?'profilo':'classifica';
+    await refresh();
+    notify(action==='emailVerify'?'Indirizzo email verificato.':'Password aggiornata. Accedi con quella nuova.');
+  });
+}
+
+function profilePage(){
+  const account=state.account||{};
+  main.innerHTML=`<section class="panel narrow">
+    <h1>Profilo</h1>
+    ${state.mailEnabled?`<section class="account-settings">
+      <h2>Indirizzo email</h2>
+      ${account.email?`<p class="intro">Indirizzo verificato: ${esc(account.email)}</p>`:''}
+      ${account.pendingEmail?`<p class="intro">Verifica in attesa per ${esc(account.pendingEmail)}.</p>`:''}
+      <form id="profile-email">
+        <p class="error-inline" role="alert" hidden></p>
+        <label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email" value="${esc(account.pendingEmail||account.email)}"></label>
+        <label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>
+        <button class="primary" type="submit">Invia il link di verifica</button>
+      </form>
+    </section>`:''}
+    <section class="account-settings">
+      <h2>Cambia password</h2>
+      <form id="profile-password">
+        <p class="error-inline" role="alert" hidden></p>
+        <label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>
+        <label class="field">Nuova password<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>
+        <button class="primary" type="submit">Aggiorna la password</button>
+      </form>
+    </section>
+  </section>`;
+  if(state.mailEnabled) bindForm('profile-email',async form=>{
+    const data=Object.fromEntries(new FormData(form));
+    await api('emailSet',data);
+    await refresh();
+    notify(state.account.pendingEmail?'Link di verifica messo in coda.':'L’indirizzo è già verificato.');
+  });
+  bindForm('profile-password',async form=>{
+    await api('passwordChange',Object.fromEntries(new FormData(form)));
+    form.reset();
+    notify('Password aggiornata.');
+  });
+}
 
 function auth(){
 
@@ -635,6 +711,7 @@ function auth(){
 
               </a>
 
+            ${!register&&state.mailEnabled?'<a href="#recupera-password">Password dimenticata?</a>':''}
             </div>
 
           `
@@ -673,6 +750,11 @@ function auth(){
 
 
 
+      const next=new URLSearchParams(location.search).get('next');
+      if(next && /^campionato\.php\?id=[a-f0-9]{24}(?:&fixture=[a-f0-9]{24})?$/.test(next)){
+        location.assign(next);
+        return;
+      }
       location.hash='classifica';
 
 

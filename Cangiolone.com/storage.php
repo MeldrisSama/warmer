@@ -55,6 +55,7 @@ final class SectorStorage {
     private array $snapshot=[];
 
     private bool $sqliteWrite=false;
+    private ?string $mysqlLock=null;
     private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id'];
     private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
 
@@ -89,7 +90,8 @@ final class SectorStorage {
 
         if($this->driver==='mysql') {
 
-            $stmt=$this->pdo->prepare('SELECT GET_LOCK(?, 10)');$stmt->execute(['w40k_'.$config['name']]);
+            $this->mysqlLock='w40k_'.$config['name'];
+            $stmt=$this->pdo->prepare('SELECT GET_LOCK(?, 10)');$stmt->execute([$this->mysqlLock]);
 
             if((int)$stmt->fetchColumn()!==1) throw new RuntimeException('Database busy');
 
@@ -109,6 +111,8 @@ final class SectorStorage {
             'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10), `closed` VARCHAR(40), `paused` VARCHAR(40)',
             'league_entries'=>'`player` VARCHAR(24) PRIMARY KEY, `joined` VARCHAR(40) NOT NULL',
             'league_members'=>'`id` VARCHAR(49) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `joined` VARCHAR(40) NOT NULL',
+            'mail_accounts'=>'`id` VARCHAR(24) PRIMARY KEY, `email` VARCHAR(254) UNIQUE, `pending_email` VARCHAR(254), `verify_hash` VARCHAR(64), `verify_until` BIGINT NOT NULL, `reset_hash` VARCHAR(64), `reset_until` BIGINT NOT NULL, `version` INT NOT NULL',
+            'mail_jobs'=>'`id` VARCHAR(64) PRIMARY KEY, `recipient` VARCHAR(254), `payload` MEDIUMTEXT, `expires` BIGINT NOT NULL, `next_attempt` BIGINT NOT NULL, `attempts` INT NOT NULL',
             'schema_migrations'=>'`id` VARCHAR(64) PRIMARY KEY',
             'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL',
             'league_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `fixture` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `text` MEDIUMTEXT NOT NULL'
@@ -188,7 +192,7 @@ final class SectorStorage {
         };
         $data=[];
 
-        foreach($keys as $table=>$key) {
+        foreach($keys+['mail_accounts'=>'id'] as $table=>$key) {
             $data[$table]=[];
 
             $columns=$table==='league_lineups' ? '`id`, `fixture`, `player`' : '*';
@@ -209,6 +213,35 @@ final class SectorStorage {
 
     }
 
+    public function releaseApplicationLock(): void {
+        if($this->mysqlLock!==null) {
+            $this->pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$this->mysqlLock]);
+            $this->mysqlLock=null;
+        }
+    }
+
+    public function claimMail(): ?array {
+        $now=time();
+        $this->pdo->prepare('UPDATE w40k_mail_jobs SET recipient=NULL, payload=NULL WHERE expires<=? AND payload IS NOT NULL')->execute([$now]);
+        $select=$this->pdo->prepare('SELECT * FROM w40k_mail_jobs WHERE payload IS NOT NULL AND next_attempt<=? ORDER BY next_attempt,id LIMIT 1');
+        $select->execute([$now]);
+        $job=$select->fetch();
+        if(!$job) return null;
+        $claim=$this->pdo->prepare('UPDATE w40k_mail_jobs SET next_attempt=?, attempts=attempts+1 WHERE id=? AND next_attempt<=? AND attempts=? AND payload IS NOT NULL');
+        $claim->execute([$now+180,$job['id'],$now,$job['attempts']]);
+        return $claim->rowCount()===1 ? $job : null;
+    }
+
+    public function finishMail(array $job, bool $sent): void {
+        if($sent) {
+            $this->pdo->prepare('UPDATE w40k_mail_jobs SET recipient=NULL, payload=NULL WHERE id=? AND attempts=?')
+                ->execute([$job['id'],$job['attempts']+1]);
+        } else {
+            $this->pdo->prepare('UPDATE w40k_mail_jobs SET next_attempt=? WHERE id=? AND attempts=?')
+                ->execute([time()+min(3600,120*2**min(5,(int)$job['attempts'])),$job['id'],$job['attempts']+1]);
+        }
+    }
+
     public function leagueLineupText(string $id): string {
         $statement=$this->pdo->prepare('SELECT `text` FROM `w40k_league_lineups` WHERE `id`=?');
         $statement->execute([$id]);
@@ -221,8 +254,9 @@ final class SectorStorage {
 
         if(!$this->sqliteWrite) $this->pdo->beginTransaction();
         try {
+            $pending=$this->snapshot;
 
-            foreach(array_intersect_key(self::KEYS+self::LEAGUE_KEYS,$data) as $table=>$key) {
+            foreach(array_intersect_key(self::KEYS+self::LEAGUE_KEYS+['mail_accounts'=>'id'],$data) as $table=>$key) {
                 $next=[];
 
                 foreach($data[$table] as $index=>$row) {
@@ -253,6 +287,12 @@ final class SectorStorage {
 
             }
 
+            if(!empty($data['mail_jobs'])) {
+                $sql='INSERT INTO w40k_mail_jobs (id,recipient,payload,expires,next_attempt,attempts) VALUES (?,?,?,?,?,0)';
+                $sql.=$this->driver==='mysql'?' ON DUPLICATE KEY UPDATE id=id':' ON CONFLICT (id) DO NOTHING';
+                $enqueue=$this->pdo->prepare($sql);
+                foreach($data['mail_jobs'] as $job) $enqueue->execute($job);
+            }
             if($this->sqliteWrite) $this->pdo->exec('COMMIT');
             else $this->pdo->commit();
             $this->snapshot=$pending;

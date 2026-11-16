@@ -1,0 +1,8 @@
+{
+  "name": "cangiolone/warmer",
+  "require": {
+    "php": ">=8.1",
+    "ext-openssl": "*",
+    "phpmailer/phpmailer": "^7.2"
+  }
+}

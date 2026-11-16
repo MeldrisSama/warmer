@@ -12,6 +12,10 @@ if($path==='/api.php') {
     require __DIR__.'/api.php';
     return true;
 }
+if($path==='/mail-worker.php') {
+    require __DIR__.'/mail-worker.php';
+    return true;
+}
 if($path==='/campionato.php') {
     require __DIR__.'/campionato.php';
     return true;

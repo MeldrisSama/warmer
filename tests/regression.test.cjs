@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -222,7 +222,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'web.config']) {
+  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   const setupCode = 'isolated-test-setup';
@@ -650,6 +650,101 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const result = spawnSync(php, ['-r', '$xml=simplexml_load_file($argv[1]);exit(count($xml->xpath($argv[2]))===1?0:1);', join(application, 'web.config'), '/configuration/system.webServer/security/requestFiltering/hiddenSegments/add[@segment="uploads"]'], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
+  await t.test('Verified email, password recovery and league notifications use the local outbox', async () => {
+    assert.equal((await state()).mailEnabled, false);
+    const privatePath = join(application, 'private');
+    await mkdir(privatePath);
+    await writeFile(join(privatePath, 'mail.php'), "<?php return ['base_url'=>'https://warmer.test/','transport'=>'capture','capture_path'=>__DIR__.'/emails.jsonl','worker_secret'=>str_repeat('x',40)];");
+    const forbidden = await fetch(`${base}/mail-worker.php`);
+    assert.equal(forbidden.status, 401);
+    const config = await fetch(`${base}/private/mail.php`);
+    assert.equal(config.status, 404);
+    let captured = 0;
+    const drain = async () => {
+      const output = spawnSync(php, [join(application, 'mail-worker.php')], { encoding: 'utf8' });
+      assert.equal(output.status, 0, output.stdout + output.stderr);
+      const contents = await readFile(join(privatePath, 'emails.jsonl'), 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      });
+      const emails = contents.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+      const batch = emails.slice(captured);
+      captured = emails.length;
+      return batch;
+    };
+    const addresses = ['alice@example.test', 'bob@example.test'];
+    for (const [i, account] of [alice, bob].entries()) {
+      await account('emailSet', { email: addresses[i], current: password });
+      assert.equal((await account('state')).account.email, null);
+    }
+    const verification = await drain();
+    assert.deepEqual(verification.map(email => email.to).sort(), addresses);
+    assert.ok(verification.every(email => email.subject === 'Conferma il tuo indirizzo email' && email.html.includes('Cronache del settore')));
+    await guest('state');
+    for (const email of verification) {
+      const token = email.text.match(/token=([a-f0-9]{64})/)[1];
+      await guest('emailVerify', { token });
+      await guest('emailVerify', { token }, 410);
+    }
+    const aliceState = await alice('state');
+    assert.equal(aliceState.account.email, addresses[0]);
+    assert.ok(aliceState.users.every(user => user.email === undefined));
+
+    await admin('leagueOpen', { name: 'Campionato senza avviso' });
+    assert.deepEqual(await drain(), []);
+    const { id } = await admin('leagueOpen', { name: 'Campionato email', notify: true });
+    assert.deepEqual((await drain()).map(email => email.to).sort(), addresses);
+    for (const account of [alice, bob]) await account('leagueJoin', { league: id });
+    await alice('leagueJoin', { league: id });
+    assert.ok((await drain()).every(email => email.subject === 'Iscrizione confermata'));
+    await alice('leagueAnnounce', { league: id, subject: 'Avviso', message: 'Test', request: randomUUID() }, 403);
+    const note = { league: id, subject: 'Avviso', message: '<script>Da leggere</script>', request: randomUUID() };
+    await admin('leagueAnnounce', note);
+    await admin('leagueAnnounce', note);
+    const announcement = await drain();
+    assert.deepEqual(announcement.map(email => email.to).sort(), addresses);
+    assert.ok(announcement.every(email => email.html.includes('&lt;script&gt;') && !email.html.includes('<script>Da leggere')));
+    await admin('leagueStart', { league: id });
+    const { fixtures: [fixture], today } = await alice('league&id=' + id);
+    const target = { fixture: fixture.id, league: id };
+    await alice('leagueLineup', { ...target, text: 'Alice army' });
+    assert.deepEqual(await drain(), []);
+    await bob('leagueLineup', { ...target, text: 'Bob army' });
+    const revealed = await drain();
+    assert.deepEqual(revealed.map(email => email.to), [addresses[0]]);
+    assert.match(revealed[0].text, new RegExp('fixture=' + fixture.id));
+    await alice('leaguePropose', { ...target, scoreA: 60, scoreB: 43, date: today });
+    const reminder = await drain();
+    assert.deepEqual(reminder.map(email => email.to), [addresses[1]]);
+    assert.equal(reminder[0].subject, 'Risultato da confermare');
+    const pending = (await bob('league&id=' + id)).fixtures[0].pending;
+    await bob('leagueConfirm', { ...target, proposal: pending.token });
+    const digest = await drain();
+    assert.deepEqual(digest.map(email => email.to).sort(), addresses);
+    assert.ok(digest.every(email => email.html.includes('Classifica aggiornata') && email.html.includes('60 – 43')));
+    assert.deepEqual(await drain(), []);
+
+    const missing = await guest('passwordForgot', { email: 'missing@example.test' });
+    const known = await guest('passwordForgot', { email: addresses[1] });
+    assert.deepEqual(known, missing);
+    const reset = await drain();
+    assert.deepEqual(reset.map(email => email.to), [addresses[1]]);
+    const resetToken = reset[0].text.match(/token=([a-f0-9]{64})/)[1];
+    const passwordNew = 'test-new-password-123';
+    await guest('passwordReset', { token: resetToken, password: passwordNew });
+    await guest('passwordReset', { token: resetToken, password: passwordNew }, 410);
+    assert.equal((await bob('state')).user, null);
+    await bob('login', { username: 'bob', password }, 401);
+    await bob('login', { username: 'bob', password: passwordNew });
+    await bob('state');
+    await bob('emailSet', { current: passwordNew, email: 'other@example.test' });
+    const pendingVerification = (await drain())[0].text.match(/token=([a-f0-9]{64})/)[1];
+    await bob('passwordChange', { current: passwordNew, password });
+    await guest('emailVerify', { token: pendingVerification }, 410);
+    assert.equal((await bob('state')).account.email, addresses[1]);
+    assert.equal((await bob('state')).user.id, bobId);
+  });
+
   await t.test('Authentication attempts are rate limited', async () => {
     const attacker = client();
     await attacker('state');

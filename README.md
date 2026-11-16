@@ -19,9 +19,9 @@ Il router protegge gli upload durante lo sviluppo. Su IIS va pubblicato anche `C
 Le foto vengono servite dall'API dopo il login. I percorsi delle foto già salvate restano compatibili.
 Repository che si dedicherà alla costruzione della sezione warmer di cangiolone.com
 
-## Army Builder (prima versione)
+## Army Builder sperimentale nel repository
 
-La pagina **Army Builder** è disponibile dopo il login, nel menu principale. Funziona senza nuove dipendenze e mantiene separate le vecchie liste `.txt`.
+Questa sezione documenta il prototipo integrato nel codice. Per trovare **Army Builder** nel menu dopo il login serve un’installazione che includa il prototipo. Per creare un’armata, un amministratore deve prima importare un catalogo per l’edizione scelta. Le liste `.txt` del campionato si gestiscono separatamente.
 
 - Cataloghi per edizione (`10` e `11`) con fonte, licenza, numero di versione e snapshot storico. Nessun datasheet commerciale è incluso.
 - Importazione JSON riservata agli amministratori, con conferma esplicita sui diritti di utilizzo e ripubblicazione.
@@ -67,3 +67,23 @@ node --test tests/regression.test.cjs
 ```
 
 La regressione completa richiede PHP con `pdo_sqlite`. Prima della distribuzione verificare anche il comportamento MySQL, fare un backup del database e predisporre una credenziale dedicata alle eventuali integrazioni future.
+
+## Email di Warmer su Aruba
+
+Gli account già presenti possono aggiungere e verificare un indirizzo dal **Profilo**. Il cambio password è disponibile dal profilo anche senza invio email. Il recupero dalla pagina di accesso usa un link monouso valido due ore. Cambio e recupero invalidano le altre sessioni.
+
+Con la posta attiva, l’app accoda conferme di iscrizione, inviti selezionati dall’amministratore, messaggi agli iscritti, richieste di conferma del risultato, sblocco della lista per chi l’ha consegnata per primo e riepiloghi. Il riepilogo viene accodato una sola volta per destinatario, quando la giornata ha un esito per tutti gli incontri previsti. I riposi non contano. Ogni messaggio è inviato a un solo destinatario e include un’alternativa in testo semplice.
+
+### Installazione e configurazione
+
+1. Da un computer con PHP 8.1+, OpenSSL e Composer, installa le dipendenze bloccate e carica anche la cartella `Cangiolone.com/vendor` sul server, nella stessa cartella di `mail-worker.php`.
+
+   ```sh
+   composer install --working-dir=Cangiolone.com --no-dev
+   ```
+
+2. Pubblica anche il nuovo `web.config`, che blocca l’accesso HTTP diretto alle directory `private` e `vendor`. Copia [mail-config.example.php](mail-config.example.php) in `Cangiolone.com/private/mail.php` sul server. Imposta l’URL HTTPS, l’indirizzo e la password della casella Aruba. Genera una password separata da almeno 32 caratteri per `worker_secret`. Conserva entrambi i segreti sul server. Mantieni `config.php` con il database esistente. La configurazione della posta si attiva quando è disponibile il file privato compilato. Le due tabelle email si creano automaticamente.
+3. Nel pannello Aruba **Hosting Windows → Scheduled task**, imposta un’attività per `https://cangiolone.com/warmer/mail-worker.php`. Usa `warmer-mail` come utente e `worker_secret` come password. Usa il test URL di Aruba per verificare che l’autenticazione arrivi a PHP. Imposta un intervallo di 30 minuti, se disponibile nel piano. Gli invii accodati partono alla prima esecuzione utile. Lo scheduler è separato dalle iscrizioni e dalla conferma degli incontri. [Guida Scheduled Tasks](https://guide.aruba.it/hosting-e-domini/hosting/hosting-windows/scheduled-task/scheduled-task-creazione-nuovo-task)
+4. Verifica prima l’indirizzo del tuo account e prova il recupero password con un account di test. Controlla la consegna, il mittente e l’apertura del link. Le richieste indistinguibili in caso di indirizzo sconosciuto proteggono gli account. Gli errori di trasporto vengono registrati con l’ID della coda e l’invio viene ritentato. Il destinatario e il contenuto sono rimossi dalla coda dopo l’invio o alla scadenza.
+
+Per eseguire manualmente il worker su un ambiente con accesso CLI usa `php Cangiolone.com/mail-worker.php`. La suite usa indirizzi fittizi e cattura HTML e testo localmente con il trasporto di prova. L’invio SMTP su Aruba e il passaggio delle credenziali HTTP dallo scheduler richiedono una verifica sull’hosting.

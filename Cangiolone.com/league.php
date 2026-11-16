@@ -23,6 +23,10 @@ function leagueIndex(array $leagues, ?string $id): int {
     return $index;
 }
 
+function leaguePlayers(array $db, string $id): array {
+    return array_column(array_filter($db['league_members'],fn($entry)=>$entry['league_id']===$id),'player');
+}
+
 function leagueSchedule(array $players): array {
     if(count($players)%2) $players[]=null;
     $size=count($players);
@@ -69,7 +73,7 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
     return [
         'league'=>$league,'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],
         'today'=>date('Y-m-d'),'users'=>array_map('publicUser',$db['users']),
-        'players'=>array_column(array_filter($db['league_members'],fn($entry)=>$entry['league_id']===($league['id']??null)),'player'),
+        'players'=>$league ? leaguePlayers($db,$league['id']) : [],
         'fixtures'=>$fixtures
     ];
 }
@@ -98,7 +102,7 @@ function leagueDownload(SectorStorage $storage, array $db, string $player): neve
     exit;
 }
 
-function updateLeague(string $action, array $in, array $me, array &$db): ?string {
+function updateLeague(string $action, array $in, array $me, array &$db, ?array $mail): ?string {
     $player=$me['id'];
     if($action==='leagueOpen') {
         if(!$me['admin']) fail('Solo l’amministratore può aprire le iscrizioni.',403);
@@ -109,13 +113,19 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
             if($league['name']!==$name) fail('Richiesta già usata. Ricarica la pagina.',409);
             return $id;
         }
-        $db['league'][]=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null,'paused'=>null];
+        $league=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null,'paused'=>null];
+        $db['league'][]=$league;
+        if(($in['notify']??false)===true) {
+            if($mail===null) fail('Servizio email non disponibile.',503);
+            notifyLeague($db,$mail,$league,array_column($db['users'],'id'),'invite:'.$id,
+                'Iscrizioni aperte', 'Puoi iscriverti al nuovo campionato dalla pagina del torneo.', 'Iscriviti al campionato');
+        }
         return $id;
     }
     $fixtureIndex=null;
     $id=field($in,'league',24,false) ?: null;
     $lifecycle=in_array($action,LEAGUE_LIFECYCLE_ACTIONS,true);
-    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart'],true)) {
+    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart','leagueAnnounce'],true)) {
         $fixtureIndex=leagueFixture($db['league_fixtures'],field($in,'fixture',24),$player);
         $fixtureLeague=$db['league_fixtures'][$fixtureIndex]['league_id'];
         if($id!==null && $id!==$fixtureLeague) fail('Incontro non trovato.',404);
@@ -123,6 +133,16 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
     }
     $index=leagueIndex($db['league'],$id);
     $league=&$db['league'][$index];
+    if($action==='leagueAnnounce') {
+        if(!$me['admin']) fail('Solo l’amministratore può scrivere agli iscritti.',403);
+        if($mail===null) fail('Servizio email non disponibile.',503);
+        $subject=field($in,'subject',140);
+        if(preg_match('/[\r\n]/',$subject)) fail('Inserisci un oggetto su una sola riga.');
+        $count=notifyLeague($db,$mail,$league,leaguePlayers($db,$league['id']),
+            'announcement:'.$league['id'].':'.field($in,'request',64),$subject,field($in,'message',4000),'Apri il campionato');
+        if(!$count) fail('Nessun iscritto ha un indirizzo email verificato.');
+        return null;
+    }
     if($lifecycle) {
         if(!$me['admin']) fail('Solo l’amministratore può cambiare lo stato del campionato.',403);
         if($action==='leagueClose') {
@@ -143,12 +163,14 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
         if(in_array($memberId,array_column($db['league_members'],'id'),true)) return null;
         if($league['start']) fail('Le iscrizioni sono chiuse.',409);
         $db['league_members'][]=['id'=>$memberId,'league_id'=>$league['id'],'player'=>$player,'joined'=>date(DATE_ATOM)];
+        notifyLeague($db,$mail,$league,[$player],'joined:'.$memberId,'Iscrizione confermata',
+            'La tua iscrizione è confermata. Troverai il calendario nella pagina del campionato quando verrà pubblicato.','Apri il campionato');
         return null;
     }
     if($action==='leagueStart') {
         if(!$me['admin']) fail('Solo l’amministratore può pubblicare il calendario.',403);
         if($league['start']) fail('Il calendario è già stato pubblicato.',409);
-        $players=array_column(array_filter($db['league_members'],fn($entry)=>$entry['league_id']===$league['id']),'player');
+        $players=leaguePlayers($db,$league['id']);
         if(count($players)<2) fail('Servono almeno due iscritti.');
         shuffle($players);
         foreach(leagueSchedule($players) as $fixture) $db['league_fixtures'][]=$fixture+['league_id'=>$league['id']];
@@ -167,6 +189,11 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
         // shortcut: validates file format only; check army rules when the list builder is available.
         $lists[$id]=['id'=>$id,'fixture'=>$fixture['id'],'player'=>$player,'text'=>$text];
         $db['league_lineups']=array_values($lists);
+        if(isset($lists[$fixture['id'].':'.$opponent])) {
+            notifyLeague($db,$mail,$league,[$opponent],'lineups:'.$fixture['id'],'La lista avversaria è disponibile',
+                $me['name'].' ha consegnato la sua lista. Ora puoi leggere entrambe le liste nella pagina dell’incontro.',
+                'Leggi le liste',$fixture['id']);
+        }
         return null;
     }
 
@@ -175,7 +202,12 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
     if($action==='leaguePropose') {
         if($pending) fail('C’è già un risultato in attesa.',409);
         $scores=matchDetails($in);
-        $fixture['pending']=json_encode($scores+['by'=>$player,'token'=>ident()],JSON_THROW_ON_ERROR);
+        $token=ident();
+        $fixture['pending']=json_encode($scores+['by'=>$player,'token'=>$token],JSON_THROW_ON_ERROR);
+        $opponent=$fixture['a']===$player ? $fixture['b'] : $fixture['a'];
+        notifyLeague($db,$mail,$league,[$opponent],'proposal:'.$token,'Risultato da confermare',
+            $me['name'].' ha inserito il risultato del vostro incontro. Apri la partita per verificarlo.',
+            'Verifica il risultato',$fixture['id']);
         return null;
     }
     if(!$pending || $pending['token']!==field($in,'proposal',24)) fail('Il risultato è cambiato. Aggiorna la pagina.',409);
@@ -192,6 +224,7 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
                 'created'=>date(DATE_ATOM),'request'=>'league:'.$fixture['id']
             ];
             $fixture['match_id']=$matchId;
+            queueRoundReport($db,$mail,$league,$fixture['round']);
         }
     }
     $fixture['pending']=null;
