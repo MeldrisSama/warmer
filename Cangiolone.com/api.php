@@ -103,7 +103,7 @@ require __DIR__.'/storage.php';
 require __DIR__.'/league.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=['leagueOpen','leagueJoin','leagueStart','leagueClose','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
@@ -121,9 +121,9 @@ if($me) $_SESSION['seen']=time();
 if($action==='state') {
     if(!$me) result(['user'=>null,'setup'=>count($db['users'])===0,'csrf'=>$_SESSION['csrf']]);
     $leagues=leagueSummaries($db,$me['id']);
-    $locked=array_flip(closedLeagueMatches($db));
+    $locked=leagueMatchLocks($db);
     $matches=array_map(function(array $match) use($locked): array {
-        if(isset($locked[$match['id']])) $match['leagueClosed']=true;
+        if(isset($locked[$match['id']])) $match['leagueLocked']=true;
         if(!empty($match['photo'])) $match['photo']='api.php?action=photo&id='.rawurlencode($match['id']);
         return $match;
     },$db['matches']);
@@ -269,7 +269,8 @@ try {
         foreach($db['matches'] as &$m) if($m['id']===$id) {
             if(!$me['admin'] && $m['by']!==$me['id']) fail('Solo l’autore o l’amministratore può annullare questa partita.',403);
             if(!isset($in['void']) || !is_bool($in['void'])) fail('Stato non valido.');
-            if(in_array($id,closedLeagueMatches($db),true)) fail('Il risultato appartiene a un campionato concluso.',409);
+            $locked=leagueMatchLocks($db);
+            if(isset($locked[$id])) fail($locked[$id],409);
             $m['void']=$in['void']; $m['updatedBy']=$me['id']; $m['updated']=date(DATE_ATOM); save(); result(['ok'=>true]);
         }
         fail('Partita non trovata.',404);

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+const LEAGUE_LIFECYCLE_ACTIONS=['leagueClose','leagueReopen','leaguePause','leagueResume'];
+
 function leagueSummaries(array $db, string $player): array {
     $members=[];
     foreach($db['league_members'] as $entry) $members[$entry['league_id']][$entry['player']]=true;
@@ -9,6 +11,7 @@ function leagueSummaries(array $db, string $player): array {
         return $league+['joined'=>isset($entries[$player]),'entrants'=>count($entries)];
     },$db['league']);
     usort($leagues,fn($a,$b)=>($a['closed']!==null)<=>($b['closed']!==null)
+        ?: ($a['paused']!==null)<=>($b['paused']!==null)
         ?: $b['entrants']<=>$a['entrants'] ?: ($b['start']!==null)<=>($a['start']!==null)
         ?: strcmp($a['id'],$b['id']));
     return $leagues;
@@ -106,12 +109,13 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
             if($league['name']!==$name) fail('Richiesta già usata. Ricarica la pagina.',409);
             return $id;
         }
-        $db['league'][]=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null];
+        $db['league'][]=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null,'paused'=>null];
         return $id;
     }
     $fixtureIndex=null;
     $id=field($in,'league',24,false) ?: null;
-    if(!in_array($action,['leagueJoin','leagueStart','leagueClose'],true)) {
+    $lifecycle=in_array($action,LEAGUE_LIFECYCLE_ACTIONS,true);
+    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart'],true)) {
         $fixtureIndex=leagueFixture($db['league_fixtures'],field($in,'fixture',24),$player);
         $fixtureLeague=$db['league_fixtures'][$fixtureIndex]['league_id'];
         if($id!==null && $id!==$fixtureLeague) fail('Incontro non trovato.',404);
@@ -119,12 +123,21 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
     }
     $index=leagueIndex($db['league'],$id);
     $league=&$db['league'][$index];
-    if($action==='leagueClose') {
-        if(!$me['admin']) fail('Solo l’amministratore può chiudere il campionato.',403);
-        $league['closed']??=date(DATE_ATOM);
+    if($lifecycle) {
+        if(!$me['admin']) fail('Solo l’amministratore può cambiare lo stato del campionato.',403);
+        if($action==='leagueClose') {
+            $league['closed']??=date(DATE_ATOM);
+            $league['paused']=null;
+        } elseif($action==='leagueReopen') {
+            $league['closed']=null;
+        } else {
+            if($league['closed']!==null) fail('Riapri il campionato prima di cambiarne lo stato.',409);
+            $league['paused']=$action==='leaguePause' ? ($league['paused']??date(DATE_ATOM)) : null;
+        }
         return null;
     }
     if($league['closed']!==null) fail('Il campionato è concluso.',409);
+    if($league['paused']!==null) fail('Il campionato è in pausa.',409);
     if($action==='leagueJoin') {
         $memberId=$league['id'].':'.$player;
         if(in_array($memberId,array_column($db['league_members'],'id'),true)) return null;
@@ -185,8 +198,17 @@ function updateLeague(string $action, array $in, array $me, array &$db): ?string
     return null;
 }
 
-function closedLeagueMatches(array $db): array {
-    $closed=array_column(array_filter($db['league'],fn($league)=>$league['closed']!==null),'id');
-    return array_column(array_filter($db['league_fixtures'],fn($fixture)=>
-        $fixture['match_id']!==null && in_array($fixture['league_id'],$closed,true)),'match_id');
+function leagueMatchLocks(array $db): array {
+    $seasons=[];
+    foreach($db['league'] as $league) {
+        if($league['closed']!==null) $seasons[$league['id']]='Il risultato appartiene a un campionato concluso.';
+        elseif($league['paused']!==null) $seasons[$league['id']]='Il risultato appartiene a un campionato in pausa.';
+    }
+    $matches=[];
+    foreach($db['league_fixtures'] as $fixture) {
+        if($fixture['match_id']!==null && isset($seasons[$fixture['league_id']])) {
+            $matches[$fixture['match_id']]=$seasons[$fixture['league_id']];
+        }
+    }
+    return $matches;
 }

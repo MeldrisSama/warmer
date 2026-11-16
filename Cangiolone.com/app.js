@@ -388,7 +388,7 @@ function leagueLink(league){
 }
 
 function leagueBanner(){
-  const active=state.leagues.filter(league=>!league.closed);
+  const active=state.leagues.filter(league=>!league.closed && !league.paused);
   const league=active.find(league=>league.joined) || active.find(league=>!league.start);
   if(!league && (active.length || !state.user.admin)) return '';
   const label=!league ? 'Organizza il campionato' : !league.start && !league.joined
@@ -408,8 +408,9 @@ function leagueBanner(){
 
 function leaguesPage(){
   const groups=[
-    ['In corso',league=>league.start && !league.closed],
-    ['Da iniziare',league=>!league.start && !league.closed],
+    ['In corso',league=>league.start && !league.closed && !league.paused],
+    ['Da iniziare',league=>!league.start && !league.closed && !league.paused],
+    ['In pausa',league=>league.paused && !league.closed],
     ['Conclusi',league=>league.closed]
   ];
   main.innerHTML=`<section class="panel league-directory">
@@ -642,7 +643,7 @@ function standings(){
                         }
 
                         ${
-                          !m.leagueClosed && (state.user.admin || m.by===state.user.id)
+                          !m.leagueLocked && (state.user.admin || m.by===state.user.id)
                             ? `
                               <button
                                 class="small-button"

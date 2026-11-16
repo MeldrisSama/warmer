@@ -56,7 +56,7 @@ INSERT INTO w40k_league_lineups VALUES ('fixture:alice', 'fixture', 'alice', 'Ar
 $legacy = null;
 $migrated = new SectorStorage($legacyConfig);
 $seasons = $migrated->load('league');
-check($seasons['league'][0]['closed']===null,'Legacy season must stay open');
+check($seasons['league'][0]['closed']===null && $seasons['league'][0]['paused']===null,'Legacy season must stay open');
 check(array_column($seasons['league_members'],'id')===['legacy:alice','legacy:bob'],'Legacy signups must carry over');
 check($seasons['league_fixtures'][0]['league_id']==='legacy' && $seasons['league_fixtures'][0]['match_id']==='match','Legacy fixture and result link must carry over');
 check($migrated->leagueLineupText('fixture:alice')==='Army list','Legacy list must remain readable');
@@ -64,6 +64,16 @@ $seasons['league'][]=['id'=>'new','name'=>'Nuovo campionato','start'=>null,'clos
 $migrated->save($seasons);
 $seasons = (new SectorStorage($legacyConfig))->load('league');
 check(count($seasons['league'])===2 && count($seasons['league_members'])===2,'The migration must not be reapplied');
+unset($migrated);
+$previous = new PDO('sqlite:'.$legacyConfig['path'],null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+$previous->exec("ALTER TABLE w40k_league RENAME TO old_lifecycle;
+CREATE TABLE w40k_league (id TEXT PRIMARY KEY, name TEXT NOT NULL, start TEXT, closed TEXT);
+INSERT INTO w40k_league SELECT id, name, start, closed FROM old_lifecycle;
+DROP TABLE old_lifecycle;
+DELETE FROM w40k_schema_migrations WHERE id='league-pause';");
+$previous = null;
+$seasons = (new SectorStorage($legacyConfig))->load('league');
+check(count($seasons['league'])===2 && $seasons['league'][1]['paused']===null,'Adding pause must preserve existing seasons');
 
 $config = ['driver'=>'sqlite', 'path'=>$directory.'/storage.sqlite'];
 $storage = new SectorStorage($config);
