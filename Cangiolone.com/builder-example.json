@@ -1,0 +1,31 @@
+{
+  "edition": "10",
+  "version": "demo-1.0",
+  "source": "Catalogo dimostrativo originale",
+  "license": "CC0-1.0",
+  "factions": [
+    {
+      "id": "esploratori_stellari",
+      "name": "Esploratori Stellari (demo)",
+      "detachments": [{ "id": "spedizione", "name": "Spedizione di prova" }],
+      "units": [
+        {
+          "id": "ricognitori",
+          "name": "Squadra Ricognitori",
+          "category": "Fanteria",
+          "maxCopies": 3,
+          "points": [{ "models": 5, "points": 80 }, { "models": 10, "points": 160 }],
+          "equipment": [{ "id": "sensore", "name": "Sensore ausiliario", "points": 10 }]
+        },
+        {
+          "id": "vettore",
+          "name": "Veicolo da ricognizione",
+          "category": "Veicolo",
+          "maxCopies": 2,
+          "points": [{ "models": 1, "points": 140 }],
+          "equipment": []
+        }
+      ]
+    }
+  ]
+}
