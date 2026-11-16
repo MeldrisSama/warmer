@@ -4,15 +4,8 @@ const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[character]));
-const day = 86400000;
-const roundDays = 14;
-const epoch = date => Date.parse(date);
-const formatDate = (date, options = { day: 'numeric', month: 'short' }) =>
-  new Intl.DateTimeFormat('it-IT', { timeZone: 'UTC', ...options }).format(typeof date === 'number' ? date : epoch(date));
-const roundWindow = (start, round) => {
-  const first = epoch(start) + (round - 1) * roundDays * day;
-  return `${formatDate(first)} – ${formatDate(first + (roundDays - 1) * day)}`;
-};
+const dateFormat = new Intl.DateTimeFormat('it-IT', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
+const formatDate = date => dateFormat.format(Date.parse(date));
 const action = (name, label, kind = 'primary') =>
   `<button type="submit" class="${kind}" name="action" value="${name}">${label}</button>`;
 
@@ -37,8 +30,8 @@ const confirmed = fixture => fixture.result && !fixture.result.void;
 const playable = fixture => fixture.b !== null;
 const mine = fixture => fixture.lineups !== null;
 
-function renderOverview(total, elapsed, finished) {
-  const { league, user, players, today } = state;
+function renderOverview(total, current) {
+  const { league, user, players } = state;
   const actions = $('season-actions');
   const board = $('season-board');
   if (!league) {
@@ -67,16 +60,14 @@ function renderOverview(total, elapsed, finished) {
       actions.insertAdjacentHTML('beforeend', '<p>Servono almeno due iscritti per pubblicare il calendario.</p>');
     }
     if (user.admin && players.length >= 2) {
-      actions.insertAdjacentHTML('beforeend', `<form class="inline-form">
-        <label>Inizio del campionato<input type="date" name="start" min="${today}" value="${today}" required></label>
+      actions.insertAdjacentHTML('beforeend', `<form>
         ${action('leagueStart', 'Chiudi iscrizioni e pubblica')}
       </form>`);
     }
     return;
   }
 
-  const upcoming = state.fixtures.filter(fixture => playable(fixture) && mine(fixture) && !fixture.result);
-  const next = elapsed < 1 ? upcoming[0] : upcoming.find(fixture => fixture.round >= elapsed) || upcoming[0];
+  const next = state.fixtures.find(fixture => mine(fixture) && !fixture.result);
   actions.innerHTML = `<div class="action-row">
     <a href="#giornate" class="primary">Consulta il calendario</a>
     <a class="jump" href="#classifica">Vedi la classifica <span aria-hidden="true">↓</span></a>
@@ -87,14 +78,13 @@ function renderOverview(total, elapsed, finished) {
       <div class="board-top"><h2 class="eyebrow">Prossimo incontro</h2><span>Giornata ${next.round}</span></div>
       <div class="matchup"><strong>${player(user.id)}</strong><span>vs</span><strong>${player(next.a === user.id ? next.b : next.a)}</strong></div>
       <div class="board-bottom">
-        <span>${roundWindow(league.start, next.round)}</span>
+        <span>${next.awaiting ? 'Risultato da confermare' : 'Da giocare'}</span>
         <a href="#giornate" class="jump" data-round="${next.round}" data-fixture="${next.id}">Apri l’incontro <span aria-hidden="true">↗</span></a>
       </div>`;
   } else {
-    const status = finished ? 'Campionato concluso' : elapsed < 1 ? 'Prima giornata' : elapsed > total ? 'Recuperi' : 'Giornata corrente';
-    board.innerHTML = `<p class="eyebrow">${status}</p>
-      <strong class="display-number">${Math.max(1, Math.min(elapsed, total))}</strong>
-      <p>${elapsed < 1 ? `Si parte il ${formatDate(league.start)}` : `${state.fixtures.filter(confirmed).length} risultati confermati`}</p>`;
+    board.innerHTML = `<p class="eyebrow">${current ? 'Giornata corrente' : 'Campionato concluso'}</p>
+      <strong class="display-number">${current ?? total}</strong>
+      <p>${state.fixtures.filter(confirmed).length} risultati confermati</p>`;
   }
 }
 
@@ -134,8 +124,9 @@ function listPanel(fixture) {
     <p>${submitted ? 'La tua lista è stata consegnata. In attesa dell’avversario.' : opponent
       ? 'L’avversario ha consegnato. Carica la tua lista per sbloccare entrambe.'
       : 'Le liste saranno visibili ai due giocatori dopo entrambe le consegne.'}</p>
-    <form class="inline-form">
-      <label>Lista esercito (.txt, UTF-8)<input type="file" name="file" accept=".txt,text/plain" required></label>
+    <form class="lineup-form">
+      <label>Incolla la lista esercito<textarea name="text" rows="5" spellcheck="false"></textarea></label>
+      <label>Oppure carica un file .txt<input type="file" name="file" accept=".txt,text/plain"></label>
       ${action('leagueLineup', submitted ? 'Sostituisci la lista' : 'Consegna la lista', 'secondary')}
     </form>
   </div>`;
@@ -160,12 +151,11 @@ function resultPanel(fixture) {
           action('leagueConfirm', 'Conferma il risultato') + action('leagueReject', 'Rifiuta il risultato', 'secondary')}
       </form></div>`;
   }
-  if (state.today < state.league.start) return '<div class="fixture-block"><p>Potrai proporre il risultato a campionato iniziato.</p></div>';
   return `<div class="fixture-block"><h3>Proponi il risultato</h3>
     <form class="result-form">
       <label>Punti · ${player(fixture.a)}<input type="number" name="scoreA" min="0" max="100" required></label>
       <label>Punti · ${player(fixture.b)}<input type="number" name="scoreB" min="0" max="100" required></label>
-      <label>Data della partita<input type="date" name="date" min="${state.league.start}" max="${state.today}" value="${state.today}" required></label>
+      <label>Data della partita<input type="date" name="date" max="${state.today}" value="${state.today}" required></label>
       <label>Missione (facoltativa)<input name="mission" maxlength="120"></label>
       <p>L’avversario dovrà confermare il risultato.</p>
       ${action('leaguePropose', 'Invia il risultato')}
@@ -173,7 +163,8 @@ function resultPanel(fixture) {
 }
 
 function fixtureRow(fixture) {
-  const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>` : '';
+  const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
+    <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
   const status = fixture.result?.void ? 'Annullata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
   const contents = `<span class="pair"><strong>${player(fixture.a)}</strong><span>vs</span><strong>${player(fixture.b)}</strong></span>
     <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
@@ -190,8 +181,7 @@ function fixtureRow(fixture) {
 function renderRound() {
   const fixtures = state.fixtures.filter(fixture => fixture.round === selectedRound);
   const played = fixtures.filter(confirmed).length;
-  $('round').innerHTML = `<div class="round-meta"><p>${roundWindow(state.league.start, selectedRound)}</p>
-      <p>${played}/${fixtures.filter(playable).length} confermate</p></div>
+  $('round').innerHTML = `<p class="round-meta">${played}/${fixtures.filter(playable).length} confermate</p>
     <div class="match-list">${fixtures.map(fixtureRow).join('')}</div>`;
 }
 
@@ -202,19 +192,15 @@ function render() {
     return;
   }
   const total = Math.max(0, ...state.fixtures.map(fixture => fixture.round));
-  const elapsed = state.league?.start
-    ? Math.floor((epoch(state.today) - epoch(state.league.start)) / (roundDays * day)) + 1 : 0;
-  const finished = total > 0 && state.fixtures.filter(playable).every(confirmed);
-  renderOverview(total, elapsed, finished);
+  const current = state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
+  renderOverview(total, current);
   $('league-content').hidden = !state.league;
   $('giornate').hidden = !total;
   if (state.league) renderStandings();
   if (!total) return;
-  const current = Math.max(1, Math.min(elapsed, total));
-  selectedRound ??= elapsed > total
-    ? state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round ?? current : current;
+  selectedRound ??= current ?? total;
   $('round-picker').innerHTML = Array.from({ length: total }, (_, index) =>
-    `<option value="${index + 1}">${index + 1}${!finished && elapsed === index + 1 ? ' · corrente' : ''}</option>`).join('');
+    `<option value="${index + 1}">${index + 1}${current === index + 1 ? ' · corrente' : ''}</option>`).join('');
   $('round-picker').value = selectedRound;
   renderRound();
 }
@@ -251,12 +237,18 @@ document.addEventListener('submit', async event => {
   if (fixture) data.fixture = fixture.dataset.fixture;
   try {
     if (name === 'leagueLineup') {
-      if (data.file.size > 1048576) throw new Error('Il file deve pesare al massimo 1 MB.');
-      data.filename = data.file.name;
-      try {
-        data.text = new TextDecoder('utf-8', { fatal: true }).decode(await data.file.arrayBuffer());
-      } catch {
-        throw new Error('Salva la lista come file di testo UTF-8.');
+      const { file } = data;
+      const pasted = data.text.trim() !== '';
+      if (file.name && pasted) throw new Error('Scegli se incollare la lista o caricare un file.');
+      if (!file.name && !pasted) throw new Error('Incolla la lista o carica un file .txt.');
+      if (file.name) {
+        if (file.size > 1048576) throw new Error('Il file deve pesare al massimo 1 MB.');
+        data.filename = file.name;
+        try {
+          data.text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+        } catch {
+          throw new Error('Salva la lista come file di testo UTF-8.');
+        }
       }
       delete data.file;
     }

@@ -90,6 +90,38 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.ok(!main.innerHTML.includes('<img src=x'));
   });
 
+  await t.test('League rounds follow outstanding games and only played fixtures show dates', async () => {
+    const nodes = new Map();
+    const context = vm.createContext({
+      document: {
+        getElementById(id) {
+          if (!nodes.has(id)) nodes.set(id, { innerHTML: '', addEventListener() {} });
+          return nodes.get(id);
+        },
+        addEventListener() {}
+      },
+      fetch: () => new Promise(() => {})
+    });
+    for (const file of ['standings.js', 'campionato.js']) {
+      vm.runInContext(await readFile(join(root, 'Cangiolone.com', file), 'utf8'), context);
+    }
+    const first = { id: 'one', round: 1, a: 'alice', b: 'bob', result: null, lineups: null };
+    context.demo = {
+      league: { name: 'Test', start: '2020-01-01' },
+      players: ['alice', 'bob'],
+      user: { id: 'viewer' },
+      users: [{ id: 'alice', name: 'Alice' }, { id: 'bob', name: 'Bob' }],
+      fixtures: [first, { ...first, id: 'two', round: 2 }]
+    };
+    vm.runInContext('state = demo; render();', context);
+    assert.match(nodes.get('round-picker').innerHTML, /1 · corrente/);
+    assert.doesNotMatch(nodes.get('round').innerHTML, /<time/);
+    first.result = { scoreA: 45, scoreB: 32, date: '2026-11-16' };
+    vm.runInContext('render();', context);
+    assert.match(nodes.get('round-picker').innerHTML, /2 · corrente/);
+    assert.match(nodes.get('round').innerHTML, /<time datetime="2026-11-16">/);
+  });
+
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
@@ -356,14 +388,13 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueOpen', { name: 'Test' }, 403);
     await admin('leagueOpen', { name: 'Stagione di prova' });
     assert.equal((await alice('state')).league.joined, false);
-    const { today } = await alice('league');
-    await admin('leagueStart', { start: today }, 422);
+    await admin('leagueStart', {}, 422);
     for (const account of [alice, bob, admin]) await account('leagueJoin', {});
     await alice('leagueJoin', {});
     assert.equal((await alice('state')).league.joined, true);
-    await alice('leagueStart', { start: today }, 403);
-    await admin('leagueStart', { start: today });
-    await admin('leagueStart', { start: today }, 409);
+    await alice('leagueStart', {}, 403);
+    await admin('leagueStart', {});
+    await admin('leagueStart', {}, 409);
 
     const spectator = client();
     const invite = await admin('invite', {});
@@ -382,9 +413,10 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await spectator('leagueLineup', list('Army'), 403);
     await admin('leagueLineup', list('Army'), 403);
     await alice('leagueLineup', { ...list('abc'), filename: 'army.docx' }, 422);
-    await alice('leagueLineup', list('\u0000Not valid'), 422);
+    await alice('leagueLineup', { fixture: id, text: '\u0000Not valid' }, 422);
+    await alice('leagueLineup', { fixture: id, text: '  \n  ' }, 422);
     await alice('leagueLineup', list('Army A draft'));
-    await alice('leagueLineup', list('Army A final'));
+    await alice('leagueLineup', { fixture: id, text: 'Army A final' });
     assert.deepEqual((await bob('league')).fixtures.find(fixture => fixture.id === id).lineups, { mine: false, opponent: true });
     assert.equal((await fixtureFor(spectator)).lineups, null);
     assert.ok(!JSON.stringify(await bob('league')).includes('Army A final'));
@@ -399,9 +431,9 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueLineup', list('Changed after reveal'), 409);
 
     const originalMatches = (await state()).matches.length;
-    const score = { fixture: id, scoreA: 67, scoreB: 53, date: today, mission: 'Bastione' };
+    const score = { fixture: id, scoreA: 67, scoreB: 53, date: '2020-01-01', mission: 'Bastione' };
     await spectator('leaguePropose', score, 403);
-    await alice('leaguePropose', { ...score, date: '2020-01-01' }, 422);
+    await alice('leaguePropose', { ...score, date: '2999-01-01' }, 422);
     await alice('leaguePropose', score);
     const first = (await fixtureFor(bob)).pending.token;
     assert.equal((await state()).matches.length, originalMatches);
@@ -426,6 +458,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const confirmed = (await fixtureFor(spectator)).result;
     assert.equal(confirmed.scoreA, 67);
     assert.equal(confirmed.scoreB, 53);
+    assert.equal(confirmed.date, score.date);
     assert.equal(confirmed.void, false);
     const saved = (await state()).matches.find(match => match.request === 'league:' + id);
     await admin('void', { id: saved.id, void: true });

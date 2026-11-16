@@ -103,12 +103,9 @@ function updateLeague(string $action, array $in, array $me, array &$db): void {
         if($league['start']) fail('Il calendario è già stato pubblicato.',409);
         $players=array_column($db['league_entries'],'player');
         if(count($players)<2) fail('Servono almeno due iscritti.');
-        $start=field($in,'start',10);
-        $date=DateTimeImmutable::createFromFormat('!Y-m-d',$start);
-        if(!$date || $date->format('Y-m-d')!==$start || $start<date('Y-m-d')) fail('Scegli una data di inizio di oggi o futura.');
         shuffle($players);
         $db['league_fixtures']=leagueSchedule($players);
-        $db['league'][0]['start']=$start;
+        $db['league'][0]['start']=date('Y-m-d');
         return;
     }
 
@@ -120,7 +117,7 @@ function updateLeague(string $action, array $in, array $me, array &$db): void {
         $lists=array_column($db['league_lineups'],null,'id');
         // A revealed list stays fixed so neither player can react to the opponent’s list.
         if(isset($lists[$id],$lists[$fixture['id'].':'.$opponent])) fail('Le liste sono già state rivelate.',409);
-        $text=listText($in);
+        $text=listText($in,false);
         // shortcut: validates file format only; check army rules when the list builder is available.
         $lists[$id]=['id'=>$id,'fixture'=>$fixture['id'],'player'=>$player,'text'=>$text];
         $db['league_lineups']=array_values($lists);
@@ -132,7 +129,6 @@ function updateLeague(string $action, array $in, array $me, array &$db): void {
     if($action==='leaguePropose') {
         if($pending) fail('C’è già un risultato in attesa.',409);
         $scores=matchDetails($in);
-        if($scores['date']<$league['start']) fail('La partita deve essere giocata a campionato iniziato.');
         $fixture['pending']=json_encode($scores+['by'=>$player,'token'=>ident()],JSON_THROW_ON_ERROR);
         return;
     }

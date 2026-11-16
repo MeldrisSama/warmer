@@ -89,9 +89,11 @@ function matchDetails(array $in): array {
     if(!$dt || $dt->format('Y-m-d')!==$date || $date>date('Y-m-d') || $date<'2000-01-01') fail('Inserisci una data valida, non futura.');
     return ['scoreA'=>$in['scoreA'],'scoreB'=>$in['scoreB'],'date'=>$date,'mission'=>field($in,'mission',120,false)];
 }
-function listText(array $in): string {
-    $filename=field($in,'filename',200);
-    if(strtolower(pathinfo($filename,PATHINFO_EXTENSION))!=='txt') fail('Carica un file con estensione .txt.');
+function listText(array $in, bool $fileRequired=true): string {
+    if($fileRequired || array_key_exists('filename',$in)) {
+        $filename=field($in,'filename',200);
+        if(strtolower(pathinfo($filename,PATHINFO_EXTENSION))!=='txt') fail('Carica un file con estensione .txt.');
+    }
     $text=$in['text']??null;
     if(!is_string($text) || trim($text)==='' || strlen($text)>1048576 || !preg_match('//u',$text) || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/',$text)) fail('Il file deve contenere testo UTF-8, massimo 1 MB.');
     return $text;
