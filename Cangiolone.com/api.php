@@ -194,7 +194,7 @@ $leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStar
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
-    if(($leagueWrite || $action==='void' || in_array($action,ACCOUNT_ACTIONS,true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    if(($leagueWrite || in_array($action,['void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
     $scope=($leagueWrite || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
     $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
@@ -230,7 +230,8 @@ if($action==='state') {
     },$db['matches']);
 
     $profile=mailProfile($db,$me['id']);
-    result(['mailEnabled'=>$mail!==null,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+    $needsEmail=$mail!==null && ($_SESSION['askEmail']??false) && $profile['email']===null && $profile['pending_email']===null;
+    result(['mailEnabled'=>$mail!==null,'needsEmail'=>$needsEmail,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
@@ -318,25 +319,30 @@ try {
 
         $attempt['count']++; $db['attempts'][$ip]=$attempt; save();
 
-        $username=strtolower(field($in,'username',32));
-
         $password=$in['password']??'';
-
-        if(!preg_match('/^[a-z0-9._-]{3,32}$/D',$username) || !is_string($password) || strlen($password)>72) fail('Nome utente: 3–32 lettere, numeri, punti, trattini.');
 
         if($action==='login') {
 
-            $user=null; foreach($db['users'] as $u) if($u['username']===$username) $user=$u;
-
-            if(!$user || !password_verify($password,$user['password'])) fail('Nome utente o password errati.',401);
+            $identity=strtolower(field($in,'username',254));
+            $user=null;
+            foreach($db['users'] as $u) if($u['username']===$identity || mailProfile($db,$u['id'])['email']===$identity) $user=$u;
+            if(!$user || !is_string($password) || strlen($password)>72 || str_contains($password,"\0")
+                || !password_verify($password,$user['password'])) fail('Nome utente, email o password errati.',401);
 
         } else {
 
-            if(strlen($password)<12) fail('Scegli una password di almeno 12 caratteri (massimo 72 byte).');
+            $username=strtolower(field($in,'username',32));
+            if(!preg_match('/^[a-z0-9._-]{3,32}$/D',$username)) fail('Nome utente: 3–32 lettere, numeri, punti, trattini.');
+            $password=sectorPassword($in);
 
             $name=field($in,'name',60);
 
+            // Keep the attempt on failure, then reload under the write lock before consuming an invite.
+            $storage->beginLeagueUpdate();
+            $db=$storage->load();
+            $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
             foreach($db['users'] as $u) if($u['username']===$username || strtolower($u['name'])===strtolower($name)) fail('Nome giocatore o nome utente già utilizzato.');
+            $email=null; $emailInvite=false;
 
             if($action==='setup') {
 
@@ -344,11 +350,17 @@ try {
 
             } else {
 
-                $hash=hash('sha256',field($in,'code',128)); $inviteIndex=null;
+                $token=field($in,'inviteToken',295,false);
+                $emailInvite=$token!=='';
+                $hash=hash('sha256',$emailInvite?'email-invite:'.$token:field($in,'code',128));
+                $inviteIndex=null;
 
                 foreach($db['invites'] as $i=>$invite) if(hash_equals($invite['hash'],$hash) && $invite['expires']>$now && !$invite['used']) $inviteIndex=$i;
 
                 if($inviteIndex===null || !count($db['users'])) fail('Invito non valido, scaduto o già utilizzato.',403);
+                if($emailInvite) $email=sectorMailAddress(['email'=>explode('.',$token,2)[1]??'']);
+                elseif($mail!==null) $email=sectorMailAddress($in);
+                if($email!==null) checkSectorMailAvailable($db,$email);
 
                 $db['invites'][$inviteIndex]['used']=true;
 
@@ -357,12 +369,15 @@ try {
             $user=['id'=>ident(),'username'=>$username,'name'=>$name,'password'=>password_hash($password,PASSWORD_DEFAULT),'admin'=>$action==='setup'];
 
             $db['users'][]=$user;
+            if($emailInvite) $db['mail_accounts'][$user['id']]=array_replace(mailProfile($db,$user['id']),['email'=>$email]);
+            elseif($email!==null) queueEmailVerification($db,$mail,$user['id'],$email);
 
         }
 
         unset($db['attempts'][$ip]); save();
 
         session_regenerate_id(true); $_SESSION['authVersion']=(int)mailProfile($db,$user['id'])['version']; $_SESSION['uid']=$user['id']; $_SESSION['seen']=time(); $_SESSION['csrf']=bin2hex(random_bytes(32));
+        $_SESSION['askEmail']=$action==='login' && $mail!==null;
 
         result(['ok'=>true]);
 
@@ -396,11 +411,25 @@ try {
 
         if(!$me['admin']) fail('Solo l’amministratore può invitare giocatori.',403);
 
+        $address=field($in,'email',254,false);
         $code=bin2hex(random_bytes(20));
+        $expires=time()+604800;
+        $hash=hash('sha256',$code);
+        if($address!=='') {
+            if($mail===null) fail('Servizio email non disponibile.',503);
+            $address=sectorMailAddress($in);
+            checkSectorMailAvailable($db,$address);
+            $token=$code.'.'.$address;
+            $hash=hash('sha256','email-invite:'.$token);
+            queueSectorMail($db,'invite:'.$hash,$address,'Sei invitato a Cronache del settore',
+                'Usa questo invito per creare il tuo account. Il link personale vale sette giorni e si può usare una sola volta.',
+                'Crea il tuo account',mailLink($mail,'index.php#invito?token='.rawurlencode($token)),$expires);
+        }
 
         $db['invites']=array_values(array_filter($db['invites'],fn($i)=>!$i['used'] && $i['expires']>time()));
 
-        $db['invites'][]=['hash'=>hash('sha256',$code),'expires'=>time()+604800,'used'=>false]; save(); result(['code'=>$code]);
+        $db['invites'][]=['hash'=>$hash,'expires'=>$expires,'used'=>false]; save();
+        result($address===''?['code'=>$code]:['ok'=>true]);
 
     }
 

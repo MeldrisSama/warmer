@@ -66,3 +66,5 @@
 
 #account a { display: block; margin-top: 3px; }
 .account-settings { margin-top: 24px; }
+.email-banner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 16px; margin:0 0 16px; padding:10px 14px; background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--gold); font-size:14px; line-height:1.5; }
+.email-banner a { font-weight:bold; }
