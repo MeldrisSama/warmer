@@ -9,3 +9,35 @@
 .photo-close:hover{background:rgba(0,0,0,.9);border-color:var(--gold)}
 @media(max-width:650px){.match-actions{gap:5px}.photo-dialog img{max-width:94vw;max-height:86vh}.photo-close{top:8px;right:8px;width:38px;height:38px}}
 
+
+.league-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px 32px;
+  margin-bottom: 24px;
+  padding: clamp(19px, 3vw, 34px);
+  background: #23352b;
+  border: 1px solid #526556;
+  border-top-color: var(--gold);
+  border-radius: 4px;
+}
+.league-banner-copy { display: grid; gap: 7px; }
+#league-banner-name { font: 400 clamp(1.5rem, 3.6vw, 2.6rem)/1.1 Georgia, serif; overflow-wrap: anywhere; }
+.league-banner-status { color: #c2cec2; font-size: .875rem; }
+.league-banner-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 44px;
+  text-decoration: none;
+}
+.league-banner-link span { transition: transform .18s ease; }
+.league-banner-link:hover span { transform: translateX(3px); }
+@media (max-width: 540px) {
+  .league-banner { grid-template-columns: minmax(0, 1fr); margin-bottom: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .league-banner-link span { transition: none; }
+}

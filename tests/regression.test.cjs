@@ -88,6 +88,20 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     standings([]);
     assert.ok(main.innerHTML.includes('&lt;img src=x onerror=alert(1)&gt;'));
     assert.ok(!main.innerHTML.includes('<img src=x'));
+
+    const banner = (league, admin = false) => {
+      context.fixture.league = league;
+      context.fixture.user.admin = admin;
+      return vm.runInContext('leagueBanner()', context);
+    };
+    assert.equal(banner(null), '');
+    assert.match(banner(null, true), /Organizza il campionato/);
+    const open = banner({ name: '<War in Heaven>' });
+    assert.match(open, /&lt;War in Heaven&gt;/);
+    assert.match(open, /Iscrizioni aperte/);
+    assert.match(open, /Iscriviti al campionato/);
+    assert.match(banner({ name: '40k', joined: true }), /Iscrizione confermata/);
+    assert.match(banner({ name: '40k', start: '2026-11-16' }), /Calendario pubblicato/);
   });
 
   await t.test('League opens at the current round, keeps other rounds visible and reads revealed lists', async () => {

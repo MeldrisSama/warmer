@@ -385,9 +385,16 @@ function leagueBanner(){
   if(!league && !state.user.admin) return '';
   const label=!league ? 'Organizza il campionato' : !league.start && !league.joined
     ? 'Iscriviti al campionato' : 'Vai al campionato';
-  return `<aside class="panel heading" aria-label="Campionato">
-    <strong>${esc(league?.name || 'Campionato Warhammer 40.000')}</strong>
-    <a href="campionato.php">${label} →</a>
+  const status=league?.start ? 'Calendario pubblicato' : league?.joined
+    ? 'Iscrizione confermata' : league ? 'Iscrizioni aperte' : '';
+  return `<aside class="league-banner" aria-labelledby="league-banner-name">
+    <div class="league-banner-copy">
+      <strong id="league-banner-name">${esc(league?.name || 'Campionato Warhammer 40.000')}</strong>
+      ${status ? `<span class="league-banner-status">${status}</span>` : ''}
+    </div>
+    <a class="button primary league-banner-link" href="campionato.php">
+      ${label}<span aria-hidden="true">→</span>
+    </a>
   </aside>`;
 }
 
