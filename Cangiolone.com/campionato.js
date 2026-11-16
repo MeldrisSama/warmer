@@ -9,6 +9,10 @@ const roundDays = 14;
 const epoch = date => Date.parse(date);
 const formatDate = (date, options = { day: 'numeric', month: 'short' }) =>
   new Intl.DateTimeFormat('it-IT', { timeZone: 'UTC', ...options }).format(typeof date === 'number' ? date : epoch(date));
+const roundWindow = (start, round) => {
+  const first = epoch(start) + (round - 1) * roundDays * day;
+  return `${formatDate(first)} – ${formatDate(first + (roundDays - 1) * day)}`;
+};
 const action = (name, label, kind = 'primary') =>
   `<button type="submit" class="${kind}" name="action" value="${name}">${label}</button>`;
 
@@ -73,16 +77,25 @@ function renderOverview(total, elapsed, finished) {
 
   const upcoming = state.fixtures.filter(fixture => playable(fixture) && mine(fixture) && !fixture.result);
   const next = elapsed < 1 ? upcoming[0] : upcoming.find(fixture => fixture.round >= elapsed) || upcoming[0];
-  const summary = next ? `<p class="up-next">Prossimo incontro <strong>${player(next.a === user.id ? next.b : next.a)}</strong></p>` : '';
-  const calendar = next
-    ? `<a href="#giornate" class="primary" data-round="${next.round}" data-fixture="${next.id}">Apri l’incontro</a>`
-    : '<a href="#giornate" class="primary">Consulta il calendario</a>';
-  actions.innerHTML = summary + `<div class="action-row">${calendar}<a class="jump" href="#classifica">Vedi la classifica ↓</a></div>`;
+  actions.innerHTML = `<div class="action-row">
+    <a href="#giornate" class="primary">Consulta il calendario</a>
+    <a class="jump" href="#classifica">Vedi la classifica <span aria-hidden="true">↓</span></a>
+  </div>`;
 
-  const status = finished ? 'Campionato concluso' : elapsed < 1 ? 'Prima giornata' : elapsed > total ? 'Recuperi' : 'Giornata corrente';
-  board.innerHTML = `<p class="eyebrow">${status}</p>
-    <strong class="display-number">${String(elapsed > total || finished ? total : Math.max(elapsed, 1)).padStart(2, '0')}</strong>
-    <p>${elapsed < 1 ? `Si parte il ${formatDate(league.start)}` : `${state.fixtures.filter(confirmed).length} risultati confermati`}</p>`;
+  if (next) {
+    board.innerHTML = `
+      <div class="board-top"><h2 class="eyebrow">Prossimo incontro</h2><span>Giornata ${next.round}</span></div>
+      <div class="matchup"><strong>${player(user.id)}</strong><span>vs</span><strong>${player(next.a === user.id ? next.b : next.a)}</strong></div>
+      <div class="board-bottom">
+        <span>${roundWindow(league.start, next.round)}</span>
+        <a href="#giornate" class="jump" data-round="${next.round}" data-fixture="${next.id}">Apri l’incontro <span aria-hidden="true">↗</span></a>
+      </div>`;
+  } else {
+    const status = finished ? 'Campionato concluso' : elapsed < 1 ? 'Prima giornata' : elapsed > total ? 'Recuperi' : 'Giornata corrente';
+    board.innerHTML = `<p class="eyebrow">${status}</p>
+      <strong class="display-number">${Math.max(1, Math.min(elapsed, total))}</strong>
+      <p>${elapsed < 1 ? `Si parte il ${formatDate(league.start)}` : `${state.fixtures.filter(confirmed).length} risultati confermati`}</p>`;
+  }
 }
 
 function renderStandings() {
@@ -91,13 +104,17 @@ function renderStandings() {
     a: fixture.a, b: fixture.b, ...fixture.result
   }));
   const standings = rankStandings(entrants, matches);
+  if (!standings.length) {
+    $('league-standings').innerHTML = '<p class="fine-print">In attesa delle prime iscrizioni.</p>';
+    return;
+  }
   $('league-standings').innerHTML = `<table>
     <thead><tr><th scope="col">#</th><th scope="col">Giocatore</th>
       <th scope="col"><abbr title="Partite giocate">PG</abbr></th>
       <th scope="col"><abbr title="Differenza punti vittoria">Diff.</abbr></th>
       <th scope="col">Punti</th></tr></thead>
     <tbody>${standings.map(row => `<tr${row.id === state.user.id ? ' class="you"' : ''}>
-      <td>${row.rank}</td><th scope="row">${escapeHtml(row.name)}</th><td>${row.played}</td>
+      <td class="placement">${row.rank}</td><th scope="row">${escapeHtml(row.name)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}</th><td>${row.played}</td>
       <td>${row.diff > 0 ? '+' : ''}${row.diff}</td><td>${row.points}</td></tr>`).join('')}</tbody>
     </table>
     <p class="fine-print">Vittoria 3 · Pareggio 1 · Sconfitta 0. A parità di punti conta la differenza punti vittoria.</p>`;
@@ -159,7 +176,7 @@ function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>` : '';
   const status = fixture.result?.void ? 'Annullata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
   const contents = `<span class="pair"><strong>${player(fixture.a)}</strong><span>vs</span><strong>${player(fixture.b)}</strong></span>
-    <span class="fixture-status">${score || status}</span>`;
+    <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
   if (!playable(fixture)) {
     return `<div class="fixture row bye"><span>${player(fixture.a)}</span><span>Riposa</span></div>`;
   }
@@ -171,9 +188,10 @@ function fixtureRow(fixture) {
 }
 
 function renderRound() {
-  const start = epoch(state.league.start) + (selectedRound - 1) * roundDays * day;
   const fixtures = state.fixtures.filter(fixture => fixture.round === selectedRound);
-  $('round').innerHTML = `<p class="round-window">${formatDate(start)} – ${formatDate(start + (roundDays - 1) * day)}</p>
+  const played = fixtures.filter(confirmed).length;
+  $('round').innerHTML = `<div class="round-meta"><p>${roundWindow(state.league.start, selectedRound)}</p>
+      <p>${played}/${fixtures.filter(playable).length} confermate</p></div>
     <div class="match-list">${fixtures.map(fixtureRow).join('')}</div>`;
 }
 
@@ -267,7 +285,7 @@ $('round-picker').addEventListener('change', event => {
   renderRound();
 });
 
-$('season-actions').addEventListener('click', event => {
+$('season-board').addEventListener('click', event => {
   const link = event.target.closest('[data-round]');
   if (!link) return;
   selectedRound = Number(link.dataset.round);

@@ -13,7 +13,7 @@ header('Cache-Control: no-store');
   <meta name="robots" content="noindex,nofollow">
   <meta name="page-type" content="software">
   <meta name="site-kind" content="software">
-  <meta name="theme-color" content="#151513">
+  <meta name="theme-color" content="#111714">
   <meta name="description" content="Classifica, calendario e risultati del campionato Warhammer 40.000 di Cronache del settore.">
   <meta property="og:title" content="Campionato Warhammer 40.000 · Cronache del settore">
   <meta property="og:description" content="Calendario, classifica e risultati del campionato.">
@@ -27,21 +27,23 @@ header('Cache-Control: no-store');
   <header class="nav masthead">
     <nav class="wrap masthead-inner" aria-label="Navigazione del campionato">
       <a href="index.php" class="wordmark">Cronache del settore</a>
-      <a href="index.php#classifica" class="back">← Classifica generale</a>
+      <a href="index.php#classifica" class="back"><span aria-hidden="true">←</span> Classifica generale</a>
     </nav>
   </header>
-  <main class="wrap" id="campionato" tabindex="-1">
-    <section class="hero" data-enter>
-      <div>
-        <p class="eyebrow">Warhammer 40.000</p>
-        <h1>Campionato<span>.</span></h1>
-        <p id="season-caption">Calendario, classifica e risultati.</p>
-        <div id="season-actions"><p>Caricamento del campionato…</p></div>
+  <main id="campionato" tabindex="-1">
+    <section class="hero" id="panoramica" data-enter>
+      <div class="wrap hero-layout">
+        <div class="hero-title">
+          <p class="eyebrow">Warhammer 40.000</p>
+          <h1>Campionato</h1>
+          <p id="season-caption">Calendario, classifica e risultati.</p>
+          <div id="season-actions"><p>Caricamento del campionato…</p></div>
+        </div>
+        <aside id="season-board" class="season-board" aria-label="Panoramica del campionato" hidden></aside>
       </div>
-      <aside id="season-board" class="season-board" aria-label="Panoramica del campionato" hidden></aside>
     </section>
-    <p id="league-notice" role="status" aria-live="polite" hidden></p>
-    <div class="grid league-grid" id="league-content" hidden>
+    <p class="wrap" id="league-notice" role="status" aria-live="polite" hidden></p>
+    <div class="wrap league-grid" id="league-content" hidden>
       <section id="giornate" aria-labelledby="round-heading">
         <div class="section-head">
           <h2 id="round-heading">Calendario</h2>
