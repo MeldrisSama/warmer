@@ -201,9 +201,43 @@ try {
 }
 catch(Throwable $e) { error_log('Warhammer database connection failed'); fail('Database non disponibile. Contatta l’amministratore.',503); }
 
-function save(): void { global $storage,$db; $storage->save($db); }
+$savedMailIds=[];
+function save(): void {
+    global $storage,$db,$savedMailIds;
+    $storage->save($db);
+    $savedMailIds=array_keys($db['mail_jobs']??[]);
+}
 
-function result(array $payload): never { echo json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); exit; }
+function result(array $payload): never {
+    global $storage,$mail,$action,$savedMailIds;
+    $recovery=$action==='passwordForgot';
+    if($recovery || $savedMailIds) session_write_close();
+    if($recovery) {
+        // Use the same response for known and unknown addresses before contacting SMTP.
+        ignore_user_abort(true);
+        $json=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        header('Content-Length: '.strlen($json));
+        echo $json;
+        if(function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        else {
+            if(ob_get_level()>0) ob_flush();
+            flush();
+        }
+    }
+    if($mail!==null && $savedMailIds) {
+        try {
+            $storage->releaseApplicationLock();
+            require_once __DIR__.'/mail-delivery.php';
+            $mailFailed=attemptSectorEmails($storage,$mail,$savedMailIds);
+        } catch(Throwable $error) {
+            error_log('Warmer immediate mail delivery unavailable');
+            $mailFailed=true;
+        }
+        if($mailFailed && !$recovery) $payload['mailFailed']=true;
+    }
+    if(!$recovery) echo json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    exit;
+}
 
 $me=null;
 

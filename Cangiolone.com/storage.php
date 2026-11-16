@@ -220,26 +220,20 @@ final class SectorStorage {
         }
     }
 
-    public function claimMail(): ?array {
-        $now=time();
-        $this->pdo->prepare('UPDATE w40k_mail_jobs SET recipient=NULL, payload=NULL WHERE expires<=? AND payload IS NOT NULL')->execute([$now]);
-        $select=$this->pdo->prepare('SELECT * FROM w40k_mail_jobs WHERE payload IS NOT NULL AND next_attempt<=? ORDER BY next_attempt,id LIMIT 1');
-        $select->execute([$now]);
-        $job=$select->fetch();
-        if(!$job) return null;
-        $claim=$this->pdo->prepare('UPDATE w40k_mail_jobs SET next_attempt=?, attempts=attempts+1 WHERE id=? AND next_attempt<=? AND attempts=? AND payload IS NOT NULL');
-        $claim->execute([$now+180,$job['id'],$now,$job['attempts']]);
-        return $claim->rowCount()===1 ? $job : null;
+    public function discardOldMail(): void {
+        $this->pdo->prepare('UPDATE w40k_mail_jobs SET recipient=NULL, payload=NULL WHERE payload IS NOT NULL AND (expires<=? OR attempts>0)')->execute([time()]);
     }
 
-    public function finishMail(array $job, bool $sent): void {
-        if($sent) {
-            $this->pdo->prepare('UPDATE w40k_mail_jobs SET recipient=NULL, payload=NULL WHERE id=? AND attempts=?')
-                ->execute([$job['id'],$job['attempts']+1]);
-        } else {
-            $this->pdo->prepare('UPDATE w40k_mail_jobs SET next_attempt=? WHERE id=? AND attempts=?')
-                ->execute([time()+min(3600,120*2**min(5,(int)$job['attempts'])),$job['id'],$job['attempts']+1]);
-        }
+    public function takeMail(string $id): ?array {
+        $now=time();
+        $select=$this->pdo->prepare('SELECT id,recipient,payload FROM w40k_mail_jobs WHERE id=? AND payload IS NOT NULL AND expires>? AND attempts=0');
+        $select->execute([$id,$now]);
+        $job=$select->fetch();
+        if(!$job) return null;
+        // Consume the attempt before SMTP so a disconnect cannot trigger a second send.
+        $claim=$this->pdo->prepare('UPDATE w40k_mail_jobs SET recipient=NULL, payload=NULL, attempts=1 WHERE id=? AND payload IS NOT NULL AND expires>? AND attempts=0');
+        $claim->execute([$id,$now]);
+        return $claim->rowCount()===1 ? $job : null;
     }
 
     public function leagueLineupText(string $id): string {

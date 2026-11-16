@@ -285,7 +285,7 @@ function render() {
 
 const notices = {
   leagueOpen: 'Iscrizioni aperte.',
-  leagueAnnounce: 'Messaggio messo in coda per gli iscritti con email verificata.',
+  leagueAnnounce: 'Messaggio inviato agli iscritti con email verificata.',
   leagueJoin: 'Iscrizione confermata.',
   leagueStart: 'Calendario pubblicato.',
   leagueClose: 'Campionato chiuso.',
@@ -363,7 +363,9 @@ document.addEventListener('submit', async event => {
     openFixture = fixture?.dataset.fixture;
     render();
     if (openFixture) $('round').querySelector(`[data-fixture="${openFixture}"] summary`)?.focus();
-    notify(notices[name]);
+    notify(result.mailFailed
+      ? (name === 'leagueAnnounce' ? 'Invio non riuscito per una o più email.' : `${notices[name]} Invio email non riuscito per uno o più destinatari.`)
+      : notices[name], Boolean(result.mailFailed));
   } catch (error) {
     notify(error.message, true);
     $('league-notice').scrollIntoView({ block: 'nearest' });

@@ -408,7 +408,7 @@ function profilePage(onboarding=false){
         <p class="error-inline" role="alert" hidden></p>
         <label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email" value="${esc(account.pendingEmail||account.email)}"></label>
         ${account.email?'<label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>':''}
-        <button class="primary" type="submit">Invia il link di verifica</button>
+        <button class="primary" type="submit">${account.pendingEmail?'Invia di nuovo il link':'Invia il link di verifica'}</button>
       </form>
     </section>`:''}
     ${onboarding?'':`<section class="account-settings">
@@ -423,10 +423,15 @@ function profilePage(onboarding=false){
   </section>`;
   if(state.mailEnabled) bindForm('profile-email',async form=>{
     const data=Object.fromEntries(new FormData(form));
-    await api('emailSet',data);
+    const response=await api('emailSet',data);
+    if(response.mailFailed) history.replaceState(history.state,'','#profilo');
     await refresh();
+    if(response.mailFailed) {
+      notify('Invio non riuscito. Puoi richiedere un nuovo link tra un minuto.',true);
+      return;
+    }
     if(onboarding && openLoginDestination()) return;
-    notify(state.account.pendingEmail?'Link di verifica messo in coda.':'L’indirizzo è già verificato.');
+    notify(state.account.pendingEmail?'Link di verifica inviato.':'L’indirizzo è già verificato.');
   });
   if(!onboarding) bindForm('profile-password',async form=>{
     await api('passwordChange',Object.fromEntries(new FormData(form)));
@@ -754,7 +759,7 @@ function auth(){
         if(!data.inviteToken) throw new Error('Apri il link personale ricevuto per email.');
       }
 
-      await api(
+      const response=await api(
 
         setup
 
@@ -772,8 +777,12 @@ function auth(){
 
 
 
-      history.replaceState(history.state,'','#classifica');
+      history.replaceState(history.state,'',response.mailFailed?'#profilo':'#classifica');
       await refresh();
+      if(response.mailFailed) {
+        notify('Account creato. Invio non riuscito, puoi richiedere un nuovo link dal Profilo.',true);
+        return;
+      }
       if(!state.needsEmail) openLoginDestination();
 
     }
@@ -2654,9 +2663,10 @@ function invitePage(){
 
 
   if(state.mailEnabled) bindForm('email-invite-form',async form=>{
-    await api('invite',Object.fromEntries(new FormData(form)));
+    const response=await api('invite',Object.fromEntries(new FormData(form)));
+    if(response.mailFailed) throw new Error('Invio non riuscito. Puoi inviare un nuovo invito.');
     form.reset();
-    notify('Invito via email messo in coda.');
+    notify('Invito inviato via email.');
   });
 
   document.querySelector(
