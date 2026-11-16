@@ -125,18 +125,12 @@ check((new SectorStorage($config))->load()['users'][0]['name'] === 'Alice update
 $jobId = str_repeat('a',64);
 $job = [$jobId,'test@example.test','{}',time()+3600,time()];
 $storage->save(['mail_jobs'=>[$job]]);
-$claimed = $storage->claimMail();
-check($claimed['id']===$jobId && $storage->claimMail()===null,'A mail job must only be claimed once during its lease');
-$storage->finishMail($claimed,false);
-check($storage->claimMail()===null,'A failed job must wait before retry');
+$claimed = $storage->takeMail($jobId);
+check($claimed['id']===$jobId && $storage->takeMail($jobId)===null,'A mail job must only be taken once');
 $queueDb = new PDO('sqlite:'.$config['path']);
-$queueDb->exec("UPDATE w40k_mail_jobs SET next_attempt=0");
-$retried = $storage->claimMail();
-check((int)$retried['attempts']===1,'Retry must keep its attempt count');
-$storage->finishMail($retried,true);
 $storage->save(['mail_jobs'=>[$job]]);
-check($storage->claimMail()===null,'A finished event must not be enqueued again');
-check($queueDb->query("SELECT recipient FROM w40k_mail_jobs")->fetchColumn()===null,'A sent job must not retain the recipient');
+check($storage->takeMail($jobId)===null,'An attempted event must not be sent again even if SMTP failed');
+check($queueDb->query("SELECT recipient FROM w40k_mail_jobs")->fetchColumn()===null,'An attempted job must not retain the recipient');
 $queueDb = null;
 
 $wiki = $directory.'/LocalSettings.php';

@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -222,7 +222,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'web.config']) {
+  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   const setupCode = 'isolated-test-setup';
@@ -650,19 +650,18 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const result = spawnSync(php, ['-r', '$xml=simplexml_load_file($argv[1]);exit(count($xml->xpath($argv[2]))===1?0:1);', join(application, 'web.config'), '/configuration/system.webServer/security/requestFiltering/hiddenSegments/add[@segment="uploads"]'], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
-  await t.test('Verified email, password recovery and league notifications use the local outbox', async () => {
+  await t.test('Account and league email is attempted immediately and sends only once per event', async () => {
     assert.equal((await state()).mailEnabled, false);
     const privatePath = join(application, 'private');
     await mkdir(privatePath);
-    await writeFile(join(privatePath, 'mail.php'), "<?php return ['base_url'=>'https://warmer.test/','transport'=>'capture','capture_path'=>__DIR__.'/emails.jsonl','worker_secret'=>str_repeat('x',40)];");
+    const mailConfig = "<?php return ['base_url'=>'https://warmer.test/','transport'=>'capture','capture_path'=>__DIR__.'/emails.jsonl'];";
+    await writeFile(join(privatePath, 'mail.php'), mailConfig);
     const forbidden = await fetch(`${base}/mail-worker.php`);
-    assert.equal(forbidden.status, 401);
+    assert.equal(forbidden.status, 410);
     const config = await fetch(`${base}/private/mail.php`);
     assert.equal(config.status, 404);
     let captured = 0;
     const drain = async () => {
-      const output = spawnSync(php, [join(application, 'mail-worker.php')], { encoding: 'utf8' });
-      assert.equal(output.status, 0, output.stdout + output.stderr);
       const contents = await readFile(join(privatePath, 'emails.jsonl'), 'utf8').catch(error => {
         if (error.code === 'ENOENT') return '';
         throw error;
@@ -733,6 +732,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const missing = await guest('passwordForgot', { email: 'missing@example.test' });
     const known = await guest('passwordForgot', { email: addresses[1] });
     assert.deepEqual(known, missing);
+    await guest('state'); // The recovery response is flushed before delivery starts.
     const reset = await drain();
     assert.deepEqual(reset.map(email => email.to), [addresses[1]]);
     const resetToken = reset[0].text.match(/token=([a-f0-9]{64})/)[1];
@@ -780,6 +780,37 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await invited('register', { username: 'other-user', name: 'Other User', password, inviteToken }, 403);
     await invited('emailSet', { email: 'other@example.test' }, 403);
     assert.deepEqual(await drain(), []);
+
+    const finalRound = await admin('leagueOpen', { name: 'Riepilogo a fine giornata' });
+    const participants = new Map();
+    for (const account of [alice, bob, codeUser, invited]) {
+      participants.set((await account('state')).user.id, account);
+      await account('leagueJoin', { league: finalRound.id });
+    }
+    await drain();
+    await admin('leagueStart', { league: finalRound.id });
+    const season = await admin('league&id=' + finalRound.id);
+    const firstRound = season.fixtures.filter(fixture => fixture.round === 1);
+    assert.equal(firstRound.length, 2);
+    for (const [index, fixture] of firstRound.entries()) {
+      const proposer = participants.get(fixture.a);
+      const opponent = participants.get(fixture.b);
+      const target = { fixture: fixture.id, league: finalRound.id };
+      await proposer('leaguePropose', { ...target, scoreA: 60, scoreB: 43, date: season.today });
+      assert.deepEqual((await drain()).map(email => email.subject), ['Risultato da confermare']);
+      const match = (await opponent('league&id=' + finalRound.id)).fixtures.find(match => match.id === fixture.id);
+      await opponent('leagueConfirm', { ...target, proposal: match.pending.token });
+      const reports = await drain();
+      assert.equal(reports.length, index === 0 ? 0 : participants.size);
+      assert.ok(reports.every(email => email.subject.startsWith('Giornata 1')));
+    }
+
+    await writeFile(join(privatePath, 'mail.php'), mailConfig.replace("'/emails.jsonl'", "'/missing-dir/emails.jsonl'"));
+    const failed = await admin('invite', { email: 'failure@example.test' });
+    assert.deepEqual(failed, { ok: true, mailFailed: true });
+    await writeFile(join(privatePath, 'mail.php'), mailConfig);
+    await admin('invite', { email: 'next@example.test' });
+    assert.deepEqual((await drain()).map(email => email.to), ['next@example.test']);
   });
 
   await t.test('Authentication attempts are rate limited', async () => {
