@@ -12,7 +12,11 @@ if($path==='/api.php') {
     require __DIR__.'/api.php';
     return true;
 }
-if(in_array($path,['/app.js','/style.css'],true)) return false;
+if($path==='/campionato.php') {
+    require __DIR__.'/campionato.php';
+    return true;
+}
+if(in_array($path,['/app.js','/style.css','/standings.js','/campionato.css','/campionato.js'],true)) return false;
 
 http_response_code(404);
 return true;
