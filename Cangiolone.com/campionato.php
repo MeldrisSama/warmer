@@ -43,6 +43,10 @@ header('Cache-Control: no-store');
     </section>
     <p class="wrap" id="league-notice" role="status" aria-live="polite" hidden></p>
     <div class="wrap league-grid" id="league-content" hidden>
+      <div class="league-tabs" id="league-tabs" role="tablist" aria-label="Campionato" hidden>
+        <button type="button" role="tab" id="tab-classifica" aria-controls="classifica" aria-selected="true">Classifica</button>
+        <button type="button" role="tab" id="tab-giornate" aria-controls="giornate" aria-selected="false" tabindex="-1">Giornate</button>
+      </div>
       <section id="giornate" aria-labelledby="round-heading">
         <div class="section-head">
           <h2 id="round-heading">Calendario</h2>

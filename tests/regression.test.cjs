@@ -104,8 +104,9 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.match(banner({ name: '40k', start: '2026-11-16' }), /Calendario pubblicato/);
   });
 
-  await t.test('League opens at the current round, keeps other rounds visible and reads revealed lists', async () => {
+  await t.test('League shows responsive tabs, opens at the current round and reads revealed lists', async () => {
     const nodes = new Map();
+    const narrow = { matches: false, addEventListener(event, listener) { this[event] = listener; } };
     const context = vm.createContext({
       document: {
         getElementById(id) {
@@ -113,6 +114,11 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
             offsetTop: id === 'giornata-2' ? 180 : 0,
             innerHTML: '',
             events: {},
+            attributes: {},
+            setAttribute(name, value) { this.attributes[name] = value; },
+            getAttribute(name) { return this.attributes[name]; },
+            removeAttribute(name) { delete this.attributes[name]; },
+            focus() { this.focused = true; },
             addEventListener(name, listener) { this.events[name] = listener; },
             replaceChildren() { this.innerHTML = ''; },
             showModal() { this.open = true; }
@@ -121,6 +127,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         },
         addEventListener() {}
       },
+      matchMedia: () => narrow,
       AbortController,
       fetch: url => url.includes('leagueDownload')
         ? Promise.resolve({ ok: true, text: async () => '<img src=x>\nArmy' })
@@ -154,6 +161,31 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     vm.runInContext('selectedRound = undefined; render();', context);
     assert.equal(nodes.get('round-picker').value, 2);
     assert.equal(nodes.get('round').scrollTop, 180);
+    assert.equal(nodes.get('league-tabs').hidden, true);
+    assert.equal(nodes.get('giornate').hidden, false);
+    assert.equal(nodes.get('classifica').hidden, false);
+
+    narrow.matches = true;
+    narrow.change();
+    assert.equal(nodes.get('league-tabs').hidden, false);
+    assert.equal(nodes.get('classifica').hidden, false);
+    assert.equal(nodes.get('giornate').hidden, true);
+    assert.equal(nodes.get('tab-classifica').attributes['aria-selected'], 'true');
+    const tabs = nodes.get('league-tabs');
+    tabs.events.keydown({
+      key: 'ArrowRight',
+      target: { closest: () => nodes.get('tab-classifica') },
+      preventDefault() {}
+    });
+    assert.equal(nodes.get('classifica').hidden, true);
+    assert.equal(nodes.get('giornate').hidden, false);
+    assert.equal(nodes.get('tab-giornate').focused, true);
+    assert.equal(nodes.get('round').scrollTop, 180);
+    narrow.matches = false;
+    narrow.change();
+    assert.equal(nodes.get('league-tabs').hidden, true);
+    assert.equal(nodes.get('classifica').hidden, false);
+    assert.equal(nodes.get('giornate').hidden, false);
     nodes.get('round-picker').events.change({ target: { value: '1' } });
     assert.equal(nodes.get('round').scrollTop, 0);
     assert.match(nodes.get('round').innerHTML, /id="giornata-2"/);

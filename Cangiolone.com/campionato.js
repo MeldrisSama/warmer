@@ -8,8 +8,11 @@ const dateFormat = new Intl.DateTimeFormat('it-IT', { timeZone: 'UTC', day: 'num
 const formatDate = date => dateFormat.format(Date.parse(date));
 const action = (name, label, kind = 'primary') =>
   `<button type="submit" class="${kind}" name="action" value="${name}">${label}</button>`;
+const narrowLayout = matchMedia('(max-width: 850px)');
+const panelHeadings = { classifica: 'standings-heading', giornate: 'round-heading' };
 
 let state;
+let leagueView = 'classifica';
 let selectedRound;
 let openFixture;
 let lineupRequest;
@@ -197,7 +200,27 @@ function renderRounds(total, current) {
 function goToRound(number) {
   selectedRound = number;
   $('round-picker').value = number;
-  $('round').scrollTop = $('giornata-' + number).offsetTop;
+  if (!$('giornate').hidden) $('round').scrollTop = $('giornata-' + number).offsetTop;
+}
+
+function showLeagueView(view) {
+  leagueView = view;
+  const hasCalendar = Boolean(state?.fixtures.length);
+  const tabs = narrowLayout.matches && hasCalendar;
+  $('league-tabs').hidden = !tabs;
+  for (const [id, heading] of Object.entries(panelHeadings)) {
+    const tab = $('tab-' + id);
+    const panel = $(id);
+    const active = id === view;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    panel.hidden = (id === 'giornate' && !hasCalendar) || (tabs && !active);
+    panel.setAttribute('aria-labelledby', tabs ? 'tab-' + id : heading);
+    if (tabs) panel.setAttribute('role', 'tabpanel');
+    else panel.removeAttribute('role');
+  }
+  if (tabs) $('classifica').tabIndex = 0;
+  else $('classifica').removeAttribute('tabindex');
 }
 
 function render() {
@@ -210,7 +233,7 @@ function render() {
   const current = state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
   renderOverview(total, current);
   $('league-content').hidden = !state.league;
-  $('giornate').hidden = !total;
+  showLeagueView(leagueView);
   if (state.league) renderStandings();
   if (!total) return;
   $('round-picker').innerHTML = Array.from({ length: total }, (_, index) =>
@@ -290,6 +313,7 @@ $('round-picker').addEventListener('change', event => {
 });
 
 $('round').addEventListener('scroll', event => {
+  if ($('giornate').hidden) return;
   const panel = event.currentTarget;
   for (const [index, group] of Array.from(panel.children).entries()) {
     if (group.offsetTop > panel.scrollTop + 1) break;
@@ -298,6 +322,28 @@ $('round').addEventListener('scroll', event => {
   $('round-picker').value = selectedRound;
 });
 
+function selectLeagueTab(view) {
+  showLeagueView(view);
+  if (selectedRound !== undefined) goToRound(selectedRound);
+}
+
+$('league-tabs').addEventListener('click', event => {
+  const tab = event.target.closest('[role="tab"]');
+  if (tab) selectLeagueTab(tab.getAttribute('aria-controls'));
+});
+
+$('league-tabs').addEventListener('keydown', event => {
+  const tab = event.target.closest('[role="tab"]');
+  if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const view = event.key === 'Home' ? 'classifica' : event.key === 'End' ? 'giornate'
+    : leagueView === 'classifica' ? 'giornate' : 'classifica';
+  selectLeagueTab(view);
+  $('tab-' + view).focus();
+});
+
+narrowLayout.addEventListener('change', () => selectLeagueTab(leagueView));
+
 $('season-board').addEventListener('click', event => {
   const link = event.target.closest('[data-round]');
   if (!link) return;
@@ -305,6 +351,7 @@ $('season-board').addEventListener('click', event => {
   const fixture = $('round').querySelector(`[data-fixture="${link.dataset.fixture}"]`);
   if (!fixture) return;
   fixture.open = true;
+  if (narrowLayout.matches) showLeagueView('giornate');
   goToRound(Number(link.dataset.round));
   fixture.querySelector('summary').focus();
 });

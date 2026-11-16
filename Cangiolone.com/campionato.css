@@ -146,7 +146,23 @@ h1 {
   padding: clamp(16px, 2.25vw, 30px);
   border: 1px solid var(--rule);
 }
-#classifica:only-child, #giornate[hidden] + #classifica { grid-column: 1 / -1; width: min(680px, 100%); }
+#giornate[hidden] + #classifica { grid-column: 1 / -1; width: min(680px, 100%); }
+.league-tabs {
+  display: flex;
+  gap: clamp(14px, 4vw, 30px);
+  border-bottom: 1px solid var(--rule);
+}
+.league-tabs button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 650;
+}
+.league-tabs button:hover, .league-tabs button[aria-selected="true"] { color: var(--gold-light); }
+.league-tabs button[aria-selected="true"] { border-bottom-color: var(--gold); }
 .section-head {
   min-height: 45px;
   display: flex;
@@ -284,7 +300,8 @@ tbody td:last-child { color: var(--gold-light); font-weight: 750; }
 }
 
 @media (max-width: 850px) {
-  .league-grid { grid-template-columns: minmax(0, 1fr); }
+  .league-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  #league-tabs:not([hidden]) ~ #classifica { width: 100%; }
   .hero-layout { grid-template-columns: minmax(0, 1.17fr) minmax(0, 1fr); gap: 22px; }
 }
 @media (max-width: 660px) {
