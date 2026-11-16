@@ -83,14 +83,37 @@ function saveMatchPhoto(?string $photo, string $matchId): ?string {
     return 'uploads/matches/'.$filename;
 }
 function publicUser(array $u): array { return array_intersect_key($u,array_flip(['id','name','username','admin'])); }
+function matchDetails(array $in): array {
+    foreach(['scoreA','scoreB'] as $k) if(!isset($in[$k]) || !is_int($in[$k]) || $in[$k]<0 || $in[$k]>100) fail('I punti vittoria devono essere interi tra 0 e 100.');
+    $date=field($in,'date',10); $dt=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
+    if(!$dt || $dt->format('Y-m-d')!==$date || $date>date('Y-m-d') || $date<'2000-01-01') fail('Inserisci una data valida, non futura.');
+    return ['scoreA'=>$in['scoreA'],'scoreB'=>$in['scoreB'],'date'=>$date,'mission'=>field($in,'mission',120,false)];
+}
+function listText(array $in, bool $fileRequired=true): string {
+    if($fileRequired || array_key_exists('filename',$in)) {
+        $filename=field($in,'filename',200);
+        if(strtolower(pathinfo($filename,PATHINFO_EXTENSION))!=='txt') fail('Carica un file con estensione .txt.');
+    }
+    $text=$in['text']??null;
+    if(!is_string($text) || trim($text)==='' || strlen($text)>1048576 || !preg_match('//u',$text) || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/',$text)) fail('Il file deve contenere testo UTF-8, massimo 1 MB.');
+    return $text;
+}
 $config=require __DIR__.'/config.php';
 require __DIR__.'/storage.php';
-try { $storage=new SectorStorage($config['database']); $db=$storage->load(); }
+require __DIR__.'/league.php';
+$action=$_GET['action']??'state';
+if(!is_string($action)) fail('Richiesta non valida.');
+$leagueWrites=['leagueOpen','leagueJoin','leagueStart','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
+$leagueWrite=in_array($action,$leagueWrites,true);
+try {
+    $storage=new SectorStorage($config['database']);
+    if($leagueWrite && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    $scope=($leagueWrite || $action==='league' || $action==='leagueDownload') ? 'league' : ($action==='state' ? 'state' : 'archive');
+    $db=$storage->load($scope);
+}
 catch(Throwable $e) { error_log('Warhammer database connection failed'); fail('Database non disponibile. Contatta l’amministratore.',503); }
 function save(): void { global $storage,$db; $storage->save($db); }
 function result(array $payload): never { echo json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); exit; }
-$action=$_GET['action']??'state';
-if(!is_string($action)) fail('Richiesta non valida.');
 $me=null;
 foreach($db['users'] as $u) if($u['id']===($_SESSION['uid']??null)) $me=$u;
 if($me && time()-($_SESSION['seen']??0)>43200) { unset($_SESSION['uid']); $me=null; }
@@ -102,7 +125,13 @@ if($action==='state') {
         return $match;
     },$db['matches']);
 
-    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>leagueSummary($db,$me['id']),'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+}
+if($action==='league' || $action==='leagueDownload') {
+    if(!$me) fail('Accedi per consultare il campionato.',401);
+    if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
+    if($action==='leagueDownload') leagueDownload($storage,$db,$me['id']);
+    result(leagueState($db,$me));
 }
 if($action==='photo') {
     if(!$me) fail('Accedi per vedere la foto.',401);
@@ -174,6 +203,11 @@ try {
         result(['ok'=>true]);
     }
     if(!$me) fail('Accedi per continuare.',401);
+    if($leagueWrite) {
+        updateLeague($action,$in,$me,$db);
+        save();
+        result(['ok'=>true]);
+    }
     if($action==='logout') { $_SESSION=[]; session_destroy(); result(['ok'=>true]); }
     if($action==='invite') {
         if(!$me['admin']) fail('Solo l’amministratore può invitare giocatori.',403);
@@ -186,14 +220,12 @@ try {
         $ids=array_column($db['users'],'id');
         if($a===$b || !in_array($a,$ids,true) || !in_array($b,$ids,true)) fail('Scegli due giocatori diversi.');
         if(!$me['admin'] && $me['id']!==$a && $me['id']!==$b) fail('Puoi registrare solo le partite a cui hai partecipato.',403);
-        foreach(['scoreA','scoreB'] as $k) if(!isset($in[$k]) || !is_int($in[$k]) || $in[$k]<0 || $in[$k]>100) fail('I punti vittoria devono essere interi tra 0 e 100.');
-        $date=field($in,'date',10); $dt=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
-        if(!$dt || $dt->format('Y-m-d')!==$date || $date>date('Y-m-d') || $date<'2000-01-01') fail('Inserisci una data valida, non futura.');
+        $details=matchDetails($in);
         $request=field($in,'request',64);
         foreach($db['matches'] as $m) if($m['request']===$request && $m['by']===$me['id']) result(['ok'=>true]);
         $matchId=ident();
 
-        $mission=field($in,'mission',120,false);
+
         if(isset($in['photo']) && !is_string($in['photo'])) fail('Foto non valida.');
 
         $photo=saveMatchPhoto(
@@ -209,8 +241,8 @@ try {
         'b'=>$b,
         'scoreA'=>$in['scoreA'],
         'scoreB'=>$in['scoreB'],
-        'date'=>$date,
-        'mission'=>$mission,
+        'date'=>$details['date'],
+        'mission'=>$details['mission'],
         'photo'=>$photo,
         'by'=>$me['id'],
         'void'=>false,
@@ -238,10 +270,7 @@ try {
     }
     if($action==='list') {
         $name=field($in,'name',100); $faction=field($in,'faction',80);
-        $filename=field($in,'filename',200);
-        if(strtolower(pathinfo($filename,PATHINFO_EXTENSION))!=='txt') fail('Carica un file con estensione .txt.');
-        $text=$in['text']??null;
-        if(!is_string($text) || trim($text)==='' || strlen($text)>1048576 || !preg_match('//u',$text) || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F]/',$text)) fail('Il file deve contenere testo UTF-8, massimo 1 MB.');
+        $text=listText($in);
         if(count(array_filter($db['lists'],fn($l)=>$l['owner']===$me['id']))>=100) fail('Hai raggiunto il limite di 100 liste.');
         $db['lists'][]=['id'=>ident(),'owner'=>$me['id'],'name'=>$name,'faction'=>$faction,'text'=>$text,'date'=>date('Y-m-d'),'size'=>strlen($text)];
         save(); result(['ok'=>true]);

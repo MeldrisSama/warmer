@@ -380,63 +380,29 @@ function bindForm(id,handler){
     );
 }
 
-function standings(){
-  const rows=state.users.map(
-    u=>({
-      ...u,
-      played:0,
-      w:0,
-      d:0,
-      l:0,
-      diff:0,
-      points:0
-    })
-  );
-
-  const lookup=Object.fromEntries(
-    rows.map(u=>[u.id,u])
-  );
-
-  for(const m of state.matches.filter(m=>!m.void)){
-    const a=lookup[m.a];
-    const b=lookup[m.b];
-
-    if(!a||!b){
-      continue;
-    }
-
-    a.played++;
-    b.played++;
-
-    a.diff+=m.scoreA-m.scoreB;
-    b.diff+=m.scoreB-m.scoreA;
-
-    if(m.scoreA>m.scoreB){
-      a.w++;
-      b.l++;
-      a.points+=3;
-    }else if(m.scoreA<m.scoreB){
-      b.w++;
-      a.l++;
-      b.points+=3;
-    }else{
-      a.d++;
-      b.d++;
-      a.points++;
-      b.points++;
-    }
-  }
-
-  rows.sort(
-    (a,b)=>
-      b.points-a.points ||
-      b.diff-a.diff ||
-      a.name.localeCompare(b.name,'it')
-  );
-
-  let rank=0;
+function leagueBanner(){
+  const league=state.league;
+  if(!league && !state.user.admin) return '';
+  const label=!league ? 'Organizza il campionato' : !league.start && !league.joined
+    ? 'Iscriviti al campionato' : 'Vai al campionato';
+  const status=league?.start ? 'Calendario pubblicato' : league?.joined
+    ? 'Iscrizione confermata' : league ? 'Iscrizioni aperte' : '';
+  return `<aside class="league-banner" aria-labelledby="league-banner-name">
+    <div class="league-banner-copy">
+      <strong id="league-banner-name">${esc(league?.name || 'Campionato Warhammer 40.000')}</strong>
+      ${status ? `<span class="league-banner-status">${status}</span>` : ''}
+    </div>
+    <a class="button primary league-banner-link" href="campionato.php">
+      ${label}<span aria-hidden="true">→</span>
+    </a>
+  </aside>`;
+}
+
+function standings(){
+  const rows=rankStandings(state.users,state.matches);
 
   main.innerHTML=`
+    ${leagueBanner()}
     <section class="panel standings">
 
       <div class="heading">
@@ -485,20 +451,12 @@ function standings(){
 
             ${
               rows.map(
-                (u,i)=>{
-                  if(
-                    !i ||
-                    u.points!==rows[i-1].points ||
-                    u.diff!==rows[i-1].diff
-                  ){
-                    rank=i+1;
-                  }
-
+                u=>{
                   return `
                     <tr>
 
                       <td class="muted">
-                        ${rank}
+                        ${u.rank}
                       </td>
 
                       <td>

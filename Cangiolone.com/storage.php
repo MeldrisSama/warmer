@@ -26,9 +26,11 @@ final class SectorStorage {
     private PDO $pdo;
     private string $driver;
     private array $snapshot=[];
+    private bool $sqliteWrite=false;
+    private const LEAGUE_KEYS=['league'=>'id','league_entries'=>'player','league_fixtures'=>'id','league_lineups'=>'id'];
     private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
     private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
-    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until']];
+    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round']];
     public function __construct(array $config) {
         $this->driver=$config['driver']??'mysql';
         if($this->driver==='sqlite') {
@@ -51,15 +53,32 @@ final class SectorStorage {
             'matches'=>'`id` VARCHAR(24) PRIMARY KEY, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24) NOT NULL, `scoreA` INT NOT NULL, `scoreB` INT NOT NULL, `date` VARCHAR(10) NOT NULL, `mission` VARCHAR(120) NOT NULL, `photo` VARCHAR(255), `by` VARCHAR(24) NOT NULL, `void` INT NOT NULL, `created` VARCHAR(40) NOT NULL, `request` VARCHAR(64) NOT NULL, `updatedBy` VARCHAR(24), `updated` VARCHAR(40)',
             'lists'=>'`id` VARCHAR(24) PRIMARY KEY, `owner` VARCHAR(24) NOT NULL, `name` VARCHAR(100) NOT NULL, `faction` VARCHAR(80) NOT NULL, `text` MEDIUMTEXT NOT NULL, `date` VARCHAR(10) NOT NULL, `size` INT NOT NULL',
             'invites'=>'`hash` VARCHAR(64) PRIMARY KEY, `expires` BIGINT NOT NULL, `used` INT NOT NULL',
-            'attempts'=>'`ip` VARCHAR(64) PRIMARY KEY, `count` INT NOT NULL, `until` BIGINT NOT NULL'
+            'attempts'=>'`ip` VARCHAR(64) PRIMARY KEY, `count` INT NOT NULL, `until` BIGINT NOT NULL',
+            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10)',
+            'league_entries'=>'`player` VARCHAR(24) PRIMARY KEY, `joined` VARCHAR(40) NOT NULL',
+            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24)',
+            'league_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `fixture` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `text` MEDIUMTEXT NOT NULL'
         ];
         foreach($definitions as $name=>$columns) $this->pdo->exec('CREATE TABLE IF NOT EXISTS `w40k_'.$name.'` ('.$columns.')'.($this->driver==='mysql'?' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci':''));
     }
-    public function load(): array {
+    public function beginLeagueUpdate(): void {
+        if($this->driver==='sqlite') {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->sqliteWrite=true;
+        }
+    }
+
+    public function load(string $scope='archive'): array {
+        $keys=match($scope) {
+            'league'=>['users'=>'id','matches'=>'id']+self::LEAGUE_KEYS,
+            'state'=>self::KEYS+array_intersect_key(self::LEAGUE_KEYS,['league'=>true,'league_entries'=>true]),
+            default=>self::KEYS
+        };
         $data=[];
-        foreach(self::KEYS as $table=>$key) {
+        foreach($keys as $table=>$key) {
             $data[$table]=[];
-            foreach($this->pdo->query('SELECT * FROM `w40k_'.$table.'`') as $row) {
+            $columns=$table==='league_lineups' ? '`id`, `fixture`, `player`' : '*';
+            foreach($this->pdo->query('SELECT '.$columns.' FROM `w40k_'.$table.'`') as $row) {
                 foreach(self::BOOLS[$table]??[] as $c) $row[$c]=(bool)$row[$c];
                 foreach(self::INTS[$table]??[] as $c) $row[$c]=(int)$row[$c];
                 $this->snapshot[$table][$row[$key]]=$row;
@@ -68,10 +87,18 @@ final class SectorStorage {
         }
         return $data;
     }
+    public function leagueLineupText(string $id): string {
+        $statement=$this->pdo->prepare('SELECT `text` FROM `w40k_league_lineups` WHERE `id`=?');
+        $statement->execute([$id]);
+        $text=$statement->fetchColumn();
+        if(!is_string($text)) throw new RuntimeException('League lineup missing');
+        return $text;
+    }
+
     public function save(array $data): void {
-        $this->pdo->beginTransaction();
+        if(!$this->sqliteWrite) $this->pdo->beginTransaction();
         try {
-            foreach(self::KEYS as $table=>$key) {
+            foreach(array_intersect_key(self::KEYS+self::LEAGUE_KEYS,$data) as $table=>$key) {
                 $next=[];
                 foreach($data[$table] as $index=>$row) {
                     if($table==='attempts') $row['ip']=$index;
@@ -87,7 +114,15 @@ final class SectorStorage {
                 if(in_array($table,['attempts','invites'],true)) foreach($this->snapshot[$table]??[] as $id=>$row) if(!isset($next[$id])) $this->pdo->prepare('DELETE FROM `w40k_'.$table.'` WHERE `'.$key.'`=?')->execute([$id]);
                 $pending[$table]=$next;
             }
-            $this->pdo->commit();$this->snapshot=$pending;
-        } catch(Throwable $e) { if($this->pdo->inTransaction()) $this->pdo->rollBack(); throw $e; }
+            if($this->sqliteWrite) $this->pdo->exec('COMMIT');
+            else $this->pdo->commit();
+            $this->snapshot=$pending;
+        } catch(Throwable $e) {
+            if($this->sqliteWrite) $this->pdo->exec('ROLLBACK');
+            elseif($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $e;
+        } finally {
+            $this->sqliteWrite=false;
+        }
     }
 }

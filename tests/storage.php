@@ -8,6 +8,40 @@ function check(bool $condition, string $message): void {
     if (!$condition) throw new RuntimeException($message);
 }
 
+require dirname(__DIR__).'/Cangiolone.com/league.php';
+
+function ident(): string {
+    return bin2hex(random_bytes(12));
+}
+
+foreach([8,9] as $count) {
+    $players=array_map('strval',range(1,$count));
+    $rounds=$count%2===0 ? $count-1 : $count;
+    $fixtures=leagueSchedule($players);
+    $pairings=[];
+    $appearances=[];
+    $byes=[];
+    foreach($fixtures as $fixture) {
+        $pair=[$fixture['a'],$fixture['b']];
+        $round=$fixture['round'];
+        foreach(array_filter($pair,fn($player)=>$player!==null) as $player) {
+            check(!isset($appearances[$round][$player]),'A player appears only once each round');
+            $appearances[$round][$player]=true;
+        }
+        if($fixture['b']===null) {
+            $byes[]=$fixture['a'];
+        } else {
+            sort($pair);
+            $pairings[]=implode(':',$pair);
+        }
+    }
+    check(count($appearances)===$rounds,'Schedule has the right number of rounds');
+    check(count($pairings)===$count*($count-1)/2 && count(array_unique($pairings))===count($pairings),'Each pair meets exactly once');
+    sort($byes);
+    sort($players);
+    check($byes===($count%2===0 ? [] : $players),'Only an odd group has one bye per player');
+}
+
 $directory = $argv[1];
 $config = ['driver'=>'sqlite', 'path'=>$directory.'/storage.sqlite'];
 $storage = new SectorStorage($config);

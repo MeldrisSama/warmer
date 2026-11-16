@@ -32,12 +32,14 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com/app.js')], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
+    for (const file of ['app.js', 'standings.js', 'campionato.js']) {
+      const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+    }
   });
 
   await t.test('Storage persists typed data, rolls back failures and safely reads wiki settings', () => {
@@ -53,7 +55,9 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       // Leave the initial HTTP refresh pending; supply state explicitly below.
       fetch: () => new Promise(() => {})
     });
-    vm.runInContext(await readFile(join(root, 'Cangiolone.com/app.js'), 'utf8'), context);
+    for (const file of ['standings.js', 'app.js']) {
+      vm.runInContext(await readFile(join(root, 'Cangiolone.com', file), 'utf8'), context);
+    }
     const users = ['Alice', 'Bob', 'Carlo', 'Dana'].map(name => ({ id: name, name }));
     function standings(matches) {
       context.fixture = {
@@ -84,12 +88,121 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     standings([]);
     assert.ok(main.innerHTML.includes('&lt;img src=x onerror=alert(1)&gt;'));
     assert.ok(!main.innerHTML.includes('<img src=x'));
+
+    const banner = (league, admin = false) => {
+      context.fixture.league = league;
+      context.fixture.user.admin = admin;
+      return vm.runInContext('leagueBanner()', context);
+    };
+    assert.equal(banner(null), '');
+    assert.match(banner(null, true), /Organizza il campionato/);
+    const open = banner({ name: '<War in Heaven>' });
+    assert.match(open, /&lt;War in Heaven&gt;/);
+    assert.match(open, /Iscrizioni aperte/);
+    assert.match(open, /Iscriviti al campionato/);
+    assert.match(banner({ name: '40k', joined: true }), /Iscrizione confermata/);
+    assert.match(banner({ name: '40k', start: '2026-11-16' }), /Calendario pubblicato/);
+  });
+
+  await t.test('League shows responsive tabs, opens at the current round and reads revealed lists', async () => {
+    const nodes = new Map();
+    const narrow = { matches: false, addEventListener(event, listener) { this[event] = listener; } };
+    const context = vm.createContext({
+      document: {
+        getElementById(id) {
+          if (!nodes.has(id)) nodes.set(id, {
+            offsetTop: id === 'giornata-2' ? 180 : 0,
+            innerHTML: '',
+            events: {},
+            attributes: {},
+            setAttribute(name, value) { this.attributes[name] = value; },
+            getAttribute(name) { return this.attributes[name]; },
+            removeAttribute(name) { delete this.attributes[name]; },
+            focus() { this.focused = true; },
+            addEventListener(name, listener) { this.events[name] = listener; },
+            replaceChildren() { this.innerHTML = ''; },
+            showModal() { this.open = true; }
+          });
+          return nodes.get(id);
+        },
+        addEventListener() {}
+      },
+      matchMedia: () => narrow,
+      AbortController,
+      fetch: url => url.includes('leagueDownload')
+        ? Promise.resolve({ ok: true, text: async () => '<img src=x>\nArmy' })
+        : new Promise(() => {})
+    });
+    for (const file of ['standings.js', 'campionato.js']) {
+      vm.runInContext(await readFile(join(root, 'Cangiolone.com', file), 'utf8'), context);
+    }
+    const first = { id: 'one', round: 1, a: 'alice', b: 'bob', result: null, lineups: null };
+    context.demo = {
+      league: { name: 'Test', start: '2020-01-01' },
+      players: ['alice', 'bob'],
+      user: { id: 'viewer' },
+      users: [{ id: 'alice', name: 'Alice' }, { id: 'bob', name: 'Bob' }],
+      fixtures: [first, { ...first, id: 'two', round: 2 }]
+    };
+    vm.runInContext('state = demo; render();', context);
+    assert.equal(nodes.get('season-title').textContent, 'Test');
+    assert.equal(nodes.get('season-actions').innerHTML, '');
+    assert.match(nodes.get('round-picker').innerHTML, /1 · corrente/);
+    assert.match(nodes.get('round').innerHTML, /id="giornata-2"/);
+    assert.doesNotMatch(nodes.get('league-standings').innerHTML, /podium-1/);
+    assert.doesNotMatch(nodes.get('round').innerHTML, /<time/);
+    first.result = { scoreA: 45, scoreB: 32, date: '2026-11-16' };
+    vm.runInContext('render();', context);
+    assert.match(nodes.get('round-picker').innerHTML, /2 · corrente/);
+    assert.match(nodes.get('round').innerHTML, /<time datetime="2026-11-16">/);
+    assert.match(nodes.get('league-standings').innerHTML, /podium-1/);
+    assert.match(nodes.get('league-standings').innerHTML, /podium-2/);
+
+    vm.runInContext('selectedRound = undefined; render();', context);
+    assert.equal(nodes.get('round-picker').value, 2);
+    assert.equal(nodes.get('round').scrollTop, 180);
+    assert.equal(nodes.get('league-tabs').hidden, true);
+    assert.equal(nodes.get('giornate').hidden, false);
+    assert.equal(nodes.get('classifica').hidden, false);
+
+    narrow.matches = true;
+    narrow.change();
+    assert.equal(nodes.get('league-tabs').hidden, false);
+    assert.equal(nodes.get('classifica').hidden, false);
+    assert.equal(nodes.get('giornate').hidden, true);
+    assert.equal(nodes.get('tab-classifica').attributes['aria-selected'], 'true');
+    const tabs = nodes.get('league-tabs');
+    tabs.events.keydown({
+      key: 'ArrowRight',
+      target: { closest: () => nodes.get('tab-classifica') },
+      preventDefault() {}
+    });
+    assert.equal(nodes.get('classifica').hidden, true);
+    assert.equal(nodes.get('giornate').hidden, false);
+    assert.equal(nodes.get('tab-giornate').focused, true);
+    assert.equal(nodes.get('round').scrollTop, 180);
+    narrow.matches = false;
+    narrow.change();
+    assert.equal(nodes.get('league-tabs').hidden, true);
+    assert.equal(nodes.get('classifica').hidden, false);
+    assert.equal(nodes.get('giornate').hidden, false);
+    nodes.get('round-picker').events.change({ target: { value: '1' } });
+    assert.equal(nodes.get('round').scrollTop, 0);
+    assert.match(nodes.get('round').innerHTML, /id="giornata-2"/);
+
+    await nodes.get('round').events.click({ target: { closest: () => ({
+      dataset: { lineup: 'alice' },
+      closest: () => ({ dataset: { fixture: 'one' } })
+    }) } });
+    assert.equal(nodes.get('lineup-reader').open, true);
+    assert.equal(nodes.get('lineup-text').textContent, '<img src=x>\nArmy');
+    assert.equal(nodes.get('lineup-text').innerHTML, '');
   });
 
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'router.php', 'app.js', 'style.css', 'web.config']) {
+  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   const setupCode = 'isolated-test-setup';
@@ -189,6 +302,10 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const state = () => admin('state');
   const match = overrides => ({ a: aliceId, b: bobId, scoreA: 80, scoreB: 50, date: '2020-01-01', mission: 'Test mission', request: randomUUID(), ...overrides });
   const registration = (username, code) => ({ username, name: username, password, code });
+  function sql(statement) {
+    const result = spawnSync(php, ['-r', '$pdo=new PDO("sqlite:".$argv[1]);$pdo->exec($argv[2]);', join(application, 'api.sqlite'), statement], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  }
 
   await t.test('Guests see setup state but cannot read private data or write', async () => {
     const initial = await guest('state');
@@ -243,20 +360,6 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await user('logout', {});
     assert.equal((await user('state')).user, null);
     await user('download&id=missing', undefined, 401);
-  });
-
-  await t.test('Authentication attempts are rate limited', async () => {
-    const attacker = client();
-    await attacker('state');
-    // A successful login resets the shared loopback IP counter first.
-    await attacker('login', { username: 'alice', password });
-    await attacker('state');
-    await attacker('logout', {});
-    await attacker('state');
-    for (let attempt = 0; attempt < 10; attempt++) {
-      await attacker('login', { username: 'alice', password: 'wrong' }, 401);
-    }
-    await attacker('login', { username: 'alice', password }, 429);
   });
 
   await t.test('Match validation and permissions reject invalid writes', async () => {
@@ -333,10 +436,6 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const uploads = join(application, 'uploads/matches');
     const before = await readdir(uploads);
     const count = (await state()).matches.length;
-    function sql(statement) {
-      const result = spawnSync(php, ['-r', '$pdo=new PDO("sqlite:".$argv[1]);$pdo->exec($argv[2]);', join(application, 'api.sqlite'), statement], { encoding: 'utf8' });
-      assert.equal(result.status, 0, result.stdout + result.stderr);
-    }
     sql("CREATE TRIGGER reject_match BEFORE INSERT ON w40k_matches BEGIN SELECT RAISE(ABORT, 'test failure'); END");
     try {
       await alice('match', match({ photo: png }), 503);
@@ -360,6 +459,99 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('photo&id=../../config.php', undefined, 404);
   });
 
+  await t.test('League registration, blind list exchange and opponent-confirmed results', async () => {
+    assert.equal((await state()).league, null);
+    await guest('league', undefined, 401);
+    await alice('leagueOpen', { name: 'Test' }, 403);
+    await admin('leagueOpen', { name: 'Stagione di prova' });
+    assert.equal((await alice('state')).league.joined, false);
+    await admin('leagueStart', {}, 422);
+    for (const account of [alice, bob, admin]) await account('leagueJoin', {});
+    await alice('leagueJoin', {});
+    assert.equal((await alice('state')).league.joined, true);
+    await alice('leagueStart', {}, 403);
+    await admin('leagueStart', {});
+    await admin('leagueStart', {}, 409);
+
+    const spectator = client();
+    const invite = await admin('invite', {});
+    await spectator('state');
+    await spectator('register', registration('spectator', invite.code));
+    await spectator('state');
+    await spectator('leagueJoin', {}, 409);
+    const schedule = (await spectator('league')).fixtures;
+    assert.equal(schedule.length, 6);
+    assert.equal(new Set(schedule.filter(fixture => fixture.b === null).map(fixture => fixture.a)).size, 3);
+    assert.equal(new Set(schedule.filter(fixture => fixture.b).map(fixture => [fixture.a, fixture.b].sort().join())).size, 3);
+    const { id } = schedule.find(fixture => [fixture.a, fixture.b].includes(aliceId) && [fixture.a, fixture.b].includes(bobId));
+    const fixtureFor = async account => (await account('league')).fixtures.find(fixture => fixture.id === id);
+    const list = text => ({ fixture: id, filename: 'army.txt', text });
+    const download = owner => 'leagueDownload&fixture=' + id + '&player=' + owner;
+    await spectator('leagueLineup', list('Army'), 403);
+    await admin('leagueLineup', list('Army'), 403);
+    await alice('leagueLineup', { ...list('abc'), filename: 'army.docx' }, 422);
+    await alice('leagueLineup', { fixture: id, text: '\u0000Not valid' }, 422);
+    await alice('leagueLineup', { fixture: id, text: '  \n  ' }, 422);
+    await alice('leagueLineup', list('Army A draft'));
+    await alice('leagueLineup', { fixture: id, text: 'Army A final' });
+    assert.deepEqual((await bob('league')).fixtures.find(fixture => fixture.id === id).lineups, { mine: false, opponent: true });
+    assert.equal((await fixtureFor(spectator)).lineups, null);
+    assert.ok(!JSON.stringify(await bob('league')).includes('Army A final'));
+    assert.ok(!JSON.stringify(await state()).includes('Army A final'));
+    await bob(download(aliceId), undefined, 403);
+    await alice(download(aliceId), undefined, 403);
+    await bob('leagueLineup', list('Army B'));
+    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await alice(download(bobId)), 'Army B');
+    await spectator(download(aliceId), undefined, 403);
+    await guest(download(aliceId), undefined, 401);
+    await alice('leagueLineup', list('Changed after reveal'), 409);
+
+    const originalMatches = (await state()).matches.length;
+    const score = { fixture: id, scoreA: 67, scoreB: 53, date: '2020-01-01', mission: 'Bastione' };
+    await spectator('leaguePropose', score, 403);
+    await alice('leaguePropose', { ...score, date: '2999-01-01' }, 422);
+    await alice('leaguePropose', score);
+    const first = (await fixtureFor(bob)).pending.token;
+    assert.equal((await state()).matches.length, originalMatches);
+    assert.equal((await fixtureFor(spectator)).pending, null);
+    assert.equal((await fixtureFor(spectator)).awaiting, true);
+    await alice('leagueConfirm', { fixture: id, proposal: first }, 403);
+    await bob('leagueReject', { fixture: id, proposal: first });
+    await alice('leaguePropose', score);
+    await bob('leagueConfirm', { fixture: id, proposal: first }, 409);
+    const second = (await fixtureFor(bob)).pending.token;
+    sql("CREATE TRIGGER reject_confirmation BEFORE UPDATE ON w40k_league_fixtures WHEN NEW.match_id IS NOT NULL BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+    try {
+      await bob('leagueConfirm', { fixture: id, proposal: second }, 503);
+      assert.equal((await state()).matches.length, originalMatches);
+      assert.equal((await fixtureFor(bob)).pending.token, second);
+    } finally {
+      sql('DROP TRIGGER reject_confirmation');
+    }
+    await bob('leagueConfirm', { fixture: id, proposal: second });
+    await bob('leagueConfirm', { fixture: id, proposal: second }, 409);
+    assert.equal((await state()).matches.length, originalMatches + 1);
+    const confirmed = (await fixtureFor(spectator)).result;
+    assert.equal(confirmed.scoreA, 67);
+    assert.equal(confirmed.scoreB, 53);
+    assert.equal(confirmed.date, score.date);
+    assert.equal(confirmed.void, false);
+    const saved = (await state()).matches.find(match => match.request === 'league:' + id);
+    await admin('void', { id: saved.id, void: true });
+    assert.equal((await fixtureFor(spectator)).result.void, true);
+    await admin('void', { id: saved.id, void: false });
+
+    const page = await fetch(`${base}/campionato.php`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /campionato\.css/);
+    for (const asset of ['campionato.css', 'campionato.js', 'standings.js']) {
+      const response = await fetch(`${base}/${asset}`);
+      assert.equal(response.status, 200);
+      await response.arrayBuffer();
+    }
+  });
+
   await t.test('Raw upload URLs are blocked', async () => {
     for (const path of [photoPath, photoPath.replace('uploads', '%75ploads')]) {
       const response = await fetch(`${base}/${path}`, { signal: AbortSignal.timeout(5000) });
@@ -369,4 +561,18 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const result = spawnSync(php, ['-r', '$xml=simplexml_load_file($argv[1]);exit(count($xml->xpath($argv[2]))===1?0:1);', join(application, 'web.config'), '/configuration/system.webServer/security/requestFiltering/hiddenSegments/add[@segment="uploads"]'], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
+  await t.test('Authentication attempts are rate limited', async () => {
+    const attacker = client();
+    await attacker('state');
+    // A successful login resets the shared loopback IP counter first.
+    await attacker('login', { username: 'alice', password });
+    await attacker('state');
+    await attacker('logout', {});
+    await attacker('state');
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await attacker('login', { username: 'alice', password: 'wrong' }, 401);
+    }
+    await attacker('login', { username: 'alice', password }, 429);
+  });
+
 });
