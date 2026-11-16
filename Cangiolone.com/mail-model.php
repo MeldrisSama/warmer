@@ -59,6 +59,27 @@ function sectorMailAddress(array $in): string {
     return $email;
 }
 
+function checkSectorMailAvailable(array $db, string $email, ?string $owner=null): void {
+    foreach($db['mail_accounts'] as $id=>$profile) if($id!==$owner && $profile['email']===$email) {
+        fail('Questo indirizzo è già associato a un altro account.',409);
+    }
+}
+
+function queueEmailVerification(array &$db, array $mail, string $id, string $email): void {
+    checkSectorMailAvailable($db,$email,$id);
+    $profile=mailProfile($db,$id);
+    if($profile['email']===$email) return;
+    if((int)$profile['verify_until']>time()+86340) fail('Attendi un minuto prima di chiedere un altro link.',429);
+    $token=bin2hex(random_bytes(32));
+    $profile['pending_email']=$email;
+    $profile['verify_hash']=hash('sha256',$token);
+    $profile['verify_until']=time()+86400;
+    $db['mail_accounts'][$id]=$profile;
+    queueSectorMail($db,'verify:'.$profile['verify_hash'],$email,'Conferma il tuo indirizzo email',
+        'Verifica questo indirizzo per ricevere gli aggiornamenti del campionato e recuperare la password. Il link è valido 24 ore.',
+        'Verifica indirizzo email',mailLink($mail,'index.php#verify-email?token='.$token),$profile['verify_until']);
+}
+
 function sectorPassword(array $in): string {
     $password=$in['password']??null;
     if(!is_string($password) || strlen($password)<12 || strlen($password)>72 || str_contains($password,"\0")) {
@@ -106,9 +127,7 @@ function updateSectorAccount(string $action, array $in, ?array $me, array &$db, 
             if(!is_string($profile[$prefix.'_hash']) || !hash_equals($profile[$prefix.'_hash'],$hash)
                 || (int)$profile[$prefix.'_until']<=$now) continue;
             if($action==='emailVerify') {
-                foreach($db['mail_accounts'] as $other) if($other['id']!==$id && $other['email']===$profile['pending_email']) {
-                    fail('Questo indirizzo è già associato a un altro account.',409);
-                }
+                checkSectorMailAvailable($db,$profile['pending_email'],$id);
                 $profile['email']=$profile['pending_email'];
                 $profile['pending_email']=null;
                 $profile['verify_hash']=null;
@@ -124,6 +143,12 @@ function updateSectorAccount(string $action, array $in, ?array $me, array &$db, 
     }
 
     if(!$me) fail('Accedi per continuare.',401);
+    $id=$me['id'];
+    if($action==='emailSet' && mailProfile($db,$id)['email']===null) {
+        if(!accountThrottle($db,'email-set',$id,8)) fail('Troppi tentativi. Riprova tra 15 minuti.',429);
+        queueEmailVerification($db,$mail,$id,sectorMailAddress($in));
+        return null;
+    }
     if(!accountThrottle($db,'current-password',$me['id'],8)) fail('Troppi tentativi. Riprova tra 15 minuti.',429);
     $current=$in['current']??null;
     if(!is_string($current) || strlen($current)>72 || str_contains($current,"\0") || !password_verify($current,$me['password'])) {
@@ -131,7 +156,6 @@ function updateSectorAccount(string $action, array $in, ?array $me, array &$db, 
         save();
         fail('Password attuale errata.',403);
     }
-    $id=$me['id'];
     $db['mail_accounts'][$id]??=mailProfile($db,$id);
     $profile=&$db['mail_accounts'][$id];
     if($action==='passwordChange') {
@@ -139,19 +163,7 @@ function updateSectorAccount(string $action, array $in, ?array $me, array &$db, 
         return (int)$profile['version'];
     }
 
-    $email=sectorMailAddress($in);
-    if($profile['email']===$email) return null;
-    foreach($db['mail_accounts'] as $other) if($other['id']!==$id && $other['email']===$email) {
-        fail('Questo indirizzo è già associato a un altro account.',409);
-    }
-    if((int)$profile['verify_until']>$now+86340) fail('Attendi un minuto prima di chiedere un altro link.',429);
-    $token=bin2hex(random_bytes(32));
-    $profile['pending_email']=$email;
-    $profile['verify_hash']=hash('sha256',$token);
-    $profile['verify_until']=$now+86400;
-    queueSectorMail($db,'verify:'.$profile['verify_hash'],$email,'Conferma il tuo indirizzo email',
-        'Verifica questo indirizzo per ricevere gli aggiornamenti del campionato e recuperare la password. Il link è valido 24 ore.',
-        'Verifica indirizzo email',mailLink($mail,'index.php#verify-email?token='.$token),$profile['verify_until']);
+    queueEmailVerification($db,$mail,$id,sectorMailAddress($in));
     return null;
 }
 

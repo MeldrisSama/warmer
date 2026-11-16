@@ -237,6 +237,15 @@ function render(){
   const nav=document.querySelector('#nav');
 
   const account=document.querySelector('#account');
+  const emailBanner=document.querySelector('#email-banner');
+  const p=page();
+  emailBanner.hidden=!(state.user && state.mailEnabled && !state.account?.email && !state.needsEmail
+    && !['profilo','verify-email','reset-password'].includes(p));
+  if(!emailBanner.hidden) {
+    emailBanner.innerHTML=state.account.pendingEmail
+      ? '<span>Controlla la posta per verificare il tuo indirizzo email.</span><a href="#profilo">Gestisci email</a>'
+      : '<span>Aggiungi la tua email per recuperare la password e ricevere gli aggiornamenti.</span><a href="#profilo">Aggiungi email</a>';
+  }
 
 
 
@@ -292,10 +301,6 @@ function render(){
 
 
 
-  const p=page();
-
-
-
   nav.innerHTML=[
 
     ['classifica','Classifica'],
@@ -323,7 +328,10 @@ function render(){
 
 
 
-  if(p==='partita'){
+  nav.hidden=state.needsEmail;
+  if(state.needsEmail && !['verify-email','reset-password'].includes(p)){
+    profilePage(true);
+  }else if(p==='partita'){
 
     matchPage();
 
@@ -387,22 +395,23 @@ function emailAccountPage(route){
   });
 }
 
-function profilePage(){
+function profilePage(onboarding=false){
   const account=state.account||{};
   main.innerHTML=`<section class="panel narrow">
-    <h1>Profilo</h1>
+    <h1>${onboarding?'Aggiungi la tua email':'Profilo'}</h1>
+    ${onboarding?'<p class="intro">Ti invieremo un link di verifica. Potrai usare l’indirizzo per accedere e recuperare la password.</p>':''}
     ${state.mailEnabled?`<section class="account-settings">
-      <h2>Indirizzo email</h2>
+      ${onboarding?'':'<h2>Indirizzo email</h2>'}
       ${account.email?`<p class="intro">Indirizzo verificato: ${esc(account.email)}</p>`:''}
       ${account.pendingEmail?`<p class="intro">Verifica in attesa per ${esc(account.pendingEmail)}.</p>`:''}
       <form id="profile-email">
         <p class="error-inline" role="alert" hidden></p>
         <label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email" value="${esc(account.pendingEmail||account.email)}"></label>
-        <label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>
+        ${account.email?'<label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>':''}
         <button class="primary" type="submit">Invia il link di verifica</button>
       </form>
     </section>`:''}
-    <section class="account-settings">
+    ${onboarding?'':`<section class="account-settings">
       <h2>Cambia password</h2>
       <form id="profile-password">
         <p class="error-inline" role="alert" hidden></p>
@@ -410,26 +419,35 @@ function profilePage(){
         <label class="field">Nuova password<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>
         <button class="primary" type="submit">Aggiorna la password</button>
       </form>
-    </section>
+    </section>`}
   </section>`;
   if(state.mailEnabled) bindForm('profile-email',async form=>{
     const data=Object.fromEntries(new FormData(form));
     await api('emailSet',data);
     await refresh();
+    if(onboarding && openLoginDestination()) return;
     notify(state.account.pendingEmail?'Link di verifica messo in coda.':'L’indirizzo è già verificato.');
   });
-  bindForm('profile-password',async form=>{
+  if(!onboarding) bindForm('profile-password',async form=>{
     await api('passwordChange',Object.fromEntries(new FormData(form)));
     form.reset();
     notify('Password aggiornata.');
   });
 }
 
+function openLoginDestination(){
+  const next=new URLSearchParams(location.search).get('next');
+  if(!next || !/^campionato\.php\?id=[a-f0-9]{24}(?:&fixture=[a-f0-9]{24})?$/.test(next)) return false;
+  location.assign(next);
+  return true;
+}
+
 function auth(){
 
   const setup=state.setup;
 
-  const register=!setup&&page()==='registrati';
+  const emailInvite=!setup&&page()==='invito';
+  const register=!setup&&(page()==='registrati'||emailInvite);
 
 
 
@@ -469,7 +487,7 @@ function auth(){
 
             : register
 
-              ? 'Crea il tuo account personale con il codice ricevuto da un amico.'
+              ? (emailInvite?'Crea il tuo account con l’indirizzo a cui è stato inviato l’invito.':'Crea il tuo account personale con il codice ricevuto da un amico.')
 
               : 'Accedi per consultare la classifica, registrare le battaglie e condividere le tue liste.'
 
@@ -529,7 +547,7 @@ function auth(){
 
         <label class="field">
 
-          Nome utente
+          ${setup||register?'Nome utente':'Nome utente o email'}
 
 
 
@@ -539,11 +557,7 @@ function auth(){
 
             required
 
-            minlength="3"
-
-            maxlength="32"
-
-            pattern="[a-zA-Z0-9._-]{3,32}"
+            ${setup||register?'minlength="3" maxlength="32"':'maxlength="254"'}
 
             autocomplete="username"
 
@@ -615,7 +629,7 @@ function auth(){
 
         ${
 
-          setup||register
+          setup||(register&&!emailInvite)
 
             ? `
 
@@ -656,6 +670,8 @@ function auth(){
         }
 
 
+
+        ${register&&!emailInvite&&state.mailEnabled?'<label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email"></label>':''}
 
         <button
 
@@ -732,6 +748,12 @@ function auth(){
 
     async form=>{
 
+      const data=Object.fromEntries(new FormData(form));
+      if(emailInvite){
+        data.inviteToken=new URLSearchParams(location.hash.split('?')[1]).get('token')||'';
+        if(!data.inviteToken) throw new Error('Apri il link personale ricevuto per email.');
+      }
+
       await api(
 
         setup
@@ -744,22 +766,15 @@ function auth(){
 
             : 'login',
 
-        Object.fromEntries(new FormData(form))
+        data
 
       );
 
 
 
-      const next=new URLSearchParams(location.search).get('next');
-      if(next && /^campionato\.php\?id=[a-f0-9]{24}(?:&fixture=[a-f0-9]{24})?$/.test(next)){
-        location.assign(next);
-        return;
-      }
-      location.hash='classifica';
-
-
-
+      history.replaceState(history.state,'','#classifica');
       await refresh();
+      if(!state.needsEmail) openLoginDestination();
 
     }
 
@@ -2609,6 +2624,15 @@ function invitePage(){
 
       ></div>
 
+      ${state.mailEnabled?`<section class="account-settings">
+        <h2>Invito via email</h2>
+        <form id="email-invite-form">
+          <p class="error-inline" role="alert" hidden></p>
+          <label class="field">Email del giocatore<input type="email" name="email" required maxlength="254" autocomplete="email"></label>
+          <button class="primary" type="submit">Invia invito via email</button>
+        </form>
+      </section>`:''}
+
 
 
       <div class="actions">
@@ -2628,6 +2652,12 @@ function invitePage(){
   `;
 
 
+
+  if(state.mailEnabled) bindForm('email-invite-form',async form=>{
+    await api('invite',Object.fromEntries(new FormData(form)));
+    form.reset();
+    notify('Invito via email messo in coda.');
+  });
 
   document.querySelector(
 

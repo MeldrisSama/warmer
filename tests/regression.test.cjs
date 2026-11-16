@@ -673,10 +673,16 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       return batch;
     };
     const addresses = ['alice@example.test', 'bob@example.test'];
+    assert.equal((await alice('state')).needsEmail, false);
+    const returning = client();
+    await returning('state');
+    await returning('login', { username: 'alice', password });
+    assert.equal((await returning('state')).needsEmail, true);
     for (const [i, account] of [alice, bob].entries()) {
-      await account('emailSet', { email: addresses[i], current: password });
+      await account('emailSet', { email: addresses[i] });
       assert.equal((await account('state')).account.email, null);
     }
+    assert.equal((await returning('state')).needsEmail, false);
     const verification = await drain();
     assert.deepEqual(verification.map(email => email.to).sort(), addresses);
     assert.ok(verification.every(email => email.subject === 'Conferma il tuo indirizzo email' && email.html.includes('Cronache del settore')));
@@ -743,6 +749,37 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await guest('emailVerify', { token: pendingVerification }, 410);
     assert.equal((await bob('state')).account.email, addresses[1]);
     assert.equal((await bob('state')).user.id, bobId);
+
+    const { code } = await admin('invite', {});
+    const codeUser = client();
+    await codeUser('state');
+    const registration = { code, username: 'code-user', name: 'Code User', password };
+    await codeUser('register', registration, 422);
+    await codeUser('register', { ...registration, email: 'code@example.test' });
+    assert.deepEqual((await codeUser('state')).account, { email: null, pendingEmail: 'code@example.test' });
+    const [codeVerification] = await drain();
+    assert.equal(codeVerification.to, 'code@example.test');
+    assert.equal(codeVerification.subject, 'Conferma il tuo indirizzo email');
+    await guest('login', { username: 'code@example.test', password }, 401);
+    await guest('emailVerify', { token: codeVerification.text.match(/token=([a-f0-9]{64})/)[1] });
+    await guest('login', { username: 'CODE@example.test', password });
+
+    await alice('invite', { email: 'forbidden@example.test' }, 403);
+    await admin('invite', { email: addresses[0] }, 409);
+    assert.deepEqual(await admin('invite', { email: 'invited@example.test' }), { ok: true });
+    const [invitation] = await drain();
+    assert.equal(invitation.to, 'invited@example.test');
+    const [, encodedInvite] = invitation.text.match(/#invito\?token=(\S+)/);
+    const inviteToken = decodeURIComponent(encodedInvite);
+    const invited = client();
+    await invited('state');
+    const invitedRegistration = { username: 'invited-user', name: 'Invited User', password };
+    await invited('register', { ...invitedRegistration, inviteToken: inviteToken.replace('invited@', 'other@') }, 403);
+    await invited('register', { ...invitedRegistration, inviteToken, email: 'other@example.test' });
+    assert.deepEqual((await invited('state')).account, { email: 'invited@example.test', pendingEmail: null });
+    await invited('register', { username: 'other-user', name: 'Other User', password, inviteToken }, 403);
+    await invited('emailSet', { email: 'other@example.test' }, 403);
+    assert.deepEqual(await drain(), []);
   });
 
   await t.test('Authentication attempts are rate limited', async () => {
