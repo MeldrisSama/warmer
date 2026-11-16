@@ -183,17 +183,21 @@ $config=require __DIR__.'/config.php';
 
 require __DIR__.'/storage.php';
 
+require __DIR__.'/mail-model.php';
 require __DIR__.'/league.php';
+try { $mail=sectorMailConfig(); }
+catch(Throwable $error) { error_log('Warhammer mail configuration invalid'); $mail=null; }
 require __DIR__.'/builder-model.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
-    if(($leagueWrite || $action==='void') && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    if(($leagueWrite || $action==='void' || in_array($action,ACCOUNT_ACTIONS,true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
     $scope=($leagueWrite || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
+    $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
 }
 catch(Throwable $e) { error_log('Warhammer database connection failed'); fail('Database non disponibile. Contatta l’amministratore.',503); }
 
@@ -207,11 +211,15 @@ foreach($db['users'] as $u) if($u['id']===($_SESSION['uid']??null)) $me=$u;
 
 if($me && time()-($_SESSION['seen']??0)>43200) { unset($_SESSION['uid']); $me=null; }
 
+if($me && (int)mailProfile($db,$me['id'])['version']!==($_SESSION['authVersion']??0)) {
+    unset($_SESSION['uid']);
+    $me=null;
+}
 if($me) $_SESSION['seen']=time();
 
 if($action==='state') {
 
-    if(!$me) result(['user'=>null,'setup'=>count($db['users'])===0,'csrf'=>$_SESSION['csrf']]);
+    if(!$me) result(['user'=>null,'setup'=>count($db['users'])===0,'csrf'=>$_SESSION['csrf'],'mailEnabled'=>$mail!==null]);
 
     $leagues=leagueSummaries($db,$me['id']);
     $locked=leagueMatchLocks($db);
@@ -221,7 +229,8 @@ if($action==='state') {
         return $match;
     },$db['matches']);
 
-    result(['user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+    $profile=mailProfile($db,$me['id']);
+    result(['mailEnabled'=>$mail!==null,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
@@ -229,7 +238,7 @@ if($action==='league' || $action==='leagueDownload') {
     if($action==='leagueDownload') leagueDownload($storage,$db,$me['id']);
     $id=$_GET['id']??null;
     if($id!==null && !is_string($id)) fail('Campionato non trovato.',404);
-    result(leagueState($db,$me,$id,($_GET['new']??null)==='1'));
+    result(leagueState($db,$me,$id,($_GET['new']??null)==='1')+['mailEnabled'=>$mail!==null]);
 }
 
 if($action==='photo') {
@@ -353,12 +362,21 @@ try {
 
         unset($db['attempts'][$ip]); save();
 
-        session_regenerate_id(true); $_SESSION['uid']=$user['id']; $_SESSION['seen']=time(); $_SESSION['csrf']=bin2hex(random_bytes(32));
+        session_regenerate_id(true); $_SESSION['authVersion']=(int)mailProfile($db,$user['id'])['version']; $_SESSION['uid']=$user['id']; $_SESSION['seen']=time(); $_SESSION['csrf']=bin2hex(random_bytes(32));
 
         result(['ok'=>true]);
 
     }
 
+    if(in_array($action,ACCOUNT_ACTIONS,true)) {
+        $version=updateSectorAccount($action,$in,$me,$db,$mail);
+        save();
+        if($version!==null) {
+            session_regenerate_id(true);
+            $_SESSION['authVersion']=$version;
+        }
+        result(['ok'=>true]);
+    }
     if(!$me) fail('Accedi per continuare.',401);
 
     if(in_array($action,['builderImport','builderSave','builderDelete'],true)) {
@@ -368,7 +386,7 @@ try {
         } catch(BuilderInputError $e) { fail($e->getMessage()); }
     }
     if($leagueWrite) {
-        $leagueId=updateLeague($action,$in,$me,$db);
+        $leagueId=updateLeague($action,$in,$me,$db,$mail);
         save();
         result($leagueId===null ? ['ok'=>true] : ['ok'=>true,'id'=>$leagueId]);
     }

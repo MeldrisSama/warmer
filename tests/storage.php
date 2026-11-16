@@ -78,7 +78,7 @@ check(count($seasons['league'])===2 && $seasons['league'][1]['paused']===null,'A
 $config = ['driver'=>'sqlite', 'path'=>$directory.'/storage.sqlite'];
 $storage = new SectorStorage($config);
 $data = $storage->load();
-check($data === ['users'=>[], 'matches'=>[], 'lists'=>[], 'invites'=>[], 'attempts'=>[]], 'New database must be empty');
+check($data === ['users'=>[], 'matches'=>[], 'lists'=>[], 'invites'=>[], 'attempts'=>[], 'mail_accounts'=>[]], 'New database must be empty');
 
 $data['users'][] = ['id'=>'alice', 'username'=>'alice', 'name'=>'Alice', 'password'=>'hash', 'admin'=>true];
 $data['matches'][] = ['id'=>'match', 'a'=>'alice', 'b'=>'bob', 'scoreA'=>80, 'scoreB'=>50, 'date'=>'2026-01-01', 'mission'=>'Test', 'photo'=>null, 'by'=>'alice', 'void'=>false, 'created'=>'2026-01-01T12:00:00+01:00', 'request'=>'request'];
@@ -121,6 +121,23 @@ check($afterFailure['users'] === $loaded['users'], 'Failed transaction must roll
 $loaded['users'][0]['name'] = 'Alice updated';
 $storage->save($loaded);
 check((new SectorStorage($config))->load()['users'][0]['name'] === 'Alice updated', 'Storage must remain usable after rollback');
+
+$jobId = str_repeat('a',64);
+$job = [$jobId,'test@example.test','{}',time()+3600,time()];
+$storage->save(['mail_jobs'=>[$job]]);
+$claimed = $storage->claimMail();
+check($claimed['id']===$jobId && $storage->claimMail()===null,'A mail job must only be claimed once during its lease');
+$storage->finishMail($claimed,false);
+check($storage->claimMail()===null,'A failed job must wait before retry');
+$queueDb = new PDO('sqlite:'.$config['path']);
+$queueDb->exec("UPDATE w40k_mail_jobs SET next_attempt=0");
+$retried = $storage->claimMail();
+check((int)$retried['attempts']===1,'Retry must keep its attempt count');
+$storage->finishMail($retried,true);
+$storage->save(['mail_jobs'=>[$job]]);
+check($storage->claimMail()===null,'A finished event must not be enqueued again');
+check($queueDb->query("SELECT recipient FROM w40k_mail_jobs")->fetchColumn()===null,'A sent job must not retain the recipient');
+$queueDb = null;
 
 $wiki = $directory.'/LocalSettings.php';
 file_put_contents($wiki, <<<'PHP'

@@ -18,6 +18,7 @@ let selectedRound;
 let openFixture;
 let lineupRequest;
 let openingToken;
+let announcementToken;
 
 async function request(name, data) {
   const id = leagueQuery.get('id');
@@ -48,6 +49,7 @@ function renderOverview(total, current) {
     if (user.admin) {
       actions.innerHTML = `<form class="inline-form">
         <label>Nome del campionato<input name="name" required maxlength="100"></label>
+        ${state.mailEnabled ? '<label class="notify-option"><input type="checkbox" name="notify"> Avvisa i giocatori con email verificata</label>' : ''}
         ${action('leagueOpen', 'Apri le iscrizioni')}
       </form>`;
     } else {
@@ -250,12 +252,26 @@ function showLeagueView(view) {
 function render() {
   if (!state) {
     $('season-caption').textContent = 'Accedi alle Cronache del settore per vedere il campionato.';
-    $('season-actions').innerHTML = '<a class="primary" href="index.php">Vai all’accesso</a>';
+    const id = leagueQuery.get('id');
+    const fixture = leagueQuery.get('fixture');
+    const target = /^[a-f0-9]{24}$/.test(id)
+      ? 'campionato.php?id=' + id + (/^[a-f0-9]{24}$/.test(fixture) ? '&fixture=' + fixture : '') : '';
+    $('season-actions').innerHTML = `<a class="primary" href="index.php${target ? '?next=' + encodeURIComponent(target) : ''}">Vai all’accesso</a>`;
     return;
   }
   const total = Math.max(0, ...state.fixtures.map(fixture => fixture.round));
   const current = state.league?.closed ? undefined : state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
   renderOverview(total, current);
+  if (state.league && state.user.admin && state.mailEnabled && state.players.length) {
+    $('season-actions').insertAdjacentHTML('beforeend', `<details class="season-mail">
+      <summary>Scrivi agli iscritti</summary>
+      <form>
+        <label>Oggetto<input name="subject" required maxlength="140"></label>
+        <label>Messaggio<textarea name="message" rows="4" required maxlength="4000"></textarea></label>
+        ${action('leagueAnnounce', 'Invia agli iscritti')}
+      </form>
+    </details>`);
+  }
   $('league-content').hidden = !state.league;
   showLeagueView(leagueView);
   if (state.league) renderStandings();
@@ -269,6 +285,7 @@ function render() {
 
 const notices = {
   leagueOpen: 'Iscrizioni aperte.',
+  leagueAnnounce: 'Messaggio messo in coda per gli iscritti con email verificata.',
   leagueJoin: 'Iscrizione confermata.',
   leagueStart: 'Calendario pubblicato.',
   leagueClose: 'Campionato chiuso.',
@@ -305,6 +322,11 @@ document.addEventListener('submit', async event => {
   if (name === 'leagueOpen') {
     openingToken ??= window.crypto.randomUUID().replaceAll('-', '').slice(0, 24);
     data.request = openingToken;
+    data.notify = Boolean(data.notify);
+  }
+  if (name === 'leagueAnnounce') {
+    announcementToken ??= window.crypto.randomUUID();
+    data.request = announcementToken;
   }
   const fixture = form.closest('[data-fixture]');
   if (fixture) data.fixture = fixture.dataset.fixture;
@@ -330,6 +352,7 @@ document.addEventListener('submit', async event => {
       data.scoreB = Number(data.scoreB);
     }
     const result = await request(name, data);
+    if (name === 'leagueAnnounce') announcementToken = null;
     if (name === 'leagueOpen') {
       openingToken = null;
       leagueQuery.delete('new');
@@ -386,16 +409,20 @@ $('league-tabs').addEventListener('keydown', event => {
 
 narrowLayout.addEventListener('change', () => selectLeagueTab(leagueView));
 
+function openLeagueFixture(id, round) {
+  const fixture = $('round').querySelector(`[data-fixture="${id}"]`);
+  if (!fixture) return;
+  fixture.open = true;
+  if (narrowLayout.matches) showLeagueView('giornate');
+  goToRound(round);
+  fixture.querySelector('summary').focus();
+}
+
 $('season-board').addEventListener('click', event => {
   const link = event.target.closest('[data-round]');
   if (!link) return;
   event.preventDefault();
-  const fixture = $('round').querySelector(`[data-fixture="${link.dataset.fixture}"]`);
-  if (!fixture) return;
-  fixture.open = true;
-  if (narrowLayout.matches) showLeagueView('giornate');
-  goToRound(Number(link.dataset.round));
-  fixture.querySelector('summary').focus();
+  openLeagueFixture(link.dataset.fixture, Number(link.dataset.round));
 });
 
 $('round').addEventListener('click', async event => {
@@ -438,6 +465,8 @@ $('lineup-reader').addEventListener('close', event => {
 request('league').then(data => {
   state = data;
   render();
+  const fixture = state?.fixtures.find(item => item.id === leagueQuery.get('fixture') && mine(item));
+  if (fixture) openLeagueFixture(fixture.id, fixture.round);
 }).catch(() => {
   $('season-actions').textContent = 'Campionato non disponibile. Ricarica la pagina per riprovare.';
 });
