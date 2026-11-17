@@ -371,10 +371,14 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('invite', {}, 403);
   });
 
-  await t.test('Login rejects wrong passwords; logout removes access', async () => {
+  await t.test('Login rejects unknown accounts and wrong passwords as form errors; logout removes access', async () => {
     const user = client();
     await user('state');
-    await user('login', { username: 'alice', password: 'wrong' }, 401);
+    const wrongPassword = await user('login', { username: 'alice', password: 'wrong' }, 422);
+    const unknownAccount = await user('login', { username: 'unknown@example.test', password }, 422);
+    assert.deepEqual(wrongPassword, { error: 'Nome utente, email o password errati.' });
+    assert.deepEqual(unknownAccount, wrongPassword);
+    assert.equal((await user('state')).user, null);
     await user('login', { username: 'ALICE', password });
     assert.equal((await user('state')).user.id, aliceId);
     await user('logout', {});
@@ -740,7 +744,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await guest('passwordReset', { token: resetToken, password: passwordNew });
     await guest('passwordReset', { token: resetToken, password: passwordNew }, 410);
     assert.equal((await bob('state')).user, null);
-    await bob('login', { username: 'bob', password }, 401);
+    await bob('login', { username: 'bob', password }, 422);
     await bob('login', { username: 'bob', password: passwordNew });
     await bob('state');
     await bob('emailSet', { current: passwordNew, email: 'other@example.test' });
@@ -760,7 +764,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const [codeVerification] = await drain();
     assert.equal(codeVerification.to, 'code@example.test');
     assert.equal(codeVerification.subject, 'Conferma il tuo indirizzo email');
-    await guest('login', { username: 'code@example.test', password }, 401);
+    await guest('login', { username: 'code@example.test', password }, 422);
     await guest('emailVerify', { token: codeVerification.text.match(/token=([a-f0-9]{64})/)[1] });
     await guest('login', { username: 'CODE@example.test', password });
 
@@ -822,7 +826,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await attacker('logout', {});
     await attacker('state');
     for (let attempt = 0; attempt < 10; attempt++) {
-      await attacker('login', { username: 'alice', password: 'wrong' }, 401);
+      await attacker('login', { username: 'alice', password: 'wrong' }, 422);
     }
     await attacker('login', { username: 'alice', password }, 429);
   });

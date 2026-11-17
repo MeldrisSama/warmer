@@ -360,8 +360,9 @@ try {
             $identity=strtolower(field($in,'username',254));
             $user=null;
             foreach($db['users'] as $u) if($u['username']===$identity || mailProfile($db,$u['id'])['email']===$identity) $user=$u;
+            // On IIS, a 401 here can trigger the browser's HTTP authentication prompt.
             if(!$user || !is_string($password) || strlen($password)>72 || str_contains($password,"\0")
-                || !password_verify($password,$user['password'])) fail('Nome utente, email o password errati.',401);
+                || !password_verify($password,$user['password'])) fail('Nome utente, email o password errati.');
 
         } else {
 
