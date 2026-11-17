@@ -151,6 +151,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       players: ['alice', 'bob'],
       user: { id: 'viewer' },
       users: [{ id: 'alice', name: 'Alice' }, { id: 'bob', name: 'Bob' }],
+      armyGroups: { Xenos: { orks: 'Orks' }, 'Adeptus Astartes': { dark_angels: 'Dark Angels' } },
+      armies: { alice: 'orks', bob: 'dark_angels' },
       fixtures: [first, { ...first, id: 'two', round: 2 }]
     };
     vm.runInContext('state = demo; render();', context);
@@ -160,6 +162,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.match(nodes.get('round').innerHTML, /id="giornata-2"/);
     assert.doesNotMatch(nodes.get('league-standings').innerHTML, /podium-1/);
     assert.doesNotMatch(nodes.get('round').innerHTML, /<time/);
+    assert.match(nodes.get('league-standings').innerHTML, /Orks/);
+    assert.match(nodes.get('round').innerHTML, /Dark Angels/);
     first.result = { scoreA: 45, scoreB: 32, date: '2026-11-16' };
     vm.runInContext('render();', context);
     assert.match(nodes.get('round-picker').innerHTML, /2 · corrente/);
@@ -490,8 +494,16 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const firstLeague = (await admin('leagueOpen', { name: 'Stagione di prova' })).id;
     assert.equal((await alice('state')).league.joined, false);
     await admin('leagueStart', {}, 422);
-    for (const account of [alice, bob, admin]) await account('leagueJoin', {});
+    await alice('leagueJoin', {}, 422);
+    await alice('leagueJoin', { army: 'nonexistent' }, 422);
+    await alice('leagueJoin', { army: ['orks'] }, 422);
+    for (const account of [alice, bob, admin]) await account('leagueJoin', { army: 'orks' });
     await alice('leagueJoin', {});
+    await alice('leagueJoin', { army: 'necrons' });
+    const enrolled = await alice('league');
+    assert.equal(enrolled.armies[aliceId], 'orks');
+    assert.deepEqual(Object.keys(enrolled.armyGroups), ['Xenos', 'Chaos', 'Imperium', 'Adeptus Astartes']);
+    assert.equal(Object.keys(Object.assign({}, ...Object.values(enrolled.armyGroups))).length, 34);
     assert.equal((await alice('state')).league.joined, true);
     await alice('leagueStart', {}, 403);
     await admin('leagueStart', {});
@@ -567,8 +579,10 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await admin('void', { id: saved.id, void: false });
 
     const secondLeague = (await admin('leagueOpen', { name: 'Girone parallelo' })).id;
-    await alice('leagueJoin', { league: secondLeague });
-    await bob('leagueJoin', { league: secondLeague });
+    await alice('leagueJoin', { league: secondLeague, army: 'dark_angels' });
+    await bob('leagueJoin', { league: secondLeague, army: 'blood_angels' });
+    assert.equal((await alice('league&id=' + secondLeague)).armies[aliceId], 'dark_angels');
+    assert.equal((await alice('league&id=' + firstLeague)).armies[aliceId], 'orks');
     await admin('leagueStart', { league: secondLeague });
     const parallel = await alice('league&id=' + secondLeague);
     assert.equal(parallel.league.entrants, 2);
@@ -628,10 +642,10 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueJoin', { league: draft }, 409);
     await admin('leagueStart', { league: draft }, 409);
     await admin('leagueResume', { league: draft });
-    await alice('leagueJoin', { league: draft });
+    await alice('leagueJoin', { league: draft, army: 'orks' });
     await admin('leagueClose', { league: draft });
     await admin('leagueReopen', { league: draft });
-    await bob('leagueJoin', { league: draft });
+    await bob('leagueJoin', { league: draft, army: 'orks' });
     assert.equal((await bob('league&id=' + draft)).league.start, null);
 
 
@@ -703,7 +717,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.deepEqual(await drain(), []);
     const { id } = await admin('leagueOpen', { name: 'Campionato email', notify: true });
     assert.deepEqual((await drain()).map(email => email.to).sort(), addresses);
-    for (const account of [alice, bob]) await account('leagueJoin', { league: id });
+    for (const account of [alice, bob]) await account('leagueJoin', { league: id, army: 'orks' });
     await alice('leagueJoin', { league: id });
     assert.ok((await drain()).every(email => email.subject === 'Iscrizione confermata'));
     await alice('leagueAnnounce', { league: id, subject: 'Avviso', message: 'Test', request: randomUUID() }, 403);
@@ -789,7 +803,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const participants = new Map();
     for (const account of [alice, bob, codeUser, invited]) {
       participants.set((await account('state')).user.id, account);
-      await account('leagueJoin', { league: finalRound.id });
+      await account('leagueJoin', { league: finalRound.id, army: 'orks' });
     }
     await drain();
     await admin('leagueStart', { league: finalRound.id });

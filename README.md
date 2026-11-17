@@ -68,6 +68,12 @@ node --test tests/regression.test.cjs
 
 La regressione completa richiede PHP con `pdo_sqlite`. Prima della distribuzione verificare anche il comportamento MySQL, fare un backup del database e predisporre una credenziale dedicata alle eventuali integrazioni future.
 
+## Esercito del campionato
+
+L'iscrizione a un campionato richiede di scegliere un esercito. Le 34 voci comprendono i capitoli Space Marine e sono raggruppate in Xenos, Chaos, Imperium e Adeptus Astartes. L'esercito scelto compare nella classifica, negli incontri e nell'email di iscrizione. Ogni campionato conserva la propria scelta. Confermare di nuovo un'iscrizione mantiene l'esercito già registrato.
+
+Al primo accesso dopo l'aggiornamento, la migrazione aggiunge `army` a `w40k_league_members`. Gli iscritti precedenti mantengono il valore vuoto. Elenco verificato il 17 novembre 2026 sulle categorie e sui capitoli pubblicati da Warhammer Community. [Elenco ufficiale](https://www.warhammer-community.com/en-gb/topics/space-marines/)
+
 ## Email di Warmer su Aruba
 
 - Con la posta attiva, la registrazione con **codice amico** chiede anche l'indirizzo email e invia il link di verifica automaticamente.
