@@ -36,6 +36,8 @@ async function request(name, data) {
 }
 
 const player = id => escapeHtml(state.users.find(user => user.id === id)?.name || 'Giocatore');
+const armyLabel = id => Object.values(state.armyGroups).find(group => group[state.armies[id]])?.[state.armies[id]] || '';
+const playerArmy = id => armyLabel(id) ? `<small class="player-army">${escapeHtml(armyLabel(id))}</small>` : '';
 const confirmed = fixture => fixture.result && !fixture.result.void;
 const playable = fixture => fixture.b !== null;
 const mine = fixture => fixture.lineups !== null;
@@ -79,8 +81,13 @@ function renderOverview(total, current) {
       <strong class="display-number">${players.length}</strong>
       <p>${players.length === 1 ? 'Giocatore iscritto' : 'Giocatori iscritti'}</p>`;
     actions.innerHTML = league.joined
-      ? '<p>Iscrizione confermata.</p>'
-      : `<form>${action('leagueJoin', 'Iscriviti al campionato')}</form>`;
+      ? `<p>Iscrizione confermata.${armyLabel(user.id) ? ' · ' + escapeHtml(armyLabel(user.id)) : ''}</p>`
+      : `<form class="army-signup"><label>Il tuo esercito<select name="army" required>
+          <option value="">Scegli l’esercito</option>
+          ${Object.entries(state.armyGroups).map(([group, armies]) => `<optgroup label="${escapeHtml(group)}">
+            ${Object.entries(armies).map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('')}
+          </optgroup>`).join('')}
+        </select></label>${action('leagueJoin', 'Iscriviti al campionato')}</form>`;
     if (user.admin && players.length < 2) {
       actions.insertAdjacentHTML('beforeend', '<p>Servono almeno due iscritti per pubblicare il calendario.</p>');
     }
@@ -130,7 +137,7 @@ function renderStandings() {
     <tbody>${standings.map(row => {
       const podium = matches.length && row.rank <= 3 ? ` podium podium-${row.rank}` : '';
       return `<tr class="${row.id === state.user.id ? 'you' : ''}${podium}">
-        <td class="placement"><span>${row.rank}</span></td><th scope="row">${escapeHtml(row.name)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}</th><td>${row.played}</td>
+        <td class="placement"><span>${row.rank}</span></td><th scope="row">${escapeHtml(row.name)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}${playerArmy(row.id)}</th><td>${row.played}</td>
         <td>${row.diff > 0 ? '+' : ''}${row.diff}</td><td>${row.points}</td></tr>`;
     }).join('')}</tbody>
     </table>
@@ -197,7 +204,7 @@ function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
     <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
   const status = fixture.result?.void ? 'Annullata' : state.league.closed ? 'Non disputata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
-  const contents = `<span class="pair"><strong>${player(fixture.a)}</strong><span>vs</span><strong>${player(fixture.b)}</strong></span>
+  const contents = `<span class="pair"><strong>${player(fixture.a)}${playerArmy(fixture.a)}</strong><span>vs</span><strong>${player(fixture.b)}${playerArmy(fixture.b)}</strong></span>
     <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
   if (!playable(fixture)) {
     return `<div class="fixture row bye"><span>${player(fixture.a)}</span><span>Riposa</span></div>`;

@@ -3,6 +3,29 @@ declare(strict_types=1);
 
 const LEAGUE_LIFECYCLE_ACTIONS=['leagueClose','leagueReopen','leaguePause','leagueResume'];
 
+// Factions and chapters listed by Warhammer Community, checked 2026-11-17.
+const LEAGUE_ARMIES=[
+    'Xenos'=>[
+        'aeldari'=>'Aeldari','drukhari'=>'Drukhari','genestealer_cults'=>'Genestealer Cults',
+        'leagues_of_votann'=>'Leagues of Votann','necrons'=>'Necrons','orks'=>'Orks',
+        'tau_empire'=>"T'au Empire",'tyranids'=>'Tyranids'
+    ],
+    'Chaos'=>[
+        'chaos_daemons'=>'Chaos Daemons','chaos_knights'=>'Chaos Knights','chaos_space_marines'=>'Chaos Space Marines',
+        'death_guard'=>'Death Guard','emperors_children'=>"Emperor's Children",'thousand_sons'=>'Thousand Sons','world_eaters'=>'World Eaters'
+    ],
+    'Imperium'=>[
+        'adepta_sororitas'=>'Adepta Sororitas','adeptus_custodes'=>'Adeptus Custodes','adeptus_mechanicus'=>'Adeptus Mechanicus',
+        'astra_militarum'=>'Astra Militarum','imperial_agents'=>'Imperial Agents','imperial_knights'=>'Imperial Knights'
+    ],
+    'Adeptus Astartes'=>[
+        'space_marines'=>'Space Marines','black_templars'=>'Black Templars','blood_angels'=>'Blood Angels',
+        'dark_angels'=>'Dark Angels','deathwatch'=>'Deathwatch','grey_knights'=>'Grey Knights','imperial_fists'=>'Imperial Fists',
+        'iron_hands'=>'Iron Hands','raven_guard'=>'Raven Guard','salamanders'=>'Salamanders','space_wolves'=>'Space Wolves',
+        'ultramarines'=>'Ultramarines','white_scars'=>'White Scars'
+    ]
+];
+
 function leagueSummaries(array $db, string $player): array {
     $members=[];
     foreach($db['league_members'] as $entry) $members[$entry['league_id']][$entry['player']]=true;
@@ -70,10 +93,13 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         ];
     }
     usort($fixtures,fn($a,$b)=>$a['round']<=>$b['round'] ?: strcmp($a['id'],$b['id']));
+    $members=array_filter($db['league_members'],fn($entry)=>$entry['league_id']===($league['id']??null));
     return [
         'league'=>$league,'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],
         'today'=>date('Y-m-d'),'users'=>array_map('publicUser',$db['users']),
         'players'=>$league ? leaguePlayers($db,$league['id']) : [],
+        'armies'=>array_column(array_values($members),'army','player'),
+        'armyGroups'=>LEAGUE_ARMIES,
         'fixtures'=>$fixtures
     ];
 }
@@ -162,9 +188,12 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
         $memberId=$league['id'].':'.$player;
         if(in_array($memberId,array_column($db['league_members'],'id'),true)) return null;
         if($league['start']) fail('Le iscrizioni sono chiuse.',409);
-        $db['league_members'][]=['id'=>$memberId,'league_id'=>$league['id'],'player'=>$player,'joined'=>date(DATE_ATOM)];
+        $army=field($in,'army',64);
+        $armies=array_merge(...array_values(LEAGUE_ARMIES));
+        if(!isset($armies[$army])) fail('Scegli un esercito dall’elenco.');
+        $db['league_members'][]=['id'=>$memberId,'league_id'=>$league['id'],'player'=>$player,'joined'=>date(DATE_ATOM),'army'=>$army];
         notifyLeague($db,$mail,$league,[$player],'joined:'.$memberId,'Iscrizione confermata',
-            'La tua iscrizione è confermata. Troverai il calendario nella pagina del campionato quando verrà pubblicato.','Apri il campionato');
+            'La tua iscrizione con '.$armies[$army].' è confermata. Troverai il calendario nella pagina del campionato quando verrà pubblicato.','Apri il campionato');
         return null;
     }
     if($action==='leagueStart') {
