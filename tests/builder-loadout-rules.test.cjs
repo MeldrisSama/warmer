@@ -13,3 +13,13 @@ test('All-model replacements change the entire group atomically and restore it a
 test('Client shares the per-option footnote limit and allows the larger squad threshold',()=>{
   const c=context('duplicate');assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',1)",c),true);assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,'choice1',1)",c),false);assert.equal(vm.runInContext("beResize(entry,6)",c),true);assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',1)",c),true);assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,'choice1',1)",c),false);assert.equal(vm.runInContext("beResize(entry,3)",c),false);
 });
+test('Optional model controls transfer a body model, preserve ownership and use named-model quotas',()=>{
+  const c=context('flex');assert.equal(vm.runInContext('beResize(entry,6)',c),true);
+  assert.equal(vm.runInContext("const next=beModelChange(unit,entry,'m1',1);entry.loadoutSelections=next;beSync(unit,entry);entry.loadoutSelections._models.m0",c),5);
+  assert.equal(vm.runInContext('entry.loadoutSelections._models.m1',c),1);
+  assert.equal(vm.runInContext("beModelChange(unit,entry,'m1',1)",c),null);
+  assert.equal(vm.runInContext("const extra=unit.loadoutRecipe.groups[4];beCapacity(unit.loadoutRecipe,extra,6,entry.loadoutSelections._models)",c),1);
+  assert.equal(vm.runInContext("beChangeChoice(entry,extra.id,'choice0',1)",c),true);
+  assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,extra,'choice0',1)",c),false);
+  assert.equal(vm.runInContext('beResize(entry,6);entry.loadoutSelections._models.m1',c),1);
+});

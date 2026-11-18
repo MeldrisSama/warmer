@@ -232,6 +232,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-automation.php'), join(application, 'builder-automation.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-loadout-rules.php'), join(application, 'builder-loadout-rules.php'));
+  await copyFile(join(root, 'Cangiolone.com/builder-source-fixes.php'), join(application, 'builder-source-fixes.php'));
   const setupCode = 'isolated-test-setup';
   const hash = createHash('sha256').update(setupCode).digest('hex');
   // Never copy the deployed configuration or existing uploads into the test app.

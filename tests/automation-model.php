@@ -16,6 +16,8 @@ $term['weapons']=[['line'=>'1','name'=>'Power Fist','type'=>'Melee','A'=>'3','S'
 $term['enhancements']=[['id'=>'upgrade','name'=>'Synthetic Upgrade','upgrade'=>'true','cost'=>'10','description'=>'This unit’s ranged attacks have +1 A.']];
 $term['abilities']=[['name'=>'Synthetic lethal','description'=>'This unit’s attacks have [LETHAL HITS].']];
 $raw['units'][]=$term;$raw['factions'][0]['unitIds'][]='term';
+$flex=$term;$flex['id']='flex';$flex['name']='Flexible squad';$flex['composition']=[['description'=>'3-6 Veterans'],['description'=>'0-1 Specialist']];$flex['options']=[];$flex['points']=[['models'=>3,'points'=>60,'first'=>1,'last'=>200],['models'=>6,'points'=>110,'first'=>1,'last'=>200]];$flex['enhancements']=[];
+$raw['units'][]=$flex;$raw['factions'][0]['unitIds'][]='flex';
 $dw=$raw['units'][1];$dw['id']='deathwatch';$dw['keywords']='Imperium, Adeptus Astartes, Deathwatch, Kill Team';$dw['name']='DW test';$raw['units'][]=$dw;
 $agent=$raw['units'][1];$agent['id']='agent';$agent['factionId']='aoi';$agent['name']='Agent test';$agent['keywords']='Imperium, Character, Agents of the Imperium';$raw['units'][]=$agent;
 $catalog=builderNormalizeCatalog($raw);$units=array_column($catalog['units'],null,'id');$recipe=$units['term']['loadoutRecipe'];
@@ -46,4 +48,10 @@ builderHandle($pdo,'builderDefaultDelete',$other,['unitId'=>'term']);expect(coun
 $dwArmy=$army;$dwArmy['entries']=[['entryId'=>'dw_one','unitId'=>'deathwatch','models'=>1,'weaponCounts'=>[],'enhancementIds'=>[]]];
 expect(count(builderValidateV2($catalog,$dwArmy)['errors'])===1,'DW allowed without detachment');
 $dwArmy['detachmentIds']=['dw'];expect(builderValidateV2($catalog,$dwArmy)['errors']===[],'DW not unlocked by support');
+$flexEntry=['entryId'=>'flex_one','unitId'=>'flex','models'=>6,'weaponCounts'=>[],'enhancementIds'=>[],'loadoutSelections'=>['_models'=>['m0'=>5,'m1'=>1]]];
+$flexArmy=$army;$flexArmy['name']='Composition persistence';$flexArmy['entries']=[$flexEntry];
+$flexSaved=roundtrip(builderHandle($pdo,'builderSave',$me,$flexArmy)['army']);expect($flexSaved['entries'][0]['loadoutSelections']['_models']===['m0'=>5,'m1'=>1],'API lost optional model allocation');
+builderHandle($pdo,'builderDefaultSave',$me,['unitId'=>'flex','catalogId'=>$import['catalogId'],'factionId'=>'sm_dark_angels','entry'=>$flexEntry]);
+$defaults=roundtrip(builderHandle($pdo,'builderDefaults',$me)['defaults']);expect($defaults[0]['entry']['loadoutSelections']['_models']===['m0'=>5,'m1'=>1]||$defaults[1]['entry']['loadoutSelections']['_models']===['m0'=>5,'m1'=>1],'Personal default lost model allocation');
+$flexArmy['entries'][0]['loadoutSelections']['_models']=['m0'=>4,'m1'=>2];$rejected=false;try{builderHandle($pdo,'builderSave',$me,$flexArmy);}catch(BuilderInputError){$rejected=true;}expect($rejected,'API accepts more optional models than the datasheet');
 echo json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);

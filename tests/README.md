@@ -1,5 +1,7 @@
 # Regression tests
 
+`builder-loadout-rules.test.cjs` / `loadout-rules-model.php` cover bundle consumption, independent row quotas, all-model swaps, footnote thresholds, locked and incompatible equipment, optional slots, numbered bearers, reverse-order dependencies, shared replace-or-add limits and the verified missing plasma profiles. Optional model allocation is preserved through API save/defaults in `automation-model.php`; tampered counts are rejected. Include `tests/builder-loadout-rules.test.cjs` in the full command below.
+
 Latest refinement checks cover mandatory Warlord defaults and server validation, collapsed categories and search, independent Build vs combined Play sheets, dismissible errors that preserve validation, backdrop dismissal and the compact options menu for fixed units. The units export includes army metadata and selected upgrades while omitting weapon details.
 
 Archive groups and creation popups are covered by `builder-archive.test.cjs`. Unified sheet ordering, unavailable Upgrade sections, price deduplication, scroll reset and minimal exports are covered by `builder-refinements.test.cjs`. `scripts/render-builder-preview.cjs <catalog.json> .taste-skill/builder-review` isolates builder snapshots from other visual reviews (keep the output at that directory depth for relative asset paths).

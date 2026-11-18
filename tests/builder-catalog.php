@@ -34,7 +34,7 @@ if (!empty($catalog['coreRules'])) {
     checkCatalog(($core['LEADER']['reference']??'')==='24.22','Wrong Leader reference');
     foreach ($core as $rule)checkCatalog(!str_contains($rule['description'],'ShowFluff')&&!str_contains($rule['name'],'24.'),'Raw heading or lore markup in core library');
 }
-if (str_contains($catalog['version'],'b5-')) {
+if (preg_match('/b[56]-/',$catalog['version'])) {
     checkCatalog(!array_filter($catalog['stratagems'],static fn($s)=>preg_match('/boarding|combat patrol/i',$s['type']??'')),'Stratagems from other modes leaked');
     $raven=array_values(array_filter($units,static fn($u)=>$u['name']==='Ravenwing Command Squad'))[0];
     checkCatalog(builderGearLimit($raven,'2',3)===1,'Ravenwing launcher limit incorrect');

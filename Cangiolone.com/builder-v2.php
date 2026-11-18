@@ -48,6 +48,7 @@ function builderNormalizeV2(array $raw): array {
         if (!is_array($u['points']??[]) || count($u['points']??[])>100) builderInvalid('Costi non validi.');
         foreach ($u['points']??[] as $p) $clean['points'][]=['models'=>builderInt($p['models']??null,'modelli',1,200),'points'=>builderInt($p['points']??null,'punti',0,10000),'first'=>builderInt($p['first']??1,'prima copia',1,200),'last'=>builderInt($p['last']??200,'ultima copia',1,200)];
         if ($enriched) {
+            $clean=builderApplySourceFixes($clean);
             $texts=array_column($out['texts'],'description','id');
             $description=static fn($r)=>$r['description']??($texts[$r['descriptionRef']??'']??'');
             $clean['loadoutRecipe']=builderCompileLoadout($clean,$description);
@@ -140,7 +141,7 @@ function builderValidateV2(array $catalog, array $in): array {
         foreach ($wc as $line=>$quantity) if ($quantity>0&&!empty($knownWeapons[$line]['enhancement_id'])&&!in_array($knownWeapons[$line]['enhancement_id'],$enhancements,true)) builderInvalid('Arma dedicata senza il potenziamento richiesto.');
         foreach ($knownWeapons as $line=>$weapon) {
             if (!empty($weapon['enhancement_id'])) {if (in_array($weapon['enhancement_id'],$enhancements,true))$wc[$line]=1;}
-            elseif (($wc[$line]??0)>builderGearLimit($u,(string)$line,$models)) builderInvalid('Limite equipaggiamento superato: '.$weapon['name']);
+            elseif (($wc[$line]??0)>builderGearLimit($u,(string)$line,$models,$loadout['selections']['_models']??[])) builderInvalid('Limite equipaggiamento superato: '.$weapon['name']);
         }
         $enhancementModels=$entry['enhancementModels']??[];
         if (!is_array($enhancementModels)||count($enhancementModels)>20)builderInvalid('Portatori dei potenziamenti non validi.');

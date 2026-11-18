@@ -170,7 +170,7 @@ if (isset($argv[4])) {
     }
     if (count($coreRules)<30) throw new RuntimeException('Libreria Core Rules incompleta: verificare la struttura della fonte.');
 }
-$catalog=builderNormalizeCatalog(['schemaVersion'=>2,'featuresVersion'=>3,'edition'=>'11','version'=>exportRows('Last_update')[0]['last_update'].' · b5-'.substr(hash('sha256',file_get_contents(__FILE__).file_get_contents(__DIR__.'/../Cangiolone.com/builder-automation.php')),0,8),'source'=>'Wahapedia','units'=>$units,'factions'=>array_values($factions),'texts'=>array_values($texts),'stratagems'=>array_values($stratagemLibrary),'coreRules'=>array_values($coreRules)]);
+$catalog=builderNormalizeCatalog(['schemaVersion'=>2,'featuresVersion'=>3,'edition'=>'11','version'=>exportRows('Last_update')[0]['last_update'].' · b6-'.substr(hash('sha256',file_get_contents(__FILE__).file_get_contents(__DIR__.'/../Cangiolone.com/builder-automation.php').file_get_contents(__DIR__.'/../Cangiolone.com/builder-loadout-rules.php').file_get_contents(__DIR__.'/../Cangiolone.com/builder-source-fixes.php')),0,8),'source'=>'Wahapedia','units'=>$units,'factions'=>array_values($factions),'texts'=>array_values($texts),'stratagems'=>array_values($stratagemLibrary),'coreRules'=>array_values($coreRules)]);
 $json=json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
 if (strlen($json)>28000000) throw new RuntimeException('Catalogo oltre 28 MB.');
 if (file_put_contents($destination,$json)===false) throw new RuntimeException('Scrittura catalogo fallita.');

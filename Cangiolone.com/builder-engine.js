@@ -1,13 +1,24 @@
 'use strict';
 
-function beCapacity(recipe,group,models){
-  if(group.unitGear)return group.per?Math.floor(models/group.per):1;
+function beModelCounts(recipe,models,requested=null){
+  if(!recipe.flexibleModels)return {};
+  const counts=requested?builderClone(requested):Object.fromEntries(recipe.models.map(m=>[m.id,m.min]));
+  if(!requested){let left=models-Object.values(counts).reduce((a,b)=>a+b,0);for(const m of [...recipe.models].sort((a,b)=>(b.max-b.min)-(a.max-a.min))){const n=Math.min(Math.max(0,left),m.max-counts[m.id]);counts[m.id]+=n;left-=n;}}
+  if(Object.keys(counts).length!==recipe.models.length||recipe.models.some(m=>!Number.isInteger(counts[m.id])||counts[m.id]<m.min||counts[m.id]>m.max)||Object.values(counts).reduce((a,b)=>a+b,0)!==models)return null;
+  if((recipe.compositionRules||[]).some(r=>counts[r.model]>=r.count&&counts[r.requires]<r.minimum))return null;
+  return counts;
+}
+function beCapacity(recipe,group,models,modelCounts=null){
+  if(group.unitGear){const population=group.perModel?beCapacity(recipe,{model:group.perModel,per:0},models,modelCounts):models;return group.per?Math.floor(population/group.per):1;}
   const fixed=recipe.models.filter(m=>!m.variable).reduce((sum,m)=>sum+m.fixed,0),model=recipe.models.find(m=>m.id===group.model);
-  const available=model.countsBySize?.[models]??(model.variable?Math.max(0,models-fixed):model.fixed);
+  if(recipe.flexibleModels&&!modelCounts)modelCounts=beModelCounts(recipe,models);
+  const available=modelCounts?.[model.id]??model.countsBySize?.[models]??(model.variable?Math.max(0,models-fixed):model.fixed);
   return group.per?Math.min(available,Math.floor(models/group.per)):available;
 }
 function beSelections(unit,models){
-  return Object.fromEntries((unit.loadoutRecipe?.groups||[]).map(g=>[g.id,{[g.default]:beCapacity(unit.loadoutRecipe,g,models)}]));
+  const recipe=unit.loadoutRecipe,counts=recipe?.flexibleModels?beModelCounts(recipe,models):null;
+  const selections=Object.fromEntries((recipe?.groups||[]).map(g=>[g.id,{[g.default]:beCapacity(recipe,g,models,counts)}]));
+  if(counts)selections._models=counts;return selections;
 }
 function beManagedWeapon(recipe,line){
   const weapon=recipe?.weapons?.find(w=>w.lines.includes(line));
@@ -31,17 +42,17 @@ function beSync(unit,entry){
 function beChoiceAllowed(unit,entry,group,choiceId,delta){
   const current=entry.loadoutSelections?.[group.id]||{},n=current[choiceId]||0;
   if(delta<0)return choiceId!==group.default&&n>0&&Boolean(beNextChoices(unit,entry,group,choiceId,delta));
-  if(n>=beCapacity(unit.loadoutRecipe,group,entry.models))return false;
+  if(n>=beCapacity(unit.loadoutRecipe,group,entry.models,entry.loadoutSelections?._models))return false;
   if(choiceId!==group.default&&group.sharedPer){
     const used=unit.loadoutRecipe.groups.filter(g=>g.sharedKey===group.sharedKey).reduce((s,g)=>s+Object.entries(entry.loadoutSelections?.[g.id]||{}).filter(([id])=>id!==g.default).reduce((a,[,q])=>a+q,0),0);
     if(used>=Math.floor(entry.models/group.sharedPer)&&(current[group.default]||0)>0)return false;
   }
   return Object.entries(current).some(([id,q])=>id!==choiceId&&q>0)&&Boolean(beNextChoices(unit,entry,group,choiceId,delta));
 }
-function beRuleLimit(rule,models){
+function beRuleLimit(rule,models,population=null){
   if(models<(rule.minimum||0)||rule.maximum!=null&&models>rule.maximum)return 0;
   if(rule.maxAt&&models>=rule.maxAt.models)return rule.maxAt.max;
-  return rule.per?Math.floor(models/rule.per)*(rule.max??1):(rule.max??1000);
+  return rule.per?Math.floor((population??models)/rule.per)*(rule.max??1):(rule.max??1000);
 }
 function beRuleErrors(recipe,selections,models){
   const errors=[];
@@ -49,10 +60,11 @@ function beRuleErrors(recipe,selections,models){
     let used=0,capacity=0;
     for(const g of recipe.groups){
       if(!g.choices.some(c=>c.rules?.includes(rule.id)))continue;
-      capacity+=beCapacity(recipe,g,models);
+      capacity+=beCapacity(recipe,g,models,selections?._models);
       for(const c of g.choices)if(c.rules?.includes(rule.id))used+=selections?.[g.id]?.[c.id]||0;
     }
-    if(used>beRuleLimit(rule,models))errors.push('Limite condiviso della dotazione superato.');
+    const population=rule.perModel?beCapacity(recipe,{model:rule.perModel,per:0},models,selections?._models):null;
+    if(used>beRuleLimit(rule,models,population))errors.push('Limite condiviso della dotazione superato.');
     if(rule.all&&used!==0&&used!==capacity)errors.push('La sostituzione deve riguardare tutti i modelli.');
   }
   return errors;
@@ -63,7 +75,7 @@ function beNextChoices(unit,entry,group,choiceId,delta){
   if(all){
     for(const g of recipe.groups.filter(g=>g.choices.some(c=>c.rules?.includes(all.id)))){
       const c=delta<0?g.choices.find(c=>c.id===g.default):g.choices.find(c=>c.name===choice.name&&c.rules?.includes(all.id));
-      if(!c)return null;next[g.id]={[c.id]:beCapacity(recipe,g,entry.models)};
+      if(!c)return null;next[g.id]={[c.id]:beCapacity(recipe,g,entry.models,next._models)};
     }
   }else if(delta>0){
     const others=Object.entries(current).filter(([id,n])=>id!==choiceId&&n>0);
@@ -82,7 +94,7 @@ function beWeaponLimit(unit,entry,line){
   const groups=recipe.groups.filter(g=>g.choices.some(c=>c.weapons[w.id]));
   if(!groups.length)return entry.models;
   const shared=new Set();let max=0;
-  for(const g of groups){if(g.sharedPer&&g.choices.some(c=>c.id!==g.default&&c.weapons[w.id])){if(shared.has(g.sharedKey))continue;shared.add(g.sharedKey);max+=Math.floor(entry.models/g.sharedPer);}else max+=beCapacity(recipe,g,entry.models)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}
+  for(const g of groups){if(g.sharedPer&&g.choices.some(c=>c.id!==g.default&&c.weapons[w.id])){if(shared.has(g.sharedKey))continue;shared.add(g.sharedKey);max+=Math.floor(entry.models/g.sharedPer);}else max+=beCapacity(recipe,g,entry.models,entry.loadoutSelections?._models)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}
   return max;
 }
 function beSyncEnhancements(unit,entry){
@@ -103,6 +115,7 @@ function beWeaponOwners(unit,entry,weapon){
 function beGearErrors(entry){
   const unit=wbUnits().get(entry.unitId),errors=[];
   if(entry.loadoutSelections)errors.push(...beRuleErrors(unit.loadoutRecipe,entry.loadoutSelections,entry.models).map(x=>unit.name+': '+x));
+  if(unit.loadoutRecipe?.flexibleModels&&entry.loadoutSelections&&!beModelCounts(unit.loadoutRecipe,entry.models,entry.loadoutSelections._models))errors.push(unit.name+': composizione dei modelli non valida.');
   for(const w of unit.weapons)if((entry.weaponCounts[w.line]||0)>beWeaponLimit(unit,entry,w.line))errors.push(`${unit.name}: limite superato per ${w.name}.`);
   for(const g of unit.loadoutRecipe?.groups||[])if(g.sharedPer){const used=unit.loadoutRecipe.groups.filter(x=>x.sharedKey===g.sharedKey).reduce((s,x)=>s+Object.entries(entry.loadoutSelections?.[x.id]||{}).filter(([id])=>id!==x.default).reduce((n,[,q])=>n+q,0),0);if(used>Math.floor(entry.models/g.sharedPer)){errors.push(`${unit.name}: limite condiviso delle sostituzioni superato.`);break;}}
   if(entry.warlord&&!/\bCharacter\b/i.test(unit.keywords))errors.push(`${unit.name}: solo un Character può essere Warlord.`);
@@ -125,8 +138,13 @@ function beResize(entry,models){
   if(!entry.loadoutSelections||!recipe?.groups){entry.models=models;return true;}
   if(recipe.models.filter(m=>!m.variable).reduce((sum,m)=>sum+m.fixed,0)>models){notify('La taglia è inferiore ai modelli obbligatori.',true);return false;}
   const next=builderClone(entry.loadoutSelections);
+  if(recipe.flexibleModels){
+    const counts=builderClone(next._models||beModelCounts(recipe,entry.models));let left=models-entry.models;
+    for(const m of [...recipe.models].sort((a,b)=>(b.max-b.min)-(a.max-a.min))){const n=left>0?Math.min(left,m.max-counts[m.id]):-Math.min(-left,counts[m.id]-m.min);counts[m.id]+=n;left-=n;}
+    if(!beModelCounts(recipe,models,counts)){notify('Taglia non consentita dalla composizione.',true);return false;}next._models=counts;
+  }
   for(const group of recipe.groups){
-    const current=next[group.id],capacity=beCapacity(recipe,group,models),alternatives=Object.entries(current).filter(([id,n])=>id!==group.default&&n>0);
+    const current=next[group.id],capacity=beCapacity(recipe,group,models,next._models),alternatives=Object.entries(current).filter(([id,n])=>id!==group.default&&n>0);
     const total=alternatives.reduce((sum,[,n])=>sum+n,0),max=Math.min(capacity,group.choicePer?Math.floor(models/group.choicePer):capacity);
     if(total>max){if(alternatives.length>1){notify('Riduci le dotazioni alternative prima di ridurre la squadra.',true);return false;}if(alternatives.length)current[alternatives[0][0]]=max;}
     current[group.default]=capacity-Object.entries(current).filter(([id])=>id!==group.default).reduce((sum,[,n])=>sum+n,0);
@@ -138,6 +156,21 @@ function beResize(entry,models){
 function beStandard(entry){
   const unit=wbUnits().get(entry.unitId);if(!unit.loadoutRecipe?.groups){notify('Dotazione guidata non disponibile per questa scheda.',true);return false;}
   entry.loadoutSelections=beSelections(unit,entry.models);beSync(unit,entry);return true;
+}
+function beModelChange(unit,entry,modelId,delta){
+  const recipe=unit.loadoutRecipe;if(!recipe?.flexibleModels||!entry.loadoutSelections)return null;
+  const body=[...recipe.models].filter(m=>m.variable).sort((a,b)=>(b.max-b.min)-(a.max-a.min))[0];
+  if(!body||body.id===modelId||![1,-1].includes(delta))return null;
+  const next=builderClone(entry.loadoutSelections),counts=next._models||beModelCounts(recipe,entry.models);if(!counts)return null;
+  counts[modelId]+=delta;counts[body.id]-=delta;if(!beModelCounts(recipe,entry.models,counts))return null;next._models=counts;
+  for(const g of recipe.groups){const cap=beCapacity(recipe,g,entry.models,counts),other=Object.entries(next[g.id]).filter(([id])=>id!==g.default).reduce((a,[,n])=>a+n,0);if(other>cap)return null;next[g.id][g.default]=cap-other;}
+  return beRuleErrors(recipe,next,entry.models).length?null:next;
+}
+function beCompositionHtml(unit,entry){
+  const recipe=unit.loadoutRecipe;if(!recipe?.flexibleModels||!entry.loadoutSelections)return '';
+  const counts=entry.loadoutSelections._models||beModelCounts(recipe,entry.models),body=[...recipe.models].filter(m=>m.variable).sort((a,b)=>(b.max-b.min)-(a.max-a.min))[0];
+  if(!counts)return '<p class="wb-warning">Composizione da verificare.</p>';
+  return `<details><summary>Modelli della squadra</summary>${recipe.models.map(m=>`<div class="wb-loadout-choice"><span>${esc(m.name)}</span><div class="wb-quantity">${m.variable&&m.id!==body?.id?`<button type="button" data-wb-model="${m.id}" data-wb-model-step="-1" aria-label="Diminuisci ${esc(m.name)}" ${beModelChange(unit,entry,m.id,-1)?'':'disabled'}>−</button><output>${counts[m.id]}</output><button type="button" data-wb-model="${m.id}" data-wb-model-step="1" aria-label="Aumenta ${esc(m.name)}" ${beModelChange(unit,entry,m.id,1)?'':'disabled'}>+</button>`:`<output>${counts[m.id]}</output>`}</div></div>`).join('')}</details>`;
 }
 function beLoadoutHtml(unit,entry){
   const recipe=unit.loadoutRecipe;
@@ -214,12 +247,21 @@ function beHasGear(unit,entry,name){
   const gear=recipe.weapons.find(w=>w.ability===name);if(!gear)return false;
   return recipe.groups.some(g=>g.choices.some(c=>c.weapons[gear.id]&&(entry.loadoutSelections[g.id]?.[c.id]||0)>0));
 }
+function beModelName(name){
+  return String(name).replace(/\s+models?$/i,'').replace(/^(?:the|every|each|a|an|Saint) /i,'').replace(/\b[a-z]{4,}\b/gi,word=>{
+    word=word.toLowerCase();if(word==='chaos')return word;if(word==='knives')return 'knife';if(word==='wolves')return 'wolf';if(word.endsWith('men'))return word.slice(0,-3)+'man';if(word.endsWith('heroes'))return word.slice(0,-2);if(word.endsWith('ies'))return word.slice(0,-3)+'y';return word.replace(/s+$/,'');
+  }).toLowerCase().replace(/[^a-z0-9]/g,'').replace(/s+$/,'').replace('hastariifusiller','hastariifusilier');
+}
 function beModelVariants(unit,entry){
-  const recipe=unit.loadoutRecipe,key=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'').replace(/s$/,'');
-  return unit.models.flatMap(base=>{
-    const m=recipe?.models.find(m=>key(m.name)===key(base.name));
-    if(!m||!entry.loadoutSelections)return [{...base}];
-    const groups=recipe.groups.filter(g=>g.model===m.id),capacity=groups.length?beCapacity(recipe,groups[0],entry.models):m.fixed;
+  const recipe=unit.loadoutRecipe,key=beModelName;
+  return unit.models.flatMap(sourceBase=>{
+    const matched=recipe?.models.filter(m=>key(m.baseName||m.name)===key(sourceBase.name));
+    if(!matched?.length||!entry.loadoutSelections)return [{...sourceBase}];
+    return matched.flatMap(m=>{
+    let base={...sourceBase};
+    const groups=recipe.groups.filter(g=>g.model===m.id),capacity=groups.length?beCapacity(recipe,groups[0],entry.models,entry.loadoutSelections._models):m.fixed;
+    if(!capacity)return [];
+    if(m.baseName)base={...base,name:m.name,_baseName:base.name};
     const equipped=[];
     for(const g of groups)for(const c of g.choices)for(const [id,per] of Object.entries(c.weapons)){
       const gear=recipe.weapons.find(w=>w.id===id&&w.ability),n=(entry.loadoutSelections[g.id]?.[c.id]||0)*per;
@@ -230,6 +272,7 @@ function beModelVariants(unit,entry){
     if(equipped.length>1&&equipped.some(g=>g.n!==capacity))return [{...base,_count:capacity}];
     const n=equipped[0].n,names=equipped.map(g=>g.name),out=[{...base,name:base.name+' · '+names.join(', '),_baseName:base.name,_gear:names,_count:n}];
     if(n<capacity)out.push({...base,_count:capacity-n});return out;
+    });
   });
 }
 function beEffectControls(entry){
