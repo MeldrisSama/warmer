@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/builder-loadout-rules.php';
 
 // Import-time interpretation is deliberately conservative. Unrecognised prose stays visible.
 function builderRuleText(string $html): string {
@@ -26,6 +27,14 @@ function builderWeaponKey(string $name): string {
     return strtolower(preg_replace('/[^a-z0-9]/i','',str_replace(['’','‘'],"'",$name)));
 }
 function builderCompileLoadout(array $unit, callable $description): array {
+    $sourceOptions=$unit['options'];$sourceRows=[];$expanded=[];
+    foreach($sourceOptions as $i=>$row){
+        $text=trim($description($row));
+        if(preg_match('/^(For every \d+ models in (?:this|the) unit|If this unit contains \d+ or (?:fewer|more) models):\s*\n(.*)$/is',$text,$m)){
+            foreach(preg_split('/\n*•\s*/',$m[2]) as $part){if(trim($part)==='')continue;$expanded[]=['description'=>$m[1].', '.trim($part)];$sourceRows[]=$i;}
+        }else{$expanded[]=$row;$sourceRows[]=$i;}
+    }
+    $unit['options']=$expanded;
     $weapons=[];$byName=[];
     foreach ($unit['weapons'] as $weapon) {
         if (!empty($weapon['enhancement_id'])||empty($weapon['name'])) continue;
@@ -34,94 +43,162 @@ function builderCompileLoadout(array $unit, callable $description): array {
         $weapons[$key]['lines'][]=$weapon['line'];$byName[$key]=$weapons[$key]['id'];
     }
     foreach ($unit['abilities'] as $ability) if (($ability['type']??'')==='Wargear') {
-        $key=builderWeaponKey($ability['name']);
+        $key=builderWeaponKey(preg_replace('/\s*\((?:Aura|Psychic)\)\s*$/i','',$ability['name']));
         if (!isset($weapons[$key])) $weapons[$key]=['id'=>'gear_'.substr(md5($key),0,12),'name'=>$ability['name'],'lines'=>[],'cost'=>0,'ability'=>$ability['name']];
     }
+    // Companions/tokens listed as equipment do not have a weapon profile of their own.
+    $equipmentText=implode("\n",array_map($description,$unit['options']));
+    if(preg_match_all('/\b(?:gun drone|marker drone|shield drone|guardian drone|missile drone|Ratling Battlemutt|Drakolithe|Watcher in the Dark|Grav-chutes|Grapnel Launchers|Plasmacyte|Tidewall defence platform)\b/i',$equipmentText,$gearNames))foreach(array_unique($gearNames[0]) as $name){
+        $key=builderWeaponKey($name);if(!isset($weapons[$key]))$weapons[$key]=['id'=>'gear_'.substr(md5($key),0,12),'name'=>$name,'lines'=>[],'cost'=>0];
+    }
     foreach ($unit['costs'] as $cost) if (preg_match('/^per (.+)$/i',$cost['description']??'',$m) && isset($weapons[builderWeaponKey($m[1])])) $weapons[builderWeaponKey($m[1])]['cost']=(int)($cost['cost']??0);
-    $parts=static function(string $text) use ($weapons): ?array {
-        $out=[];
-        foreach (preg_split('/;|\band\b/i',trim($text," .\n•")) as $part) {
-            $part=trim($part);if ($part==='') continue;
-            preg_match('/^(?:(\d+)\s+)?(.+)$/',$part,$m);$name=builderWeaponKey($m[2]);
-            $weapon=$weapons[$name]??$weapons[rtrim($name,'s')]??null;
-            if (!$weapon) return null;
-            $out[$weapon['id']]=(int)($m[1]?:1);
+    // Longest exact match first: "Knives and Fists" is one weapon, not two items.
+    $parse=static function(string $text) use (&$parse,$weapons): ?array {
+        $text=trim($text," .\n•\t\r");
+        preg_match('/^(?:(\d+)\s+)?(.+)$/s',$text,$m);
+        $key=builderWeaponKey($m[2]??'');
+        foreach($weapons as $candidateKey=>$weapon)if($key===$candidateKey||rtrim($key,'s')===rtrim($candidateKey,'s'))return [$weapon['id']=>(int)(($m[1]??'')?:1)];
+        if(preg_match('/^(\d+ )?(?:the |an? |additional )(.+)$/is',$text,$a))return $parse(($a[1]??'').$a[2]);
+        if(preg_match_all('/;|,|\band\b/i',$text,$breaks,PREG_OFFSET_CAPTURE))foreach($breaks[0] as [$separator,$offset]){
+            $a=$parse(substr($text,0,$offset));$b=$parse(substr($text,$offset+strlen($separator)));
+            if($a&&$b)return builderLoadoutSum($a,$b);
         }
-        return $out?:null;
+        return null;
     };
-    // A weapon name such as "Knives and Fists" must be matched before splitting a bundle.
-    $parse=static function(string $text) use ($parts,$weapons): ?array {
-        $text=trim($text," .\n•");preg_match('/^(?:(\d+)\s+)?(.+)$/',$text,$m);
-        $key=builderWeaponKey($m[2]??'');if (isset($weapons[$key])) return [$weapons[$key]['id']=>(int)(($m[1]??'')?:1)];
-        return $parts($text);
-    };
-    $models=[];$variable=0;
-    foreach ($unit['composition'] as $row) {
-        $composition=preg_replace('/\s*[–—-]\s*EPIC HERO$/u','',trim($description($row)));
+    $models=[];$variable=0;$compositions=[];$variants=[[]];
+    if(isset($unit['composition'][0])&&preg_match('/^One of the following:/i',trim($description($unit['composition'][0]))))return [];
+    foreach($unit['composition'] as $row){
+        $text=trim($description($row));
+        if(preg_match('/^(?:OR|or:)$/i',$text)){$variants[]=[];continue;}
+        $pieces=preg_split('/,\s*(?=\d)|\s+and\s+(?=\d)/',$text);
+        foreach($pieces as $piece)$variants[count($variants)-1][]=$piece;
+    }
+    foreach($variants[0] as $composition) {
+        $composition=preg_replace('/\s*[–—-]\s*EPIC HERO$/u','',trim($composition));
         $composition=preg_replace('/\s+models?\.?$/i','',$composition);
+        $composition=rtrim($composition,'.*');
         if (!preg_match('/^(\d+)(?:-(\d+))?\s+([^\n]+)$/i',$composition,$m)) continue;
         $isVariable=!empty($m[2]);$variable+=(int)$isVariable;
-        $models[]=['id'=>'m'.count($models),'name'=>$m[3],'fixed'=>$isVariable?0:(int)$m[1],'variable'=>$isVariable];
+        $models[]=['id'=>'m'.count($models),'name'=>$m[3],'fixed'=>$isVariable?0:(int)$m[1],'variable'=>$isVariable,'min'=>(int)$m[1],'max'=>$isVariable?(int)$m[2]:(int)$m[1]];
     }
-    if (!$models || $variable>1) return [];
+    if(!$models)return [];
+    if(count($variants)>1&&$variable===0){
+        $layouts=[];
+        foreach($variants as $variant){$layout=[];foreach($variant as $line)if(preg_match('/^(\d+) (.+?)\.?$/',$line,$m))$layout[builderLoadoutName($m[2])]=(int)$m[1];
+            if(count($layout)!==count($models))return [];$layouts[array_sum($layout)]=$layout;
+        }
+        foreach($models as &$model){$model['variable']=true;$model['countsBySize']=[];foreach($layouts as $size=>$layout){if(!isset($layout[builderLoadoutName($model['name'])]))return [];$model['countsBySize'][$size]=$layout[builderLoadoutName($model['name'])];}}unset($model);
+    }elseif($variable>1){
+        $minimum=array_sum(array_column($models,'min'));$maximum=array_sum(array_column($models,'max'));$ratio=$maximum/$minimum;
+        foreach($models as $model)if(!$model['min']||$model['max']/$model['min']!==$ratio)return [];
+        $sizes=array_unique(array_column($unit['points']??[],'models'));if(!$sizes)$sizes=[$minimum,$maximum];
+        foreach($models as &$model){$model['countsBySize']=[];foreach($sizes as $size){$n=$model['min']*$size/$minimum;if($n!=floor($n)||$n<$model['min']||$n>$model['max'])return [];$model['countsBySize'][$size]=(int)$n;}}unset($model);
+    }
     $groups=[];
-    if (preg_match_all('/((?:Every|This|The) [^:.]{1,100}?) is equipped with:\s*(.+?)(?:\.\s|\.$|$)/i',$unit['loadout'],$defaults,PREG_SET_ORDER)) {
+    if (preg_match_all('/(?:^|\n)((?:(?:Every|Each|This|The|A|An) )?[^:.\n]{1,240}?) (?:is|are both) equipped with:\s*(.+?)(?:\.\s|\.$|$)/is',$unit['loadout'],$defaults,PREG_SET_ORDER)) {
         foreach ($models as $model) foreach ($defaults as $default) {
-            $target=preg_replace('/^(Every|This|The) /i','',$default[1]);
+            $target=preg_replace('/^(Every|Each|This|The|A|An) /i','',$default[1]);
             $target=preg_replace('/\s+models?$/i','',$target);
             $targets=array_map(static fn($t)=>rtrim(builderWeaponKey(trim($t)),'s'),explode(' and ',$target));
-            if (!in_array(strtolower($target),['model','models'],true)&&!in_array(rtrim(builderWeaponKey($model['name']),'s'),$targets,true)) continue;
+            if (!in_array(strtolower($target),['model','models','unit'],true)&&builderLoadoutName($target)!==builderLoadoutName($model['name'])&&!in_array(rtrim(builderWeaponKey($model['name']),'s'),$targets,true)) continue;
             foreach (preg_split('/;|,/',$default[2]) as $item) {
-            $bundle=$parse($item);if (!$bundle) continue;
+            $bundle=strcasecmp(trim($item," ."),'nothing')===0?[]:$parse($item);if ($bundle===null) continue;
             $id=$model['id'].'_'.count($groups);
             $groups[]=['id'=>$id,'model'=>$model['id'],'name'=>$model['name'].' · '.trim(preg_replace('/^\d+\s+/','',$item)),'per'=>0,'default'=>'base','choices'=>[['id'=>'base','name'=>trim(preg_replace('/^\d+\s+/','',$item)),'weapons'=>$bundle]]];
             }
         }
     }
+    if(!$groups&&trim($unit['loadout'])===''&&!array_filter($unit['weapons'],static fn($w)=>!empty($w['name'])))foreach($models as $model)$groups[]=['id'=>$model['id'].'_none','model'=>$model['id'],'name'=>$model['name'],'per'=>0,'default'=>'base','choices'=>[['id'=>'base','name'=>'Nessun equipaggiamento','weapons'=>[]]]];
     if (!$groups) return [];
-    $covered=[];$optionTotal=0;
+    $covered=[];$optionTotal=0;$rules=[];$notes=[];$noteUsed=[];
+    foreach($unit['options'] as $i=>$row){
+        $text=trim($description($row));if(!preg_match('/^(\*+)\s*(.+)$/s',$text,$m))continue;
+        $body=str_replace('’',"'",$m[2]);$note=['index'=>$i,'mark'=>$m[1]];
+        if(preg_match('/^You cannot select the same (?:weapon|option).*?more than (once|twice)\s+per unit/i',$body,$n)){
+            $note['duplicateLimit']=$n[1]==='once'?1:2;
+            if(preg_match('/(?:contains|contains? only|contains? exactly) (\d+) models.*?more than twice\s+per unit/i',$body,$n))$note['maxAt']=['models'=>(int)$n[1],'max'=>2];
+        }elseif(preg_match('/^(?:That|This) model\'s (.+?) cannot be replaced\.?$/i',$body,$n))$note['locks']=$n[1];
+        elseif(preg_match('/^This weapon cannot be replaced\.?$/i',$body))$note['selfLock']=true;
+        elseif(preg_match('/^(?:(?:This|Each) model cannot have duplicates of these pieces of wargear|Maximum 1 per model)\.?$/i',$body))$note['uniquePerModel']=true;
+        elseif(preg_match('/^(?:A model can only take one of these options|You cannot select both of these options for the same model)\.?$/i',$body))$note['exclusive']=true;
+        else continue;
+        $notes[]=$note;
+    }
     foreach ($unit['options'] as $optionIndex=>$row) {
-        $text=trim($description($row));$per=0;$target='';$from='';$alternatives=[];$add=false;
+        $text=trim($description($row));$alternatives=[];
         // The source's no-options placeholder is not an equipment rule.
         if (preg_match('/^None\.?$/i',$text)) continue;
         $optionTotal++;
-        if (preg_match('/^For every (\d+) models in this unit, 1 (?:(.+?) )?model can (?:have their (.+?) replaced with (.+)|be equipped with (.+))\.?$/is',$text,$m)) {
-            $per=(int)$m[1];$target=($m[2]??'')?:'model';$from=$m[3]??'';$tail=($m[5]??'')?:($m[4]??'');$add=!empty($m[5]);
-        } elseif (preg_match('/^Any number of models can each have their (.+?) replaced with (.+)$/is',$text,$m)) {
-            $target='model';$from=$m[1];$tail=$m[2];
-        } elseif (preg_match('/^(?:Any number of (.+?) models can each|The (.+?) can) have their (.+?) replaced with (.+)$/is',$text,$m)) {
-            $target=($m[1]??'')?:$m[2];$from=$m[3];$tail=$m[4];
-        } elseif (preg_match('/^This model[’\']s (.+?) can be replaced with (.+)$/isu',$text,$m)) {
-            $target='model';$from=$m[1];$tail=$m[2];
-        } elseif (preg_match('/^(?:This model|Any model|Any number of models) can (?:each )?have (?:its|their) (.+?) replaced with (.+)$/isu',$text,$m)) {
-            $target='model';$from=$m[1];$tail=$m[2];
-        } elseif (preg_match('/^This model can be equipped with (.+)$/isu',$text,$m)) {
-            $target='model';$tail=$m[1];$add=true;
-        } else continue;
-        $tail=preg_replace('/\([^)]*\)/','',$tail);
-        $tail=preg_replace('/^one of the following:\s*/i','',$tail);
-        foreach (preg_split('/\n+|•/',$tail) as $option) { $bundle=$parse($option);if ($bundle) $alternatives[]=['id'=>'choice'.count($alternatives),'name'=>trim($option," .\n"),'weapons'=>$bundle]; }
-        if (!$alternatives) continue;
-        foreach ($models as $model) {
-            if (!in_array(strtolower($target),['model','models'],true)&&rtrim(builderWeaponKey($target),'s')!==rtrim(builderWeaponKey($model['name']),'s')) continue;
-            if ($add) {
-                $groups[]=['id'=>$model['id'].'_extra'.count($groups),'model'=>$model['id'],'name'=>$model['name'].' · '.trim($tail),'per'=>0,'sharedKey'=>'option_'.$optionIndex,'sharedPer'=>$per,'default'=>'none','choices'=>array_merge([['id'=>'none','name'=>'Nessuna','weapons'=>[]]],$alternatives)];$covered[$optionIndex]=true;continue;
+        $rule=builderLoadoutRule($text);if(!$rule)continue;
+        $tail=$rule['tail'];$duplicateLimit=null;$maxAt=null;$rowNotes=[];
+        preg_match_all('/\*+/',$text,$markers);$markers=array_unique($markers[0]);
+        foreach($notes as $note)if(in_array($note['mark'],$markers,true)){
+            $rowNotes[]=$note;
+            if(isset($note['duplicateLimit'])){$duplicateLimit=$note['duplicateLimit'];$maxAt=$note['maxAt']??null;}
+        }
+        $rule['exclusive']=array_map(static fn($n)=>'note_'.$n['index'],array_values(array_filter($rowNotes,static fn($n)=>!empty($n['exclusive']))));
+        if(str_contains($tail,'(duplicates are not allowed)')){$duplicateLimit=1;$tail=str_replace('(duplicates are not allowed)','',$tail);}
+        if(str_contains($tail,'(you cannot select the same option more than once)')){$duplicateLimit=1;$tail=str_replace('(you cannot select the same option more than once)','',$tail);}
+        // Keep other conditions in the audit instead of claiming unsupported restrictions.
+        $inline=preg_match('/^(?:one|1) of the following[^\n]*[:;]/i',$tail)&&!str_contains($tail,'•');
+        $tail=preg_replace('/^(?:one|1) of the following(?: options)?\**[:;]?\s*/i','',$tail);
+        $tail=preg_replace('/^:\s*/','',$tail);
+        $complete=true;
+        foreach(preg_split($inline?'/,\s*/':'/\n+|•/',$tail) as $option){
+            $option=trim($option);if($option==='')continue;
+            $locks=[];
+            $optionMarkers=[];preg_match_all('/\*+/',$option,$optionMarkers);
+            foreach($rowNotes as $note)if(in_array($note['mark'],$optionMarkers[0],true)||str_contains(explode("\n",$rule['tail'])[0],$note['mark'])){
+                if(isset($note['locks'])){$lock=$parse($note['locks']);if($lock)$locks=array_replace($locks,$lock);else $complete=false;}
             }
-            $original=$parse($from);if (!$original) continue;
-            foreach ($groups as &$group) if ($group['model']===$model['id'] && $group['choices'][0]['weapons']===$original) {
-                $group['choicePer']=$per;
-                $group['sharedKey']='option_'.$optionIndex;$group['sharedPer']=$per;
-                foreach ($alternatives as $choice) if (!in_array($choice['weapons'],array_column($group['choices'],'weapons'),true)) { $choice['id']='choice'.count($group['choices']);$group['choices'][]=$choice; }
-                $covered[$optionIndex]=true;break;
-            } unset($group);
+            // Strip only markers with a parsed note; unknown footnotes stay incomplete.
+            foreach($rowNotes as $note)$option=preg_replace('/(?<!\*)'.preg_quote($note['mark'],'/').'(?!\*)/','',$option);
+            if(trim($option)==='')continue;
+            if(preg_match('/[\[(](?:that|this) model[’\']s (.+?) cannot be replaced[\])]/iu',$option,$m)){
+                $locks=$parse($m[1]);if(!$locks){$complete=false;continue;}$option=str_replace($m[0],'',$option);
+            }
+            $bundle=$parse($option);if(!$bundle){$complete=false;continue;}
+            foreach($rowNotes as $note)if(!empty($note['selfLock'])&&in_array($note['mark'],$optionMarkers[0],true))$locks=array_replace($locks,$bundle);
+            $unique=false;foreach($rowNotes as $note)if(!empty($note['uniquePerModel'])&&in_array($note['mark'],$optionMarkers[0],true))$unique=true;
+            $alternatives[]=['id'=>'choice'.count($alternatives),'name'=>trim($option," .\n"),'weapons'=>$bundle,'locks'=>$locks,'uniquePerModel'=>$unique];
+        }
+        if(!$alternatives)continue;
+        if($rule['slots']>1){
+            $items=$alternatives;$alternatives=[];$seen=[];
+            $expand=function(array $bundle,array $names,int $start,int $left,array $used,array $locks)use(&$expand,&$alternatives,&$seen,$items,$rule){
+                if($bundle){$key=json_encode($bundle);if(!isset($seen[$key])){$seen[$key]=true;$alternatives[]=['id'=>'choice'.count($alternatives),'name'=>implode(' + ',$names),'weapons'=>$bundle,'locks'=>$locks];}}
+                if(!$left||count($alternatives)>256)return;
+                for($i=$start;$i<count($items);$i++){
+                    if(!empty($items[$i]['uniquePerModel'])&&in_array($i,$used,true))continue;
+                    $expand(builderLoadoutSum($bundle,$items[$i]['weapons']),array_merge($names,[$items[$i]['name']]),!empty($rule['duplicates'])?$i:$i+1,$left-1,array_merge($used,[$i]),array_replace($locks,$items[$i]['locks']??[]));
+                }
+            };
+            $expand([],[],0,$rule['slots'],[],[]);if(count($alternatives)>256)continue;
+        }
+        $rule['requiresBundle']=$rule['requires']!==''?$parse($rule['requires']):[];if($rule['requiresBundle']===null)continue;
+        $rule['forbiddenBundle']=$rule['forbidden']!==''?$parse($rule['forbidden']):[];if($rule['forbiddenBundle']===null)continue;
+        $originals=$rule['add']?[[]]:array_map($parse,preg_split('/\s+or\s+(?:its |their )?/i',$rule['from']));
+        if(in_array(null,$originals,true))continue;
+        $tag='option_'.$optionIndex;
+        if($duplicateLimit!==null)foreach($alternatives as $i=>&$alternative)$alternative['rules']=[$tag.'_alternative_'.$i];unset($alternative);
+        $applied=false;foreach($originals as $original)$applied=builderLoadoutApply($groups,$models,$rule,$original,$alternatives,$tag,array_column($weapons,'name','id'))||$applied;
+        if($applied){
+            $rules[]=['id'=>$tag,'name'=>$text,'per'=>$rule['per'],'max'=>$rule['max'],'all'=>$rule['all'],'minimum'=>$rule['minimum'],'maximum'=>$rule['maximum']];
+            if($duplicateLimit!==null)foreach($alternatives as $i=>$alternative)$rules[]=['id'=>$tag.'_alternative_'.$i,'name'=>$alternative['name'],'max'=>$duplicateLimit,'maxAt'=>$maxAt];
+            if($complete){$covered[$optionIndex]=true;foreach($rowNotes as $note)$noteUsed[$note['index']]=true;}
         }
     }
-    return ['version'=>1,'models'=>$models,'weapons'=>array_values($weapons),'groups'=>$groups,'optionsCovered'=>count($covered),'optionsTotal'=>$optionTotal];
+    foreach($noteUsed as $i=>$_)$covered[$i]=true;
+    $uncovered=[];foreach($unit['options'] as $i=>$row)if(!isset($covered[$i])&&!preg_match('/^None\.?$/i',trim($description($row))))$uncovered[]=$sourceRows[$i];
+    $uncovered=array_values(array_unique($uncovered));$optionTotal=count(array_filter($sourceOptions,static fn($row)=>!preg_match('/^None\.?$/i',trim($description($row)))));
+    return ['version'=>2,'models'=>$models,'weapons'=>array_values($weapons),'groups'=>$groups,'rules'=>$rules,'uncoveredOptions'=>$uncovered,'optionsCovered'=>$optionTotal-count($uncovered),'optionsTotal'=>$optionTotal];
 }
 function builderLoadoutCapacity(array $recipe,array $group,int $models): int {
+    if(!empty($group['unitGear']))return !empty($group['per'])?(int)floor($models/$group['per']):1;
     $fixed=array_sum(array_column(array_filter($recipe['models'],static fn($m)=>!$m['variable']),'fixed'));
     $model=array_column($recipe['models'],null,'id')[$group['model']];
-    $available=$model['variable']?max(0,$models-$fixed):$model['fixed'];
+    if(isset($model['countsBySize'])&&!isset($model['countsBySize'][$models]))builderInvalid('Taglia non prevista dalla composizione.');
+    $available=$model['countsBySize'][$models]??($model['variable']?max(0,$models-$fixed):$model['fixed']);
     return $group['per']?min($available,(int)floor($models/$group['per'])):$available;
 }
 function builderLoadoutCounts(array $recipe,array $selections,int $models): array {
@@ -150,6 +227,7 @@ function builderLoadoutCounts(array $recipe,array $selections,int $models): arra
         }
         $clean[$group['id']]=$selected;
     }
+    foreach(builderLoadoutRuleErrors($recipe,$clean,$models) as $error)builderInvalid($error);
     foreach ($counts as $quantity) builderInt($quantity,'quantità arma derivata',0,1000);
     return ['selections'=>$clean,'weaponCounts'=>$counts,'cost'=>$cost];
 }

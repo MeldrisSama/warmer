@@ -1,8 +1,9 @@
 'use strict';
 
 function beCapacity(recipe,group,models){
+  if(group.unitGear)return group.per?Math.floor(models/group.per):1;
   const fixed=recipe.models.filter(m=>!m.variable).reduce((sum,m)=>sum+m.fixed,0),model=recipe.models.find(m=>m.id===group.model);
-  const available=model.variable?Math.max(0,models-fixed):model.fixed;
+  const available=model.countsBySize?.[models]??(model.variable?Math.max(0,models-fixed):model.fixed);
   return group.per?Math.min(available,Math.floor(models/group.per)):available;
 }
 function beSelections(unit,models){
@@ -29,13 +30,50 @@ function beSync(unit,entry){
 }
 function beChoiceAllowed(unit,entry,group,choiceId,delta){
   const current=entry.loadoutSelections?.[group.id]||{},n=current[choiceId]||0;
-  if(delta<0)return choiceId!==group.default&&n>0;
+  if(delta<0)return choiceId!==group.default&&n>0&&Boolean(beNextChoices(unit,entry,group,choiceId,delta));
   if(n>=beCapacity(unit.loadoutRecipe,group,entry.models))return false;
   if(choiceId!==group.default&&group.sharedPer){
     const used=unit.loadoutRecipe.groups.filter(g=>g.sharedKey===group.sharedKey).reduce((s,g)=>s+Object.entries(entry.loadoutSelections?.[g.id]||{}).filter(([id])=>id!==g.default).reduce((a,[,q])=>a+q,0),0);
     if(used>=Math.floor(entry.models/group.sharedPer)&&(current[group.default]||0)>0)return false;
   }
-  return Object.entries(current).some(([id,q])=>id!==choiceId&&q>0);
+  return Object.entries(current).some(([id,q])=>id!==choiceId&&q>0)&&Boolean(beNextChoices(unit,entry,group,choiceId,delta));
+}
+function beRuleLimit(rule,models){
+  if(models<(rule.minimum||0)||rule.maximum!=null&&models>rule.maximum)return 0;
+  if(rule.maxAt&&models>=rule.maxAt.models)return rule.maxAt.max;
+  return rule.per?Math.floor(models/rule.per)*(rule.max??1):(rule.max??1000);
+}
+function beRuleErrors(recipe,selections,models){
+  const errors=[];
+  for(const rule of recipe.rules||[]){
+    let used=0,capacity=0;
+    for(const g of recipe.groups){
+      if(!g.choices.some(c=>c.rules?.includes(rule.id)))continue;
+      capacity+=beCapacity(recipe,g,models);
+      for(const c of g.choices)if(c.rules?.includes(rule.id))used+=selections?.[g.id]?.[c.id]||0;
+    }
+    if(used>beRuleLimit(rule,models))errors.push('Limite condiviso della dotazione superato.');
+    if(rule.all&&used!==0&&used!==capacity)errors.push('La sostituzione deve riguardare tutti i modelli.');
+  }
+  return errors;
+}
+function beNextChoices(unit,entry,group,choiceId,delta){
+  const recipe=unit.loadoutRecipe,next=builderClone(entry.loadoutSelections||beSelections(unit,entry.models)),current=next[group.id],choice=group.choices.find(c=>c.id===choiceId);
+  const all=(recipe.rules||[]).find(r=>r.all&&choice.rules?.includes(r.id));
+  if(all){
+    for(const g of recipe.groups.filter(g=>g.choices.some(c=>c.rules?.includes(all.id)))){
+      const c=delta<0?g.choices.find(c=>c.id===g.default):g.choices.find(c=>c.name===choice.name&&c.rules?.includes(all.id));
+      if(!c)return null;next[g.id]={[c.id]:beCapacity(recipe,g,entry.models)};
+    }
+  }else if(delta>0){
+    const others=Object.entries(current).filter(([id,n])=>id!==choiceId&&n>0);
+    const donor=choiceId!==group.default&&current[group.default]>0?group.default:others.length===1?others[0][0]:null;
+    if(!donor)return null;current[donor]--;current[choiceId]=(current[choiceId]||0)+1;
+  }else{
+    if(choiceId===group.default||!current[choiceId])return null;
+    current[choiceId]--;current[group.default]=(current[group.default]||0)+1;
+  }
+  return beRuleErrors(recipe,next,entry.models).length?null:next;
 }
 function beWeaponLimit(unit,entry,line){
   const weapon=unit.weapons.find(w=>w.line===line);if(!weapon)return 0;
@@ -64,6 +102,7 @@ function beWeaponOwners(unit,entry,weapon){
 }
 function beGearErrors(entry){
   const unit=wbUnits().get(entry.unitId),errors=[];
+  if(entry.loadoutSelections)errors.push(...beRuleErrors(unit.loadoutRecipe,entry.loadoutSelections,entry.models).map(x=>unit.name+': '+x));
   for(const w of unit.weapons)if((entry.weaponCounts[w.line]||0)>beWeaponLimit(unit,entry,w.line))errors.push(`${unit.name}: limite superato per ${w.name}.`);
   for(const g of unit.loadoutRecipe?.groups||[])if(g.sharedPer){const used=unit.loadoutRecipe.groups.filter(x=>x.sharedKey===g.sharedKey).reduce((s,x)=>s+Object.entries(entry.loadoutSelections?.[x.id]||{}).filter(([id])=>id!==x.default).reduce((n,[,q])=>n+q,0),0);if(used>Math.floor(entry.models/g.sharedPer)){errors.push(`${unit.name}: limite condiviso delle sostituzioni superato.`);break;}}
   if(entry.warlord&&!/\bCharacter\b/i.test(unit.keywords))errors.push(`${unit.name}: solo un Character può essere Warlord.`);
@@ -76,16 +115,7 @@ function beChangeChoice(entry,groupId,choiceId,delta){
   const unit=wbUnits().get(entry.unitId),recipe=unit.loadoutRecipe,group=recipe?.groups?.find(g=>g.id===groupId);
   if(!group||![1,-1].includes(delta)||!group.choices.some(c=>c.id===choiceId))return false;
   if(!beChoiceAllowed(unit,entry,group,choiceId,delta)){notify('Limite della dotazione raggiunto.',true);return false;}
-  const selections=builderClone(entry.loadoutSelections||beSelections(unit,entry.models)),current=selections[groupId];
-  const others=Object.entries(current).filter(([id,n])=>id!==choiceId&&n>0);
-  if(delta===1){
-    const donor=choiceId!==group.default&&current[group.default]>0?group.default:others.length===1?others[0][0]:null;
-    if(!donor){notify('Riduci una delle alternative prima di sostituirla.',true);return false;}
-    current[donor]--;current[choiceId]=(current[choiceId]||0)+1;
-  }else{
-    if(choiceId===group.default||!current[choiceId])return false;
-    current[choiceId]--;current[group.default]=(current[group.default]||0)+1;
-  }
+  const selections=beNextChoices(unit,entry,group,choiceId,delta);if(!selections)return false;const current=selections[groupId];
   const replaced=Object.entries(current).filter(([id])=>id!==group.default).reduce((s,[,n])=>s+n,0);
   if(group.choicePer&&replaced>Math.floor(entry.models/group.choicePer)){notify('Limite delle sostituzioni raggiunto.',true);return false;}
   entry.loadoutSelections=selections;beSync(unit,entry);return true;
@@ -102,6 +132,7 @@ function beResize(entry,models){
     current[group.default]=capacity-Object.entries(current).filter(([id])=>id!==group.default).reduce((sum,[,n])=>sum+n,0);
   }
   for(const group of recipe.groups)if(group.sharedPer){const used=recipe.groups.filter(g=>g.sharedKey===group.sharedKey).reduce((s,g)=>s+Object.entries(next[g.id]||{}).filter(([id])=>id!==g.default).reduce((n,[,q])=>n+q,0),0);if(used>Math.floor(models/group.sharedPer)){notify('Riduci le dotazioni che condividono il limite prima di ridurre la squadra.',true);return false;}}
+  if(beRuleErrors(recipe,next,models).length){notify('Riduci le dotazioni prima di cambiare la taglia.',true);return false;}
   entry.models=models;entry.loadoutSelections=next;beSync(unit,entry);return true;
 }
 function beStandard(entry){

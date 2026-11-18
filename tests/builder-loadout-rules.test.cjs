@@ -1,0 +1,15 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{spawnSync}=require('node:child_process');
+const root=path.resolve(__dirname,'..');let fixtures;
+function load(){if(!fixtures){const r=spawnSync(process.env.PHP_BINARY||'php',[path.join(__dirname,'loadout-rules-model.php')],{encoding:'utf8'});assert.equal(r.status,0,r.stdout+r.stderr);fixtures=JSON.parse(r.stdout);}return structuredClone(fixtures);}
+function context(which){const unit=load()[which],c=vm.createContext({unit,builderClone:structuredClone,notify(){},wbUnits:()=>new Map([['u',unit]])});vm.runInContext(fs.readFileSync(path.join(root,'Cangiolone.com/builder-engine.js'),'utf8'),c);vm.runInContext("entry={unitId:'u',models:3,weaponCounts:{},loadoutSelections:beSelections(unit,3)};g=unit.loadoutRecipe.groups.find(g=>g.choices.length>1);",c);return c;}
+test('PHP enforces bundle consumption, independent row limits, all-model changes, footnotes, slots and ownership',()=>{load();});
+test('Client disables a replacement at its own limit without disabling a different replacement',()=>{
+  const c=context('limits');assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',1)",c),true);assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,'choice1',1)",c),false);assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice2',1)",c),true);assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,'choice2',1)",c),false);
+});
+test('All-model replacements change the entire group atomically and restore it atomically',()=>{
+  const c=context('all');assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',1)",c),true);assert.equal(vm.runInContext("entry.loadoutSelections[g.id].choice1",c),3);assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',-1)",c),true);assert.equal(vm.runInContext("entry.loadoutSelections[g.id].base",c),3);
+});
+test('Client shares the per-option footnote limit and allows the larger squad threshold',()=>{
+  const c=context('duplicate');assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',1)",c),true);assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,'choice1',1)",c),false);assert.equal(vm.runInContext("beResize(entry,6)",c),true);assert.equal(vm.runInContext("beChangeChoice(entry,g.id,'choice1',1)",c),true);assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,'choice1',1)",c),false);assert.equal(vm.runInContext("beResize(entry,3)",c),false);
+});
