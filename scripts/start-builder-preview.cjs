@@ -30,6 +30,8 @@ async function run(){
     fs.copyFileSync(path.join(root,file),path.join(directory,relative));copied++;
   }
   console.log(`Aggiornati ${copied} file applicativi. Database, utenti e liste conservati.`);
+  const icons=path.join(root,'Cangiolone.com/assets/factions');
+  if(fs.existsSync(icons)){const target=path.join(directory,'assets/factions');fs.mkdirSync(target,{recursive:true});for(const name of fs.readdirSync(icons))if(/^[a-z_]+\.svg$/.test(name)||['LICENSE.txt','UPSTREAM-README.md','manifest.json'].includes(name))fs.copyFileSync(path.join(icons,name),path.join(target,name));}
   const server=spawn(php,['-d','memory_limit=256M','-d','post_max_size=32M','-S',`127.0.0.1:${port}`,'-t',directory,path.join(directory,'router.php')],{stdio:'inherit',windowsHide:true});
   server.on('error',()=>{console.error('Avvio PHP non riuscito.');process.exitCode=1;});
   server.on('exit',code=>{if(code)process.exitCode=code;});

@@ -51,7 +51,7 @@ function wbSetMode(mode){
   if(mode==='play'&&(wbSupportErrors().length||beAllyErrors().length)){notify('Correggi gli errori di Support e alleati prima di passare alla partita.',true);return false;}
   workbench.mode=mode;workbench.preview=null;
   if(mode==='play'){const entry=wbEntry(workbench.selected);if(entry?.attachedTo)workbench.selected=entry.attachedTo;workbench.pane='roster';}
-  builderWorkbenchRender();return true;
+  builderWorkbenchRender();if(typeof main!=='undefined')main.querySelectorAll?.('[data-wb-scroll]').forEach(panel=>{panel.scrollTop=0;});return true;
 }
 function wbDetachments(){return wbFaction().detachments.filter(d=>builderUi.army.detachmentIds.includes(d.id));}
 function wbIncursionException(detachments=wbDetachments()){
@@ -113,7 +113,16 @@ function wbArmyRules(){return wbDetachments().map(d=>`<details class="wb-detachm
 function wbDetachmentSections(d){
   const strats=(builderUi.catalog.stratagems||[]).filter(s=>s.detachment_id===d.id&&!/boarding|combat patrol/i.test(s.type||'')),enhancements=new Map();
   for(const u of wbUnits().values())for(const e of u.enhancements)if(e.detachment_id===d.id)enhancements.set(e.id,e);
-  return `<article class="wb-rule">${beRich(d.description||'Regola non disponibile nel catalogo.')}</article><details><summary>Stratagemmi (${strats.length})</summary>${wbStratagems(strats,d.id)}</details><details><summary>Enhancement / Upgrade (${enhancements.size})</summary>${wbRules([...enhancements.values()])}</details>`;
+  const lines=String(d.description||'Regola non disponibile nel catalogo.').split('\n'),title=lines[0],hasTitle=lines.length>1&&title.length<100&&!/[.!?]$/.test(title);
+  const body=hasTitle?`<h4>${wbText(title)}</h4>${beRich(lines.slice(1).join('\n'))}`:beRich(lines.join('\n'));
+  return `<article class="wb-detachment-rule-card"><div class="wb-rule-card-heading"><span>DETACHMENT RULE</span><h3>${wbText(d.name)}</h3></div><div class="wb-rule">${body}</div></article><details><summary>Stratagemmi (${strats.length})</summary>${wbStratagems(strats,d.id)}</details>${enhancements.size?`<details><summary>Enhancement / Upgrade (${enhancements.size})</summary>${wbRules([...enhancements.values()])}</details>`:''}`;
+}
+function wbCosts(unit){
+  const seen=new Set(),rows=[];
+  const add=(label,cost)=>{const key=label+'|'+cost;if(!seen.has(key)){seen.add(key);rows.push([label,cost]);}};
+  for(const p of unit.points){const first=p.first??1,last=p.last??200;add(`${p.models} models${first>1||last<200?' · copies '+first+'–'+last:''}`,p.points);}
+  for(const row of unit.costs)if(row.cost!==undefined&&row.cost!==''&&(!unit.points.length||/^per /i.test(row.description)))add(row.description,row.cost);
+  return wbTable(['Composizione / fascia','Punti'],rows)+[...new Set(unit.composition.map(wbDescription))].map(text=>`<p>${wbText(text)}</p>`).join('');
 }
 function wbModal(title,body,trigger){
   const dialog=document.createElement('dialog');dialog.className='workbench wb-detachment-dialog wb-reference-dialog';dialog.setAttribute('aria-labelledby','wb-reference-title');
@@ -126,6 +135,14 @@ function wbAllStratagems(){return (builderUi.catalog.stratagems||[]).filter(s=>w
 function wbNumber(label,field,value,min,max,step=1,disabled=false){return `<div class="wb-number"><span>${esc(label)}</span><div class="wb-quantity" role="group" aria-label="${esc(label)}"><button type="button" data-wb-adjust="${field}" data-wb-step="-${step}" aria-label="Diminuisci ${esc(label)}" ${disabled||value<=min?'disabled':''}>−</button><output>${value}</output><button type="button" data-wb-adjust="${field}" data-wb-step="${step}" aria-label="Aumenta ${esc(label)}" ${disabled||value>=max?'disabled':''}>+</button></div></div>`;}
 function wbSizes(unit){return [...new Set(unit.points.map(p=>p.models))].sort((a,b)=>a-b);}
 function wbInstanceName(entry){const unit=wbUnits().get(entry.unitId),copies=builderUi.army.entries.filter(e=>e.unitId===entry.unitId);return unit.name+(copies.length>1?' · squadra '+(copies.indexOf(entry)+1):'');}
+function wbArmySettings(open=false){
+  const a=builderUi.army,f=wbFaction();
+  return `<details class="wb-configuration wb-army-settings" ${open?'open':''}><summary><strong>${esc(f.name)}</strong><span>${a.limit} pt · ${a.dpLimit} DP</span><span>Configura armata</span></summary><div class="wb-army-settings-grid"><label>Fazione<select id="wb-faction">${builderUi.catalog.factions.filter(x=>x.id===f.id||builderPlayableFactions().some(p=>p.id===x.id)).map(x=>`<option value="${x.id}" ${x.id===f.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label><div class="wb-fields">${wbNumber('Limite punti','limit',a.limit,100,5000,100)}${wbNumber('DP','dpLimit',a.dpLimit,0,20,1,[1000,2000].includes(a.limit))}</div><div class="wb-detachment-summary"><button id="wb-detachments" type="button">Distaccamenti · ${a.detachmentIds.length} selezionati</button><label>Disposizione<select id="wb-disposition">${wbDispositionOptions()}</select></label><div class="wb-detachment-recap">${wbDetachments().map(d=>`<button class="wb-detachment-link" data-wb-detachment-rule="${esc(d.id)}">${esc(d.name)}</button>`).join('')||'<p class="wb-muted">Nessun distaccamento selezionato</p>'}</div>${wbArmyRules()}</div></div></details>`;
+}
+function wbOpenFilters(trigger){
+  const dialog=wbModal('Filtri del catalogo',`<fieldset class="wb-filters"><legend>Mostra unità</legend>${[['legends','Legends'],['allies','Alleati'],['titanic','Titanic']].map(([key,label])=>`<label class="wb-check"><input type="checkbox" data-wb-filter="${key}" ${workbench.filters[key]?'checked':''}>${label}</label>`).join('')}</fieldset>`,trigger);
+  dialog.addEventListener('change',event=>{const key=event.target.dataset.wbFilter;if(!Object.hasOwn(workbench.filters,key))return;workbench.filters[key]=event.target.checked;wbSearch(workbench.search);});
+}
 function wbProfileWeapons(unit,entry,type,origin=''){
   return unit.weapons.flatMap(w=>w._variants||[w]).filter(w=>w.name&&w.type===type&&(!entry||Number(entry.weaponCounts[w.line]||0)>0||w.enhancement_id&&entry.enhancementIds.includes(w.enhancement_id))).filter(w=>!w.enhancement_id||entry?.enhancementIds.includes(w.enhancement_id)).flatMap(weapon=>beWeaponOwners(unit,entry,weapon).map(owner=>({weapon,count:owner.count,origin,model:owner.name,unitId:unit.id})));
 }
@@ -216,7 +233,7 @@ function wbRuleInline(text,unitId=''){
   const quote=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const pattern=new RegExp('(?<![\\w])(?:ANTI[- ][A-Za-z /-]+ \\d\\+|'+names.map(quote).join('|')+')(?: (?:D\\d+(?:\\+\\d+)?|\\d+)\\+?)?(?![\\w])','gi');
   let html='',last=0;
-  for(const m of String(text).matchAll(pattern)){html+=esc(text.slice(last,m.index))+wbKeywordButton(m[0],unitId,false,false);last=m.index+m[0].length;}
+  for(const m of String(text).matchAll(pattern)){const core=wbCoreRule(m[0]),ambiguous=['ASSAULT','HEAVY','LANCE','PSYCHIC','PRECISION','PISTOL','ANTI','TORRENT','BLAST','MELTA'].includes(core?.name),bracketed=text[m.index-1]==='[',explicit=/^\s+(?:ability|keyword)\b/i.test(text.slice(m.index+m[0].length));html+=esc(text.slice(last,m.index))+(ambiguous&&!bracketed&&!explicit?esc(m[0]):wbKeywordButton(m[0],unitId,false,false));last=m.index+m[0].length;}
   return html+esc(text.slice(last));
 }
 function wbOpenRule(button){
@@ -255,7 +272,7 @@ function wbRules(rows,unitId=''){return rows.map(r=>{
   if(core&&(!description.trim()||description.replace(/\s|24\.\d{2}/g,'').toUpperCase()===String(r.name).replace(/\s/g,'').toUpperCase()))description=wbDescription(core);
   return `<article class="wb-rule"><h4>${wbText(r.name||description)}${r.upgrade==='true'?' · Upgrade':''}</h4>${r.name?beRich(description,unitId):''}</article>`;
 }).join('');}
-function wbProfiles(u,e,play){
+function wbProfiles(u,e,play,controls=''){
   const effective=beEffects(u,e);u=effective.unit;
   const weapons=u.weapons.filter(w=>w.name&&(!e || Number(e.weaponCounts[w.line]||0)>0)&&(!w.enhancement_id||e?.enhancementIds.includes(w.enhancement_id)));
   const unconfigured=e && u.weapons.some(w=>w.name) && !Object.values(e.weaponCounts).some(n=>n>0);
@@ -263,7 +280,7 @@ function wbProfiles(u,e,play){
   const weaponTable=type=>{const rows=wbProfileWeapons(u,e,type);return rows.length?wbWeaponTable(rows):'';};
   const enhancements=e?u.enhancements.filter(x=>e.enhancementIds.includes(x.id)):[];
   const stratagems=u.stratagems.map(ref=>(builderUi.catalog.stratagems||[]).find(s=>s.id===ref.id)||ref).filter(s=>!s.detachment_id||builderUi.army.detachmentIds.includes(s.detachment_id));
-  return `<section class="wb-profiles"><h3>${wbText(u.name)}${e?.warlord?' · Warlord':''}</h3>${stratagems.length?`<details class="wb-unit-stratagems"><summary>Stratagemmi (${stratagems.filter(wbPlayableStratagem).length})</summary>${wbStratagems(stratagems)}</details>`:''}${models}
+  return `<section class="wb-profiles"><h3>${wbText(u.name)}${e?.warlord?' · Warlord':''}</h3>${models}${controls}${stratagems.length?`<details class="wb-unit-stratagems"><summary>Stratagemmi (${stratagems.filter(wbPlayableStratagem).length})</summary>${wbStratagems(stratagems)}</details>`:''}
     ${unconfigured?'<p class="wb-warning">Dotazione da configurare in Build: i profili delle armi non sono ancora selezionati.</p>':''}
     ${weaponTable('Ranged')?`<h4>Armi a distanza</h4>${weaponTable('Ranged')}`:''}${weaponTable('Melee')?`<h4>Armi da mischia</h4>${weaponTable('Melee')}`:''}
     ${effective.sources.length?`<details class="wb-effects"><summary>Bonus evidenziati in blu</summary><p>Il blu indica una differenza rispetto al profilo base. Fonti:</p>${effective.sources.map(s=>`<p>${esc(s)}</p>`).join('')}</details>`:''}<h4>Abilità e regole</h4>${wbRules(u.abilities,u.id)}${wbRules(enhancements,u.id)}
@@ -271,7 +288,7 @@ function wbProfiles(u,e,play){
     <p class="wb-keywords">${wbRuleInline(u.keywords,u.id)}</p>
     </section>`;
 }
-function wbAttachedProfiles(group){
+function wbAttachedProfiles(group,controls=''){
   const units=wbUnits(),members=group.map(entry=>({entry,...beEffects(units.get(entry.unitId),entry)}));
   const models=members.flatMap(({entry,unit})=>unit.models.map(model=>[`${unit.name} · ${model.name}${model._count?' · '+model._count+'×':''}`,model.M,model.T,model.Sv,wbPlus(model.inv_sv)||'—',model.W,model.Ld,model.OC,model.base_size,model._changed]));
   const weapons=type=>members.flatMap(({entry,unit})=>wbProfileWeapons(unit,entry,type,unit.name));
@@ -284,7 +301,7 @@ function wbAttachedProfiles(group){
     const existing=stratagemMap.get(s.id);if(existing){if(!existing.units.includes(unit.name))existing.units.push(unit.name);}else stratagemMap.set(s.id,{...s,units:[unit.name]});
   }
   const groupStratagems=[...stratagemMap.values()].map(s=>({...s,usedBy:s.units.join(' · ')}));
-  return `<section class="wb-attached-profiles">${groupStratagems.length?`<details class="wb-unit-stratagems"><summary>Stratagemmi del gruppo (${groupStratagems.filter(wbPlayableStratagem).length})</summary>${wbStratagems(groupStratagems)}</details>`:''}<h3>Profili dei modelli</h3>${wbModelCards(models)}
+  return `<section class="wb-attached-profiles"><h3>Profili dei modelli</h3>${wbModelCards(models)}${controls}${groupStratagems.length?`<details class="wb-unit-stratagems"><summary>Stratagemmi del gruppo (${groupStratagems.filter(wbPlayableStratagem).length})</summary>${wbStratagems(groupStratagems)}</details>`:''}
     ${unconfigured.length?`<p class="wb-warning">Dotazione da configurare: ${unconfigured.map(({unit})=>wbText(unit.name)).join(', ')}.</p>`:''}
     <h3>Armi a distanza</h3>${ranged.length?wbWeaponTable(ranged):'<p class="wb-muted">Nessun profilo selezionato.</p>'}
     <h3>Armi da mischia</h3>${melee.length?wbWeaponTable(melee):'<p class="wb-muted">Nessun profilo selezionato.</p>'}
@@ -296,25 +313,25 @@ function wbAttachedProfiles(group){
 function wbDetail(){
   const units=wbUnits(), e=wbEntry(workbench.selected), u=units.get(e?.unitId||workbench.preview);
   if(!u)return '<div class="wb-empty"><h2>Dettaglio unità</h2><p>Seleziona un’unità per leggere profili e regole.</p></div>';
-  if(workbench.mode==='play'&&e){const group=wbGroup(e.attachedTo?(wbEntry(e.attachedTo)||e):e);return `<div class="wb-detail-head"><h2>${group.map(x=>wbText(units.get(x.unitId)?.name)).join(' + ')}</h2><p>Modelli, armi e regole di tutti i membri</p></div>${wbAttachedProfiles(group)}`;}
   if(!e)return `<div class="wb-detail-head"><h2>${wbText(u.name)}</h2><button data-wb-add="${u.id}">Aggiungi unità</button></div>${wbProfiles(u,null,false)}`;
-  const tabs=`<div class="wb-mode wb-detail-tabs" role="group" aria-label="Dettaglio unità"><button data-wb-detail="profiles" aria-pressed="${workbench.detailTab==='profiles'}">Profili e regole</button><button data-wb-detail="config" aria-pressed="${workbench.detailTab==='config'}">Configura unità</button></div>`;
-  if(workbench.detailTab==='profiles'){const group=wbGroup(e.attachedTo?(wbEntry(e.attachedTo)||e):e);if(group.length>1)return `${tabs}${wbAttachedProfiles(group)}`;}
-  if(workbench.detailTab!=='config')return `${tabs}${wbProfiles(u,e,false)}`;
+  const group=wbGroup(e.attachedTo?(wbEntry(e.attachedTo)||e):e),controls=workbench.mode==='build'?wbUnitControls(u,e):'';
+  return group.length>1||workbench.mode==='play'?wbAttachedProfiles(group,controls):wbProfiles(u,e,false,controls);
+}
+function wbUnitControls(u,e){
+  const units=wbUnits(),upgrades=beEnhancementsHtml(u,e);
   const targets=wbAttachmentTargets(e),canAttach=u.support||u.leads.length>0||u.abilities.some(r=>/^Leader$/i.test(r.name||''));
   const unresolved=e.attachedTo&&!targets.some(x=>x.entryId===e.attachedTo);
-  return `${tabs}<div class="wb-detail-head"><h2>${wbText(u.name)}</h2><span>${wbPrice(e)??'?'} pt</span></div>
+  return `<section class="wb-unit-controls"><h4>${wbText(u.name)} · ${wbPrice(e)??'?'} pt</h4><div class="wb-control-row">
     ${wbSizes(u).length>1?wbNumber('Miniature','models',e.models,wbSizes(u)[0],wbSizes(u).at(-1)):`<p class="wb-muted">${e.models} modelli</p>`}
-    <details class="wb-advanced"><summary>Opzioni avanzate${e.manualPoints!==null?' · punti personalizzati':''}</summary><label>Correzione temporanea dei punti<input data-wb-field="manualPoints" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Usa i punti del catalogo" value="${e.manualPoints??''}"></label><p class="wb-muted">Per adeguamenti non ancora presenti nel catalogo. Lascia vuoto per ripristinare il costo automatico, comprensivo della dotazione.</p></details>
-    <details><summary>Costi e composizione</summary>${wbTable(['Composizione / fascia','Punti'],u.costs.map(c=>[c.description,c.cost]))}${u.composition.map(c=>`<p>${wbText(c.description)}</p>`).join('')}</details>
     ${/\bCharacter\b/i.test(u.keywords)?`<label class="wb-check"><input data-wb-field="warlord" type="checkbox" ${e.warlord?'checked':''}> Warlord</label>`:e.warlord?'<button id="wb-clear-warlord">Rimuovi Warlord non valido</button>':''}
+    </div>
     ${canAttach||e.attachedTo?`<label>Associa a un’unità<select data-wb-field="attachedTo"><option value="">${u.support?'Da associare':'Unità indipendente'}</option>${unresolved?`<option value="${esc(e.attachedTo)}" selected>Associazione precedente da verificare</option>`:''}${targets.map(x=>`<option value="${esc(x.entryId)}" ${e.attachedTo===x.entryId?'selected':''}>${esc(wbInstanceName(x))}</option>`).join('')}</select></label>${!targets.length?'<p class="wb-muted">Nessuna destinazione compatibile disponibile nella lista.</p>':''}${unresolved?'<p class="wb-warning">L’associazione salvata richiede verifica. Puoi rimuoverla o scegliere una destinazione compatibile.</p>':''}`:''}
-    <section><h3>Dotazione</h3>${beLoadoutHtml(u,e)}<p class="wb-rule-text">${wbText(u.loadout)}</p>
-    ${u.weapons.filter(w=>w.name&&(!w.enhancement_id||e.enhancementIds.includes(w.enhancement_id))&&((u.options.length>0&&(!e.loadoutSelections||!beManagedWeapon(u.loadoutRecipe,w.line)))||w.enhancement_id)).filter(w=>beWeaponModes(u,w.line)[0]?.line===w.line).map(w=>{const n=e.weaponCounts[w.line]||0;return `<div class="wb-weapon"><span>${wbText(w.name)}<small>${wbText(w.type)} · ${wbText(wbDescription(w))}</small></span>${w.enhancement_id?'<span>1 · Potenziamento</span>':`<div class="wb-quantity" role="group" aria-label="Quantità ${esc(w.name)}"><button id="wb-weapon-${esc(w.line)}-minus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="-1" aria-label="Diminuisci ${esc(w.name)}" ${n===0?'disabled':''} type="button">−</button><output aria-label="Quantità ${esc(w.name)}">${n}</output><button id="wb-weapon-${esc(w.line)}-plus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="1" aria-label="Aumenta ${esc(w.name)}" ${n>=beWeaponLimit(u,e,w.line)?'disabled':''} type="button">+</button></div>`}</div>`;}).join('')}
-    <details><summary>Opzioni e restrizioni della scheda</summary>${u.options.map(o=>`<p class="wb-rule-text">${wbText(wbDescription(o))}</p>`).join('')||'<p>Nessuna opzione aggiuntiva.</p>'}</details></section>
-    ${u.enhancements.length?`<section><h3>Potenziamenti</h3>${beEnhancementsHtml(u,e)}</section>`:""}
-    <label>Note sull’unità<textarea data-wb-field="notes" maxlength="4000" rows="2">${esc(e.notes)}</textarea></label>
-    ${wbProfiles(u,e,false)}`;
+    <div class="wb-loadout">${beLoadoutHtml(u,e)}
+    ${u.weapons.filter(w=>w.name&&(!w.enhancement_id||e.enhancementIds.includes(w.enhancement_id))&&((u.options.length>0&&(!e.loadoutSelections||!beManagedWeapon(u.loadoutRecipe,w.line)))||w.enhancement_id)).filter(w=>beWeaponModes(u,w.line)[0]?.line===w.line).map(w=>{const n=e.weaponCounts[w.line]||0;return `<div class="wb-weapon"><span>${wbText(w.name)}<small>${wbText(w.type)} · ${wbText(wbDescription(w))}</small></span>${w.enhancement_id?`<span>1 · ${u.enhancements.find(x=>x.id===w.enhancement_id)?.upgrade==='true'?'Upgrade':'Enhancement'}</span>`:`<div class="wb-quantity" role="group" aria-label="Quantità ${esc(w.name)}"><button id="wb-weapon-${esc(w.line)}-minus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="-1" aria-label="Diminuisci ${esc(w.name)}" ${n===0?'disabled':''} type="button">−</button><output aria-label="Quantità ${esc(w.name)}">${n}</output><button id="wb-weapon-${esc(w.line)}-plus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="1" aria-label="Aumenta ${esc(w.name)}" ${n>=beWeaponLimit(u,e,w.line)?'disabled':''} type="button">+</button></div>`}</div>`;}).join('')}
+    </div>${upgrades?`<section class="wb-upgrades">${upgrades}</section>`:''}
+    <details class="wb-loadout-source"><summary>Dotazione di fonte e restrizioni</summary><p class="wb-rule-text">${wbText(u.loadout)}</p>${u.options.map(o=>`<p class="wb-rule-text">${wbText(wbDescription(o))}</p>`).join('')}</details>
+    <details><summary>Costi e composizione</summary>${wbCosts(u)}</details>
+    <details class="wb-advanced"><summary>Opzioni avanzate${e.manualPoints!==null?' · punti personalizzati':''}</summary><label>Correzione temporanea dei punti<input data-wb-field="manualPoints" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Usa i punti del catalogo" value="${e.manualPoints??''}"></label><p class="wb-muted">Lascia vuoto per ripristinare il costo automatico.</p><label>Note sull’unità<textarea data-wb-field="notes" maxlength="4000" rows="2">${esc(e.notes)}</textarea></label></details></section>`;
 }
 function builderWorkbenchRender(){
   if(page()!=='builder')return;
@@ -329,14 +346,14 @@ function builderWorkbenchRender(){
   main.innerHTML=`<section class="workbench" data-mode="${workbench.mode}" data-pane="${workbench.pane}" aria-label="Army Builder 11ª edizione">
     <div class="wb-heading"><button id="wb-archive">Torna alle armate</button><div><p class="wb-muted">Warhammer 40.000 · 11ª edizione</p><h1>Army Builder</h1></div><div class="wb-mode" role="group" aria-label="Modalità"><button data-wb-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button data-wb-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button></div></div>
     <div class="wb-toolbar"><label class="wb-name">Nome armata<input id="wb-name" maxlength="100" value="${esc(a.name)}"></label><div class="wb-score" role="status"><strong>${totals.total}<small> / ${a.limit} pt</small></strong><span>${esc(wbDpSummary())}${totals.issues.length?` · ${totals.issues.length} avvisi`:''}</span></div><div class="wb-toolbar-actions"><span id="wb-save-state" role="status">${workbench.dirty?'Modifiche non salvate':'Bozza'}</span><button id="wb-save" class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvataggio…':'Salva armata'}</button>${workbench.mode==='play'?'<button id="wb-stratagems">Stratagemmi</button>':''}<button id="wb-export">Esporta lista</button><button id="wb-backup">Backup JSON</button></div></div>
+    ${workbench.mode==='build'?wbArmySettings(configurationOpen??false):''}
     ${builderUi.active&&a.catalogId!==builderUi.active.catalogId?'<div class="wb-catalog-update"><p>Questa lista conserva i dati originali. Crea una copia per usare le nuove dotazioni e gli alleati.</p><button id="wb-copy-active">Crea copia col catalogo attivo</button></div>':''}
     ${totals.errors.length?`<div class="wb-errors" role="alert"><strong>Correggi prima di giocare</strong>${totals.errors.map(error=>`<p>${esc(error)}</p>`).join("")}</div>`:""}
     <div class="wb-mobile-tabs" role="group" aria-label="Pannelli">${workbench.mode==='build'?`<button data-wb-pane="catalog" aria-pressed="${workbench.pane==='catalog'}">Catalogo</button>`:''}<button data-wb-pane="roster" aria-pressed="${workbench.pane==='roster'}">Armata</button><button data-wb-pane="detail" aria-pressed="${workbench.pane==='detail'}">Dettaglio</button></div>
-    <div class="wb-columns"><aside class="wb-panel wb-catalog" data-wb-scroll="catalog"><h2>Catalogo unità</h2><p class="wb-muted">${esc(f.name)}</p><label>Cerca unità<input id="wb-search" type="search" value="${esc(workbench.search)}" placeholder="Nome, ruolo o keyword"></label>
-    <fieldset class="wb-filters"><legend>Mostra nel catalogo</legend>${[["legends","Legends"],["allies","Alleati"],["titanic","Titanic"]].map(([key,label])=>`<label class="wb-check"><input type="checkbox" data-wb-filter="${key}" ${workbench.filters[key]?"checked":""}>${label}</label>`).join("")}</fieldset><details><summary>Alleati disponibili · ${beAllyRules().length} contingenti</summary>${beAllyRules().map(r=>`<p class="wb-muted">${esc(r.name)}${r.points[a.limit]!==undefined?" · "+r.points[a.limit]+" pt":""} · ${r.unitIds.length} schede</p>`).join("")||"<p>Nessun contingente esterno per le selezioni attuali.</p>"}</details><div id="wb-catalog-list">${wbCatalogList()}</div></aside>
+    <div class="wb-columns"><aside class="wb-panel wb-catalog" data-wb-scroll="catalog"><h2>Catalogo unità</h2><p class="wb-muted">${esc(f.name)}</p><div class="wb-catalog-tools"><label>Cerca unità<input id="wb-search" type="search" value="${esc(workbench.search)}" placeholder="Nome, ruolo o keyword"></label><button id="wb-filters" aria-haspopup="dialog">Filtri</button></div>
+    <details><summary>Alleati disponibili · ${beAllyRules().length} contingenti</summary>${beAllyRules().map(r=>`<p class="wb-muted">${esc(r.name)}${r.points[a.limit]!==undefined?" · "+r.points[a.limit]+" pt":""} · ${r.unitIds.length} schede</p>`).join("")||"<p>Nessun contingente esterno per le selezioni attuali.</p>"}</details><div id="wb-catalog-list">${wbCatalogList()}</div></aside>
     <section class="wb-panel wb-roster" data-wb-scroll="roster"><h2>${workbench.mode==='play'?'Unità in campo':'La tua armata'}</h2>
-    ${workbench.mode==='build'?`<details class="wb-configuration" ${(configurationOpen??!a.entries.length)?'open':''}><summary>Configurazione armata</summary><label>Fazione<select id="wb-faction">${builderUi.catalog.factions.filter(x=>x.id===f.id||builderPlayableFactions().some(p=>p.id===x.id)).map(x=>`<option value="${x.id}" ${x.id===f.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label><div class="wb-fields">${wbNumber('Limite punti','limit',a.limit,100,5000,100)}${wbNumber('DP','dpLimit',a.dpLimit,0,20,1,[1000,2000].includes(a.limit))}</div></details><div class="wb-detachment-summary"><button id="wb-detachments" type="button">Distaccamenti · ${a.detachmentIds.length} selezionati</button><div>${wbDetachments().map(d=>`<button class="wb-detachment-link" data-wb-detachment-rule="${esc(d.id)}">${esc(d.name)}</button>`).join('')||'<p class="wb-muted">Nessun distaccamento selezionato</p>'}</div><label>Disposizione<select id="wb-disposition">${wbDispositionOptions()}</select></label></div>`:`<p class="wb-muted">${esc(f.name)} · ${esc(a.disposition||'Disposizione da scegliere')}</p>`}
-    ${wbArmyRules()}<div class="wb-roster-list">${wbRosterRows()}</div>
+    <div class="wb-roster-list">${wbRosterRows()}</div>
     <details class="wb-validation"><summary>Verifiche · ${totals.issues.length} avvisi</summary><p>Equipaggiamenti, eccezioni e combinazioni richiedono verifica manuale.</p>${totals.issues.map(i=>`<p class="wb-warning">${esc(i)}</p>`).join('')}</details></section>
     <aside class="wb-panel wb-detail" data-wb-scroll="detail" aria-label="Profili e regole">${wbDetail()}</aside></div>
     <details class="wb-library"><summary>Armate salvate e catalogo</summary><div class="wb-library-grid"><section><h2>Armate salvate</h2><button id="wb-new">Crea nuova armata</button>${builderUi.armies.map(x=>`<div class="wb-saved-row"><span>${esc(x.name)} <small>${esc(x.edition)}ª ed.</small></span><button data-wb-open="${x.id}">Apri</button><button data-wb-delete="${x.id}">Elimina</button></div>`).join('')}<label>Ripristina backup JSON<input id="wb-restore" type="file" accept=".json,application/json"></label></section><section><h2>Catalogo Wahapedia</h2><p>${esc(builderUi.catalog.version)} · ${builderUi.catalog.units.length} schede</p><p>La lista conserva la versione del catalogo con cui è stata creata.</p>${state.user.admin?'<label>Importa catalogo JSON<input id="wb-import-file" type="file" accept=".json,application/json"></label><button id="wb-import">Importa catalogo</button>':''}</section></div></details>
@@ -361,6 +378,7 @@ function wbBind(){
   on('[data-wb-rule]','click',wbOpenRule);
   on('[data-wb-detachment-rule]','click',el=>{const d=wbDetachments().find(d=>d.id===el.dataset.wbDetachmentRule);if(d)wbModal(d.name,wbDetachmentSections(d),el);});
   on('#wb-stratagems','click',el=>wbModal('Stratagemmi · Core e distaccamenti',wbStratagems(wbAllStratagems()),el));
+  on('#wb-filters','click',wbOpenFilters);
   on('[data-wb-adjust]','click',el=>{
     const field=el.dataset.wbAdjust,delta=Number(el.dataset.wbStep);
     if(field==='models'){const entry=wbEntry(workbench.selected),sizes=wbSizes(wbUnits().get(entry.unitId)),next=delta>0?sizes.find(n=>n>entry.models):sizes.slice().reverse().find(n=>n<entry.models);if(next!==undefined)beResize(entry,next);}

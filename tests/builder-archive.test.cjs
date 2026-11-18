@@ -25,6 +25,17 @@ test('Direct access and fresh load show the archive without creating an army',as
   vm.runInContext('builderPage()',c);
   assert.match(c.main.innerHTML,/builder-create-new/);
 });
+test('Archive keeps faction groups for every ordering, with local army icons',()=>{
+  const c=context();vm.runInContext(`builderUi.armies=[{id:'a',name:'Older Angels',edition:'11',factionId:'sm_dark_angels',factionName:'Dark Angels',updated:'2026-11-01'},{id:'b',name:'Chaos list',edition:'11',factionId:'csm',factionName:'Chaos Space Marines',updated:'2026-11-10'},{id:'c',name:'Recent Angels',edition:'11',factionId:'sm_dark_angels',factionName:'Dark Angels',updated:'2026-11-18'}]`,c);
+  for(const sort of ['updated','created','faction']){c.sort=sort;vm.runInContext('builderUi.sort=sort;builderArchiveRender()',c);assert.equal((c.main.innerHTML.match(/class="builder-army-group"/g)||[]).length,2);assert.match(c.main.innerHTML,/assets\/factions\/sm_dark_angels.svg/);}
+  vm.runInContext(`builderUi.sort='updated';builderArchiveRender()`,c);assert.ok(c.main.innerHTML.indexOf('Recent Angels')<c.main.innerHTML.indexOf('Older Angels'));assert.ok(c.main.innerHTML.indexOf('Older Angels')<c.main.innerHTML.indexOf('Chaos list'));
+});
+test('Faction group popup selects an army without opening the builder or replacing the form',()=>{
+  const c=context();vm.runInContext(`fixture.factions=[{...fixture.factions[0],id:'nec',name:'Necrons'}]`,c);
+  let click,closed=false,html='';c.wbModal=(title,body)=>{html=body;return {addEventListener(event,fn){click=fn;},close(){closed=true;}};};
+  vm.runInContext(`builderOpenFactionGroup('Xenos',{})`,c);assert.match(html,/Necrons/);assert.match(html,/data-create-faction="nec"/);
+  click({target:{closest:()=>({dataset:{createFaction:'nec'}})}});assert.equal(c.nodes.get('[name=faction]').value,'nec');assert.equal(closed,true);assert.equal(vm.runInContext('builderUi.army',c),null);assert.match(c.nodes.get('#builder-chosen-faction').innerHTML,/Necrons/);
+});
 test('Archive sorts faction and both dates, missing creation dates stay last',()=>{
   const c=context();
   vm.runInContext(`builderUi.armies=[
@@ -76,7 +87,7 @@ test('Workbench catalog follows the list faction; configuration stays open on re
   c.main.querySelector=selector=>selector==='.workbench'?old:null;
   vm.runInContext(`fixture.factions.push({id:'other',name:'Other',unitIds:[]});workbench.catalogFaction='other';wbAdd('squad');builderWorkbenchRender();`,c);
   assert.doesNotMatch(c.main.innerHTML,/Fazione da consultare|wb-catalog-faction/);
-  assert.match(c.main.innerHTML,/wb-configuration" open/);
+  assert.match(c.main.innerHTML,/wb-configuration wb-army-settings" open/);
   assert.match(c.main.innerHTML,/data-wb-preview="squad"/);
 });
 test('Restore creates a separate army and opens it from the archive',async()=>{

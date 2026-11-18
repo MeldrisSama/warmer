@@ -8,6 +8,18 @@ function context(){
   vm.runInContext(`builderUi.catalog=fixture;builderUi.army=builderWorkbenchNewArmy();builderWorkbenchRender=()=>{};wbAdd('signal');`,c);return c;
 }
 test('PHP enforces shared model limits, fixed enhancement weapons, Warlord eligibility and snapshot ownership',()=>{context();});
+test('Unified sheet puts controls after defence and before weapons, omits unavailable upgrades and deduplicates prices',()=>{
+  const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');u.points.push({...u.points[0]});u.enhancements=[{id:'hidden',name:'Unavailable',detachment_id:'unselected'}];workbench.selected=e.entryId;`,c);
+  const html=vm.runInContext('wbDetail()',c);assert.ok(html.indexOf('wb-defence-table')<html.indexOf('wb-unit-controls'));assert.ok(html.indexOf('wb-unit-controls')<html.indexOf('wb-weapon-table'));assert.doesNotMatch(html,/wb-detail-tabs|Potenziamenti|class="wb-upgrades"|Unavailable/);assert.equal((vm.runInContext('wbCosts(u)',c).match(/<th scope="row">3 models/g)||[]).length,1);
+});
+test('Build and Play transitions reset all panel scroll positions',()=>{
+  const c=context(),panels=[{scrollTop:25},{scrollTop:600},{scrollTop:1800}];c.main={querySelectorAll:()=>panels};vm.runInContext(`wbSetMode('play')`,c);assert.ok(panels.every(p=>p.scrollTop===0));panels.forEach(p=>p.scrollTop=700);vm.runInContext(`wbSetMode('build')`,c);assert.ok(panels.every(p=>p.scrollTop===0));
+});
+test('Minimal exports contain only requested fields, full exports omit IDs and validation metadata',()=>{
+  const c=context();c.state={user:{name:'Test'}};vm.runInContext(`wbAdd('guard');const child=builderUi.army.entries[0],parent=builderUi.army.entries[1];wbUnits().get(child.unitId).leads=['guard'];child.attachedTo=parent.entryId;`,c);
+  assert.equal(vm.runInContext(`beExportText('names')`,c),'Signal Squad\nGuard');const short=vm.runInContext(`beExportText('units')`,c);assert.equal(short.split('\n').length,2);assert.match(short,/3x Signal Squad/);assert.doesNotMatch(short,/Rifle|Attached|Catalog/);
+  for(const format of ['gw','wtc']){c.format=format;const text=vm.runInContext('beExportText(format)',c);assert.match(text,/Attached to: Guard/);assert.ok(!text.includes(vm.runInContext('parent.entryId',c)));assert.doesNotMatch(text,/VALIDATION|MANUAL REVIEW|Catalog:/);}
+});
 test('Launcher replacement selects one model and disables the other models at the shared limit',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal'),g=u.loadoutRecipe.groups;beChangeChoice(e,g[0].id,'choice1',1);`,c);
   assert.equal(vm.runInContext(`beChangeChoice(e,g[1].id,'choice1',1)`,c),false);assert.equal(vm.runInContext(`e.weaponCounts['2']`,c),1);

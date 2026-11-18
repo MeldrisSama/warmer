@@ -252,6 +252,8 @@ function beGearLines(entry){
 }
 function beExportText(format){
   const a=builderUi.army,units=wbUnits(),t=builderWorkbenchTotals(),detachments=wbDetachments().map(d=>d.name).join(', '),warlord=a.entries.find(e=>e.warlord);
+  if(format==='names')return a.entries.map(e=>units.get(e.unitId).name).join('\n');
+  if(format==='units'||format==='short')return a.entries.map(e=>{const u=units.get(e.unitId),cost=(wbPrice(e)??0)+e.enhancementIds.reduce((sum,id)=>sum+Number(u.enhancements.find(x=>x.id===id)?.cost||0),0);return `${e.models}x ${u.name} · ${cost} pt`;}).join('\n');
   const enhancements=a.entries.flatMap(e=>e.enhancementIds.map(id=>units.get(e.unitId).enhancements.find(x=>x.id===id)?.name).filter(Boolean));
   let lines;
   if(format==='wtc')lines=[`PLAYER NAME: ${state.user.name||''}`,`ARMY NAME: ${a.name}`,`FACTION: ${wbFaction().name}`,`TOTAL POINTS: ${t.total}/${a.limit}`,`DETACHMENTS: ${detachments}`,`DETACHMENT POINTS: ${wbDpSummary()}`,`FORCE DISPOSITION: ${a.disposition}`,`WARLORD: ${warlord?units.get(warlord.unitId).name:'—'}`,`ENHANCEMENTS / UPGRADES: ${enhancements.join(', ')||'—'}`,''];
@@ -259,17 +261,15 @@ function beExportText(format){
   else lines=[`${a.name} (${t.total} Points)`,wbFaction().name,`${{1000:'Incursion',2000:'Strike Force',3000:'Onslaught'}[a.limit]||'Custom'} (${a.limit} Points)`,detachments,`Force Disposition: ${a.disposition}`,''];
   for(const e of a.entries){const u=units.get(e.unitId),cost=(wbPrice(e)||0)+e.enhancementIds.reduce((sum,id)=>sum+Number(u.enhancements.find(x=>x.id===id)?.cost||0),0);
     lines.push(format==='short'?`${e.models}x ${u.name} (${cost} pts)${e.warlord?' [Warlord]':''}`:`${u.name} (${cost} Points)`,`  ${e.models} models${e.warlord?' · Warlord':''}`);
-    if(e.attachedTo)lines.push('  Attached to: '+units.get(wbEntry(e.attachedTo).unitId).name+' · '+e.attachedTo);
+    if(e.attachedTo&&wbEntry(e.attachedTo))lines.push('  Attached to: '+wbInstanceName(wbEntry(e.attachedTo)));
     for(const gear of beGearLines(e))lines.push('  • '+gear);
     for(const id of e.enhancementIds){const x=u.enhancements.find(x=>x.id===id);lines.push(`  ${x.upgrade==='true'?'Upgrade':'Enhancement'}: ${x.name} (${x.cost} pts)`);}
     if(e.notes)lines.push('  '+e.notes);lines.push('');
   }
-  if(t.issues.length)lines.push('VALIDATION / MANUAL REVIEW',...t.issues);
-  lines.push('Catalog: '+builderUi.catalog.version);
   return lines.join('\n');
 }
 function beExport(){
-  const dialog=wbModal('Esporta lista',`<label>Formato<select data-wb-export-format><option value="gw">GW app · testo</option><option value="wtc">WTC</option><option value="short">Short</option></select></label><label>Lista esportata<textarea data-wb-export-text readonly rows="16">${esc(beExportText('gw'))}</textarea></label><div class="builder-actions"><button data-wb-export-copy>Copia negli appunti</button><button data-wb-export-download>Scarica TXT</button></div><p data-wb-export-status role="status"></p>`,main.querySelector('#wb-export'));
+  const dialog=wbModal('Esporta lista',`<label>Formato<select data-wb-export-format><option value="gw">GW app · testo</option><option value="wtc">WTC</option><option value="units">Unità · punti e quantità</option><option value="names">Solo nomi</option></select></label><label>Lista esportata<textarea data-wb-export-text readonly rows="16">${esc(beExportText('gw'))}</textarea></label><div class="builder-actions"><button data-wb-export-copy>Copia negli appunti</button><button data-wb-export-download>Scarica TXT</button></div><p data-wb-export-status role="status"></p>`,main.querySelector('#wb-export'));
   const format=dialog.querySelector('[data-wb-export-format]'),text=dialog.querySelector('textarea');
   format.onchange=()=>{text.value=beExportText(format.value);dialog.querySelector('[data-wb-export-status]').textContent='';};
   dialog.querySelector('[data-wb-export-copy]').onclick=async()=>{try{await navigator.clipboard.writeText(text.value);dialog.querySelector('[data-wb-export-status]').textContent='Lista copiata negli appunti.';}catch{text.focus();text.select();dialog.querySelector('[data-wb-export-status]').textContent='Copia automatica non disponibile: usa Ctrl+C o il menu del dispositivo sul testo selezionato.';}};

@@ -21,6 +21,7 @@ if($path==='/campionato.php') {
     return true;
 }
 if(in_array($path,['/app.js','/style.css','/standings.js','/campionato.css','/campionato.js','/builder.css','/builder.js','/builder-workbench.js','/builder-engine.js'],true)) return false;
+if(preg_match('~^/assets/factions/[a-z_]+\.svg$~D',$path)&&is_file(__DIR__.$path))return false;
 
 http_response_code(404);
 return true;

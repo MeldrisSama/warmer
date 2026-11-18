@@ -1,6 +1,16 @@
 # Verifica Build / Play — 18 novembre 2026
 
-## Aggiornamento: correzioni dal feedback e campionato
+## Aggiornamento: gruppi, popup e scheda unica
+
+**76/76 test passati**, ripetuti dopo lo spostamento del lavoro sui temi. Nuove verifiche: gruppi per fazione conservati nei tre ordinamenti; popup esercito che conserva il form senza aprire prematuramente il builder; ordine difesa/configurazione/armi nella scheda unica; Upgrade indisponibili omessi; fasce di costo identiche deduplicate; scroll a zero nei due passaggi Build/Play; export essenziali senza equipaggiamento e formati completi senza ID/validation/metadati. Audit dei profili reali v5 ancora PASS.
+
+35 SVG locali, complessivamente 147.403 byte, scaricati dalla revisione `99b7cb90655dddbd8acdef9ab40d52ae5fe61db0` di wh40k-icon con licenza e attribuzione. Preview aggiornata senza modificare config/utenti/liste. HTTP verifica hash degli asset JS/CSS e di due loghi tramite router locale; 8800/8801 già occupate, non fermate, prova su 8802.
+
+Edge headless **fuori dalla sandbox** riesce ora a eseguire gli strumenti. Gate iniziale: 18 FAIL (comprendono controlli da landing promozionale su CTA, sezioni e griglia, oltre a scala titoli corretta successivamente), non un PASS. Report comune interferito da una verifica concorrente del tema; introdotta directory QA separata per il builder. Screenshot reali del catalogo Dark Angels a 1440×900 e 390×844 acquisiti e ispezionati: colonne, banda oro, difesa compatta e pagina contenuta nel viewport. Prova `check.mjs` dedicata non completata per errore dello strumento `r.sections is not iterable` / `Cannot read properties of undefined (reading 'map')`. Nessuna certificazione complessiva del gate o prova interattiva Safari/iPhone. I cambi di stato sono verificati con DOM simulato.
+
+Separazione temi verificata: branch corrente `builder-build-play`, nessun riferimento residuo a theme.css/theme.js nei file applicativi e negli script. `feature/temi-colori` ha il proprio worktree `warmer-temi-colori`, con file del tema e test presenti ma ancora non committati al controllo. Le nuove classi dell'archivio builder non sono nel suo builder.css. Le segnalazioni Git sui file riportati al contenuto precedente sono solo normalizzazione CRLF, senza diff funzionale. Nessun checkout/reset o modifica al worktree dei temi.
+
+## Aggiornamento precedente: correzioni dal feedback e campionato
 
 **71/71 test passati** nella suite finale. I nuovi test coprono limite condiviso tra modelli, quantità manuale fuori limite, assegnazione del launcher, variante difensiva con scudo, arma del potenziamento fissa a una, portatore nominato, taglia fissa, Warlord non Character, keyword nei testi, esclusione delle modalità Boarding e stratagemmi collassati. I test appunti ora esercitano il nuovo popup e il cambio formato, con fallback sul testo selezionato.
 

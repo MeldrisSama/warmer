@@ -230,7 +230,7 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
         }
         if (!empty($entry['notes']))$lines[]='  Notes: '.$entry['notes'];
     }
-    $lines[]='';$lines[]='Catalog: '.$catalog['version'];return implode("\n",$lines);
+    return implode("\n",$lines);
 }
 function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): array {
     if ($action==='builderCatalog') {

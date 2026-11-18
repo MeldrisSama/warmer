@@ -1,5 +1,7 @@
 # Regression tests
 
+Archive groups and creation popups are covered by `builder-archive.test.cjs`. Unified sheet ordering, unavailable Upgrade sections, price deduplication, scroll reset and minimal exports are covered by `builder-refinements.test.cjs`. `scripts/render-builder-preview.cjs <catalog.json> .taste-skill/builder-review` isolates builder snapshots from other visual reviews (keep the output at that directory depth for relative asset paths).
+
 Build / Play, datasheets, automation and archive checks: `node --test tests/builder-refinements.test.cjs tests/builder-datasheets.test.cjs tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs`.
 
 `builder-refinements.test.cjs` and `refinements-model.php` check shared replacement limits across model types, defensive gear variants, fixed enhancement weapons and named bearers, fixed-size/non-Character controls, inline keyword lookup and collapsed stratagems. Clipboard checks exercise the export preview and format selector. HTTP checks cover private saved-list preview and league submission as an immutable snapshot, ownership, blind reveal and later edits/deletion in the builder.

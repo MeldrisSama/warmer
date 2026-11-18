@@ -39,7 +39,7 @@ test('Derived weapon effects preserve base values and do not stack twice on repe
   assert.equal(vm.runInContext(`beEffects(wbUnits().get('term'),builderUi.army.entries[0]).unit.weapons[3].A`,c),'3');
 });
 test('All text formats preserve gear and attachments; clipboard receives the selected format',async()=>{
-  const c=context();for(const format of ['gw','wtc','short']){c.format=format;const text=vm.runInContext(`beExportText(format)`,c);assert.match(text,/Veterans/);assert.match(text,/Power Fist/);}
+  const c=context();for(const format of ['gw','wtc']){c.format=format;const text=vm.runInContext(`beExportText(format)`,c);assert.match(text,/Veterans/);assert.match(text,/Power Fist/);}
   let copied;c.navigator={clipboard:{writeText:async text=>{copied=text;}}};const dialog=exportDialog(c),format=dialog.querySelector('[data-wb-export-format]');assert.equal(format.value,'gw');format.value='short';format.onchange();await dialog.querySelector('[data-wb-export-copy]').onclick();assert.equal(copied,vm.runInContext(`beExportText('short')`,c));
 });
 test('Situational effects never alter profiles, even with an old active toggle',()=>{
