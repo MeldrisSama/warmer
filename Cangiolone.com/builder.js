@@ -1,11 +1,12 @@
 'use strict';
 
 // Catalog metadata and army drafts stay separate from the old .txt list archive.
-const builderUi={edition:'10',active:null,catalog:null,armies:[],army:null,search:'',pending:false};
+const builderUi={edition:'11',active:null,catalog:null,armies:[],army:null,search:'',pending:false};
 const builderClone=value=>JSON.parse(JSON.stringify(value));
 const builderFaction=()=>builderUi.catalog?.factions.find(f=>f.id===builderUi.army?.factionId);
 const builderUnit=id=>builderFaction()?.units.find(unit=>unit.id===id);
 function builderTotals(){
+  if(builderUi.catalog?.schemaVersion===2) return builderWorkbenchTotals();
   let total=0;
   for(const entry of builderUi.army?.entries||[]){
     const unit=builderUnit(entry.unitId);
@@ -23,14 +24,17 @@ function builderTotals(){
   return {total,issues};
 }
 function builderNewArmy(){
+  if(builderUi.catalog?.schemaVersion===2) return builderWorkbenchNewArmy();
   const faction=builderUi.catalog?.factions[0];
   return {id:null,name:'Nuova armata',edition:builderUi.edition,catalogId:builderUi.catalog?.catalogId||null,
     factionId:faction?.id||'',detachmentId:faction?.detachments[0]?.id||'',limit:2000,entries:[]};
 }
 async function builderLoad(){
   const edition=builderUi.edition;
+  const owner=state.user?.id;
   const [catalog,armies]=await Promise.all([api('builderCatalog&edition='+edition),api('builderArmies')]);
-  if(edition!==builderUi.edition||page()!=='builder') return;
+  if(edition!==builderUi.edition||page()!=='builder'||owner!==state.user?.id) return;
+  builderUi.owner=owner;
   builderUi.active=catalog.catalog;
   builderUi.catalog=catalog.catalog;
   builderUi.armies=armies.armies;
@@ -38,17 +42,20 @@ async function builderLoad(){
   builderRender();
 }
 function builderPage(){
+  if(builderUi.owner!==state.user?.id){builderUi.catalog=null;builderUi.army=null;if(typeof workbench!=='undefined')Object.assign(workbench,{dirty:false,selected:null,preview:null});}
+  if(builderUi.catalog?.schemaVersion===2 && builderUi.army){builderRender();return;}
   main.innerHTML='<section class="panel"><h1>Army Builder</h1><p class="intro">Caricamento cataloghi…</p></section>';
   builderLoad().catch(err=>{if(page()==='builder')main.innerHTML=`<section class="panel"><h1>Army Builder</h1><p role="alert">${esc(err.message)}</p><button id="builder-retry" type="button">Riprova</button></section>`;
     const retry=document.querySelector('#builder-retry');if(retry)retry.onclick=builderPage;});
 }
 function builderRender(){
   if(page()!=='builder') return;
+  if(builderUi.catalog?.schemaVersion===2){builderWorkbenchRender();return;}
   const cat=builderUi.catalog, army=builderUi.army, faction=builderFaction(), totals=builderTotals();
   main.innerHTML=`<section class="panel builder-shell">
-    <div class="builder-top"><div><p class="builder-eyebrow">CRONACHE DEL SETTORE / STRUMENTI</p><h1>Army Builder</h1><p class="intro">Crea e salva armate a partire da cataloghi importati con autorizzazione.</p></div>
-    <label class="builder-edition">Edizione<select id="builder-edition"><option value="10" ${builderUi.edition==='10'?'selected':''}>10ª edizione</option><option value="11" ${builderUi.edition==='11'?'selected':''}>11ª edizione</option></select></label></div>
-    ${cat ? `<div class="builder-source"><span><strong>Catalogo ${esc(cat.version)}</strong> · ${esc(cat.source)} · ${esc(cat.license)}</span>${cat.catalogId!==builderUi.active?.catalogId?'<span class="builder-warning">Versione storica della lista</span>':''}<span>Non sostituisce le regole ufficiali.</span></div>` : `<div class="builder-empty"><h2>Nessun catalogo per questa edizione</h2><p>Importa un JSON di dati utilizzabili legalmente. Il codice del builder non include datasheet o testi Games Workshop.</p></div>`}
+    <div class="builder-top"><div><p class="builder-eyebrow">CRONACHE DEL SETTORE / STRUMENTI</p><h1>Army Builder</h1><p class="intro">Crea la tua armata per Warhammer 40.000.</p></div>
+    <label class="builder-edition">Edizione<select id="builder-edition"><option value="${cat?.edition||'11'}">${cat?.edition==='10'?'10ª · archivio':'11ª edizione'}</option></select></label></div>
+    ${cat ? `<div class="builder-source"><span><strong>Catalogo ${esc(cat.version)}</strong> · ${esc(cat.source)} · ${esc(cat.license)}</span>${cat.catalogId!==builderUi.active?.catalogId?'<span class="builder-warning">Versione storica della lista</span>':''}<span>Non sostituisce le regole ufficiali.</span></div>` : `<div class="builder-empty"><h2>Nessun catalogo per questa edizione</h2><p>Importa il catalogo Wahapedia 11ª per aprire il nuovo editor Build e Play.</p></div>`}
     ${cat ? `<div class="builder-columns"><div class="builder-panel"><div class="builder-heading"><h2>Catalogo unità</h2><span>${faction?.units.length||0} unità</span></div>
         <label class="builder-field">Fazione<select id="builder-faction">${cat.factions.map(f=>`<option value="${esc(f.id)}" ${f.id===army.factionId?'selected':''}>${esc(f.name)}</option>`).join('')}</select></label>
         <label class="builder-field">Cerca unità<input id="builder-search" autocomplete="off" placeholder="Nome o categoria" value="${esc(builderUi.search)}"></label>
@@ -64,7 +71,7 @@ function builderRender(){
       </div></div>`:''}
     <div class="builder-bottom"><section class="builder-panel"><div class="builder-heading"><h2>Armate salvate</h2><span>${builderUi.armies.length} / 100</span></div>
       ${builderUi.armies.length?`<div class="builder-saved">${builderUi.armies.filter(a=>a.edition===builderUi.edition).map(a=>`<div class="builder-saved-row"><div><strong>${esc(a.name)}</strong><small>${esc(a.edition)}ª ed. · ${esc(a.updated||'')}</small></div><button data-open="${esc(a.id)}" type="button">Apri</button><button data-delete="${esc(a.id)}" type="button">Elimina</button></div>`).join('')||'<p class="builder-muted">Nessuna lista per questa edizione.</p>'}</div>`:'<p class="builder-muted">Le tue armate salvate compariranno qui.</p>'}</section>
-    ${state.user.admin?`<section class="builder-panel"><div class="builder-heading"><h2>Importazione cataloghi</h2><span>Solo amministratori</span></div><p class="builder-muted">Carica un file JSON secondo lo schema documentato nel repository. Ogni importazione crea una versione indipendente: le armate già salvate mantengono la precedente.</p><label class="builder-field">File catalogo JSON<input type="file" id="builder-file" accept=".json,application/json"></label><label class="builder-rights"><input id="builder-rights" type="checkbox">Confermo di disporre dei diritti necessari per usare e pubblicare questi dati.</label><button id="builder-import" type="button">Importa catalogo</button></section>`:''}
+    ${state.user.admin?`<section class="builder-panel"><div class="builder-heading"><h2>Importazione cataloghi</h2><span>Solo amministratori</span></div><p class="builder-muted">Carica un file JSON secondo lo schema documentato nel repository. Ogni importazione crea una versione indipendente: le armate già salvate mantengono la precedente.</p><label class="builder-field">File catalogo JSON<input type="file" id="builder-file" accept=".json,application/json"></label><button id="builder-import" type="button">Importa catalogo</button></section>`:''}
     </div>
   </section>`;
   builderBind();
@@ -87,7 +94,7 @@ function builderBind(){
   const exported=root.querySelector('#builder-export');if(exported)exported.onclick=builderExport;
   root.querySelectorAll('[data-open]').forEach(b=>b.onclick=async()=>{const army=builderUi.armies.find(a=>a.id===b.dataset.open);if(!army)return;try{if(army.catalogId!==builderUi.catalog?.catalogId){const r=await api('builderCatalog&edition='+army.edition+'&catalogId='+encodeURIComponent(army.catalogId));if(!r.catalog)throw new Error('Versione catalogo non disponibile.');builderUi.catalog=r.catalog;}builderUi.army=builderClone(army);builderUi.search='';builderRender();}catch(err){notify(err.message,true);}});
   root.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Eliminare definitivamente questa armata?'))return;try{await api('builderDelete',{id:b.dataset.delete});builderUi.armies=(await api('builderArmies')).armies;if(builderUi.army?.id===b.dataset.delete){builderUi.catalog=builderUi.active;builderUi.army=builderNewArmy();}builderRender();notify('Armata eliminata.');}catch(err){notify(err.message,true);}});
-  const imported=root.querySelector('#builder-import');if(imported)imported.onclick=async()=>{const file=root.querySelector('#builder-file').files[0];const rights=root.querySelector('#builder-rights').checked;if(!file){notify('Seleziona un file JSON.',true);return;}if(file.size>1048576){notify('Il file supera 1 MB.',true);return;}imported.disabled=true;try{const catalog=JSON.parse(await file.text());const r=await api('builderImport',{catalog,rightsConfirmed:rights});builderUi.edition=r.edition;notify('Catalogo importato e versione attivata.');builderPage();}catch(err){notify(err.message,true);imported.disabled=false;}};
+  const imported=root.querySelector('#builder-import');if(imported)imported.onclick=async()=>{const file=root.querySelector('#builder-file').files[0];if(!file){notify('Seleziona un file JSON.',true);return;}if(file.size>28000000){notify('Il file supera 28 MB.',true);return;}imported.disabled=true;try{const catalog=JSON.parse(await file.text());const r=await api('builderImport',{catalog});builderUi.edition=r.edition;notify('Catalogo importato e versione attivata.');builderPage();}catch(err){notify(err.message,true);imported.disabled=false;}};
 }
 function builderExport(){
   const army=builderUi.army, faction=builderFaction();if(!army||!faction)return;

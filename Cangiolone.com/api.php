@@ -327,7 +327,7 @@ if($_SERVER['REQUEST_METHOD']!=='POST') fail('Metodo non consentito.',405);
 
 if(!hash_equals($_SESSION['csrf'],$_SERVER['HTTP_X_CSRF_TOKEN']??'')) fail('Sessione scaduta: ricarica la pagina.',403);
 
-if((int)($_SERVER['CONTENT_LENGTH']??0)>8000000) {
+if((int)($_SERVER['CONTENT_LENGTH']??0)>($action==='builderImport'?32000000:8000000)) {
 
     fail('Richiesta troppo grande.',413);
 

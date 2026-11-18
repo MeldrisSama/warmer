@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 /** Army Builder: independent, versioned catalogs. No proprietary game data bundled. */
 final class BuilderInputError extends RuntimeException {}
+require_once __DIR__.'/builder-v2.php';
 
 function builderInvalid(string $message): never { throw new BuilderInputError($message); }
 function builderString(mixed $value, string $label, int $max=100): string {
@@ -35,6 +36,7 @@ function builderSchema(PDO $pdo, string $driver): void {
     }
 }
 function builderNormalizeCatalog(array $raw): array {
+    if (($raw['schemaVersion']??null)===2) return builderNormalizeV2($raw);
     $edition=builderEdition($raw['edition']??null);
     $version=builderString($raw['version']??null,'versione',60);
     $source=builderString($raw['source']??null,'fonte',100);
@@ -122,11 +124,17 @@ function builderGetArmies(PDO $pdo, string $user): array {
     $armies=[];
     foreach ($stmt as $row) {
         $army=json_decode($row['payload'],true,20,JSON_THROW_ON_ERROR);
+        if (($army['schemaVersion']??null)===2) {
+            // Preserve an empty JSON map: [] would turn later numeric weapon keys into an array.
+            foreach ($army['entries'] as &$entry) $entry['weaponCounts']=(object)($entry['weaponCounts']??[]);
+            unset($entry);
+        }
         $armies[]=$army+['id'=>$row['id'],'updated'=>$row['updated']];
     }
     return ['armies'=>$armies];
 }
 function builderValidateArmy(array $catalog, array $in): array {
+    if (($catalog['schemaVersion']??null)===2) return builderValidateV2($catalog,$in);
     $factionId=builderId($in['factionId']??null,'fazione');
     $detachmentId=builderId($in['detachmentId']??null,'distaccamento');
     $limit=builderInt($in['limit']??null,'limite punti',100,5000);
@@ -177,9 +185,8 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): arr
     if ($action==='builderArmies') return builderGetArmies($pdo,$me['id']);
     if ($action==='builderImport') {
         if (!$me['admin']) builderInvalid('Solo un amministratore può importare cataloghi.');
-        if (($data['rightsConfirmed']??false)!==true) builderInvalid('Conferma di avere il diritto di utilizzare e pubblicare i dati.');
         $raw=$data['catalog']??null;
-        if (!is_array($raw) || strlen(json_encode($raw,JSON_THROW_ON_ERROR))>1048576) builderInvalid('Catalogo JSON non valido o superiore a 1 MB.');
+        if (!is_array($raw) || strlen(json_encode($raw,JSON_THROW_ON_ERROR))>28000000) builderInvalid('Catalogo JSON non valido o superiore a 28 MB.');
         $catalog=builderNormalizeCatalog($raw);
         $id=bin2hex(random_bytes(12));
         $payload=json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
@@ -219,6 +226,12 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): arr
         $army=['id'=>$id,'name'=>$name,'edition'=>$edition,'catalogId'=>$catalogId,
             'factionId'=>$validation['factionId'],'detachmentId'=>$validation['detachmentId'],
             'limit'=>$validation['limit'],'entries'=>$validation['entries']];
+        if (($catalog['schemaVersion']??null)===2) {
+            $army['schemaVersion']=2;
+            $army['detachmentIds']=$validation['detachmentIds'];
+            $army['disposition']=$validation['disposition'];
+            $army['dpLimit']=$validation['dpLimit'];
+        }
         $payload=json_encode($army,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         $updated=date(DATE_ATOM);
         if ($existing!==false) {

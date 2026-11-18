@@ -1,5 +1,8 @@
 # Regression tests
 
+Build / Play checks: `node --test tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs`.
+The workbench fixture contains synthetic game data. Checks cover copy-dependent prices, manual price overrides, Unique conflicts, DP availability, disposition compatibility, attachment cycles, weapon selections, escaping, persistence and ownership. The full Wahapedia export is kept outside Git. See `docs/builder.md` for import and an isolated HTTP preview.
+
 From the repository root, run:
 
 ```sh
