@@ -79,9 +79,12 @@ function builderCompileLoadout(array $unit, callable $description): array {
         }
     }
     if (!$groups) return [];
-    $covered=[];
+    $covered=[];$optionTotal=0;
     foreach ($unit['options'] as $optionIndex=>$row) {
         $text=trim($description($row));$per=0;$target='';$from='';$alternatives=[];$add=false;
+        // The source's no-options placeholder is not an equipment rule.
+        if (preg_match('/^None\.?$/i',$text)) continue;
+        $optionTotal++;
         if (preg_match('/^For every (\d+) models in this unit, 1 (?:(.+?) )?model can (?:have their (.+?) replaced with (.+)|be equipped with (.+))\.?$/is',$text,$m)) {
             $per=(int)$m[1];$target=($m[2]??'')?:'model';$from=$m[3]??'';$tail=($m[5]??'')?:($m[4]??'');$add=!empty($m[5]);
         } elseif (preg_match('/^Any number of models can each have their (.+?) replaced with (.+)$/is',$text,$m)) {
@@ -113,7 +116,7 @@ function builderCompileLoadout(array $unit, callable $description): array {
             } unset($group);
         }
     }
-    return ['version'=>1,'models'=>$models,'weapons'=>array_values($weapons),'groups'=>$groups,'optionsCovered'=>count($covered),'optionsTotal'=>count($unit['options'])];
+    return ['version'=>1,'models'=>$models,'weapons'=>array_values($weapons),'groups'=>$groups,'optionsCovered'=>count($covered),'optionsTotal'=>$optionTotal];
 }
 function builderLoadoutCapacity(array $recipe,array $group,int $models): int {
     $fixed=array_sum(array_column(array_filter($recipe['models'],static fn($m)=>!$m['variable']),'fixed'));

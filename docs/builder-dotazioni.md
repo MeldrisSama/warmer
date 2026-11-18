@@ -1,6 +1,8 @@
 # Completare le dotazioni guidate
 
-Nel catalogo v5 ci sono 1.487 voci: 1.407 hanno una ricetta di dotazione, 80 non la hanno. Fra le ricette presenti, 834 riconoscono tutte le righe delle opzioni (incluse le schede senza opzioni); 573 le riconoscono solo in parte. Il conteggio misura l'interpretazione dei dati, non certifica tutte le restrizioni in prosa.
+Nel catalogo v5 ci sono 1.487 voci: 1.407 hanno una ricetta di dotazione, 80 non la hanno. Il conteggio iniziale di 573 ricette parziali includeva erroneamente 205 schede con la sola voce «None»/«None.» nelle opzioni. Ricompilando con il convertitore corretto, 1.039 riconoscono tutte le righe effettive e 368 restano parziali. Il conteggio misura l'interpretazione dei dati, non certifica tutte le restrizioni in prosa. I cataloghi già salvati non vengono riscritti automaticamente.
+
+L'audit riproducibile è `php scripts/audit-builder-loadouts.php percorso/catalogo.json percorso/report.json`: non carica configurazione o database; elenca le singole righe non riconosciute e le schede senza ricetta. Il secondo percorso è facoltativo.
 
 Una **ricetta** descrive al builder la dotazione iniziale e le scelte consentite per ciascun tipo di modello. La fonte contiene queste informazioni soprattutto come testo inglese; il convertitore riconosce alcune forme, come «Any number of models…» o «For every 3 models…». Se una frase non è riconosciuta, la scheda può conservare profili e testo, ma una sostituzione, un limite o l'assegnazione a un modello non è ancora automatizzata.
 
