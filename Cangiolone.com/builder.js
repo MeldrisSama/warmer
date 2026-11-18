@@ -79,6 +79,7 @@ async function builderOpen(id){
     if(r.catalog.schemaVersion===2)builderUi.army.dpLimit??=army.limit<=1000?2:3;
     builderUi.baseline=JSON.stringify(builderUi.army);
     Object.assign(workbench,{dirty:false,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{}});
+    if(r.catalog.schemaVersion===2&&wbApplyRequiredWarlord())workbench.dirty=true;
   }catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderRender();}
 }
 function builderDate(value){

@@ -1,6 +1,14 @@
 # Verifica Build / Play — 18 novembre 2026
 
-## Aggiornamento: gruppi, popup e scheda unica
+## Aggiornamento: categorie chiuse, Warlord obbligatori e notifiche
+
+**82/82 test passati**. Aggiunti controlli per categorie inizialmente chiuse, apertura conservata e ricerca; Warlord imposto da regola, default e correzione di una bozza; validazione PHP dell'obbligo; Build individuale e Play combinato; selezione indipendente del membro nel roster; notifica chiusa senza perdere la validazione e sua ricomparsa dopo risoluzione/ricreazione; clic esterno rispetto a padding/contenuti del popup; schede fisse senza cassetti superflui. Aggiornato il test dell'export essenziale per titolo, totale, distaccamenti e Enhancement.
+
+Audit reale v5 PASS, compreso Lion El'Jonson Warlord predefinito e assenza dei cassetti inutili. Il catalogo non viene reimportato e le liste non sono migrate. La correzione di Warlord su apertura diventa una bozza modificata, da salvare esplicitamente.
+
+Screenshot isolati Edge headless fuori dalla sandbox a 1440×900 e 390×844 acquisiti e ispezionati in `.taste-skill/builder-review/compact-*.png`: catalogo compatto e chiuso, Build individuale e rimozione del pannello inferiore. Test di interazione con DOM simulato; nessun nuovo gate complessivo PASS o prova fisica Safari/iPhone attestata. Anteprima aggiornata su 8803, senza arrestare i server preesistenti e senza modificare utenti/liste/configurazione.
+
+## Aggiornamento precedente: gruppi, popup e scheda unica
 
 **76/76 test passati**, ripetuti dopo lo spostamento del lavoro sui temi. Nuove verifiche: gruppi per fazione conservati nei tre ordinamenti; popup esercito che conserva il form senza aprire prematuramente il builder; ordine difesa/configurazione/armi nella scheda unica; Upgrade indisponibili omessi; fasce di costo identiche deduplicate; scroll a zero nei due passaggi Build/Play; export essenziali senza equipaggiamento e formati completi senza ID/validation/metadati. Audit dei profili reali v5 ancora PASS.
 

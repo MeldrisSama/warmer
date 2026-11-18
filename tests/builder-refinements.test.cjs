@@ -17,7 +17,8 @@ test('Build and Play transitions reset all panel scroll positions',()=>{
 });
 test('Minimal exports contain only requested fields, full exports omit IDs and validation metadata',()=>{
   const c=context();c.state={user:{name:'Test'}};vm.runInContext(`wbAdd('guard');const child=builderUi.army.entries[0],parent=builderUi.army.entries[1];wbUnits().get(child.unitId).leads=['guard'];child.attachedTo=parent.entryId;`,c);
-  assert.equal(vm.runInContext(`beExportText('names')`,c),'Signal Squad\nGuard');const short=vm.runInContext(`beExportText('units')`,c);assert.equal(short.split('\n').length,2);assert.match(short,/3x Signal Squad/);assert.doesNotMatch(short,/Rifle|Attached|Catalog/);
+  vm.runInContext(`builderUi.army.name='Test list';builderUi.catalog.factions[0].detachments=[{id:'alpha',name:'Alpha detachment',dp:'1'}];builderUi.army.detachmentIds=['alpha'];child.enhancementIds=['gift'];child.enhancementModels={gift:'3'};beSyncEnhancements(wbUnits().get(child.unitId),child)`,c);
+  assert.equal(vm.runInContext(`beExportText('names')`,c),'Signal Squad\nGuard');const short=vm.runInContext(`beExportText('units')`,c);assert.match(short,/^Test list\n/);assert.match(short,/210 \/ 2000 pt/);assert.match(short,/Alpha detachment/);assert.match(short,/Enhancement: Gift Sword/);assert.match(short,/3x Signal Squad/);assert.doesNotMatch(short,/Rifle|Attached|Catalog/);
   for(const format of ['gw','wtc']){c.format=format;const text=vm.runInContext('beExportText(format)',c);assert.match(text,/Attached to: Guard/);assert.ok(!text.includes(vm.runInContext('parent.entryId',c)));assert.doesNotMatch(text,/VALIDATION|MANUAL REVIEW|Catalog:/);}
 });
 test('Launcher replacement selects one model and disables the other models at the shared limit',()=>{
@@ -38,9 +39,37 @@ test('Enhancement has exactly one immutable weapon and a named model bearer',()=
 });
 test('Fixed configurations omit size/default controls; keywords inside rule prose stay safe and clickable',()=>{
   const c=context();vm.runInContext(`const u=wbUnits().get('signal'),e=builderUi.army.entries[0];workbench.selected=e.entryId;workbench.detailTab='config';`,c);c.main={querySelector:()=>null};
-  const html=vm.runInContext(`wbDetail()`,c);assert.doesNotMatch(html,/type="number"|Punti base manuali|data-wb-adjust="models"/);assert.match(html,/Opzioni avanzate/);
+  const html=vm.runInContext(`wbDetail()`,c);assert.doesNotMatch(html,/type="number"|Punti base manuali|data-wb-adjust="models"/);assert.match(html,/data-wb-unit-options=/);
   vm.runInContext(`u.options=[]`,c);assert.equal(vm.runInContext(`beLoadoutHtml(u,e)`,c),'');
   const rich=vm.runInContext(`beRich('Attacks have [SUSTAINED HITS 1]. <script>bad</script>')`,c);assert.match(rich,/data-wb-rule="sustained"/);assert.doesNotMatch(rich,/<script>/);
+});
+test('Mandatory Warlord is chosen by its rule on add and can correct an old draft',()=>{
+  const c=context();vm.runInContext(`const commander=builderClone(wbUnits().get('signal'));commander.id='commander';commander.name='Commander';commander.abilities=[{name:'Supreme Commander',description:'If this model is in your army, it must be your WARLORD.'}];fixture.units.push(commander);fixture.factions[0].unitIds.push('commander');builderUi.army.entries[0].warlord=true;wbAdd('commander');`,c);
+  assert.equal(vm.runInContext(`builderUi.army.entries[1].warlord`,c),true);assert.equal(vm.runInContext(`builderUi.army.entries[0].warlord`,c),false);
+  vm.runInContext(`builderUi.army.entries[1].warlord=false;builderUi.army.entries[0].warlord=true;wbApplyRequiredWarlord()`,c);assert.equal(vm.runInContext(`builderUi.army.entries[1].warlord`,c),true);
+  vm.runInContext(`builderUi.army.entries[1].warlord=false`,c);assert.equal(vm.runInContext(`wbSetMode('play')`,c),false);
+});
+test('Catalog categories start collapsed, retain a chosen opening and reveal search results',()=>{
+  const c=context();assert.doesNotMatch(vm.runInContext('wbCatalogList()',c),/<details\s+open\b/);
+  vm.runInContext(`workbench.categoryOpen['sm:Character']=true`,c);assert.match(vm.runInContext('wbCatalogList()',c),/<details open class="wb-category" data-wb-category="Character"/);
+  vm.runInContext(`workbench.categoryOpen={};workbench.search='Signal'`,c);assert.match(vm.runInContext('wbCatalogList()',c),/<details open/);
+});
+test('Attached members have individual Build sheets and a combined Play sheet',()=>{
+  const c=context();vm.runInContext(`wbAdd('guard');const child=builderUi.army.entries[0],parent=builderUi.army.entries[1];wbUnits().get(child.unitId).leads=['guard'];child.attachedTo=parent.entryId;workbench.selected=child.entryId`,c);
+  assert.doesNotMatch(vm.runInContext('wbDetail()',c),/class="wb-attached-profiles"/);assert.equal((vm.runInContext('wbRosterRows()',c).match(/aria-pressed="true"/g)||[]).length,1);
+  vm.runInContext(`workbench.mode='play'`,c);const play=vm.runInContext('wbDetail()',c);assert.match(play,/class="wb-attached-profiles"/);assert.match(play,/Guard/);assert.match(play,/Keeper/);assert.doesNotMatch(play,/data-wb-unit-options/);
+});
+test('Closing an error notification keeps validation and the error returns if fixed then reintroduced',()=>{
+  const c=context();vm.runInContext(`wbUnits().get('signal').support=true;const error=wbSupportErrors()[0]`,c);assert.match(vm.runInContext('wbErrorNotices([error])',c),/role="alert"/);
+  vm.runInContext(`workbench.hiddenErrors.push(error)`,c);assert.equal(vm.runInContext('wbErrorNotices([error])',c),'');assert.equal(vm.runInContext('wbSupportErrors().length',c),1);
+  vm.runInContext('wbErrorNotices([])',c);assert.match(vm.runInContext('wbErrorNotices([error])',c),/data-wb-dismiss-error/);
+});
+test('Backdrop closes a dialog while its padding and children keep it open',()=>{
+  const c=context();let click,closed=0;const dialog={addEventListener(event,fn){click=fn;},getBoundingClientRect:()=>({left:10,right:100,top:10,bottom:100}),close(){closed++;}};c.dialog=dialog;vm.runInContext('wbCloseOnBackdrop(dialog)',c);
+  click({target:dialog,clientX:20,clientY:20});click({target:{},clientX:2,clientY:2});assert.equal(closed,0);click({target:dialog,clientX:2,clientY:20});assert.equal(closed,1);
+});
+test('Fixed simple units omit source and cost drawers but retain compact extra options',()=>{
+  const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');u.options=[];u.composition=[{description:'3 models'}]`,c);const html=vm.runInContext('wbUnitControls(u,e)',c);assert.doesNotMatch(html,/Dotazione di fonte|Costi e composizione|Opzioni avanzate|Opzioni di equipaggiamento/);assert.match(html,/data-wb-unit-options/);
 });
 test('Stratagems start collapsed, exclude Boarding Actions and include global core and chosen detachments',()=>{
   const c=context();vm.runInContext(`builderUi.catalog.stratagems=[{id:'core',name:'Core',type:'Core Stratagem',cp_cost:'1',turn:'Your turn',description:'EFFECT: Test.'},{id:'boarding',name:'Boarding',type:'Boarding Actions Stratagem'},{id:'chosen',name:'Chosen',detachment_id:'a'},{id:'other',name:'Other',detachment_id:'b'}];builderUi.army.detachmentIds=['a'];`,c);

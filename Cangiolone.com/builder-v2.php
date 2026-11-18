@@ -85,7 +85,7 @@ function builderValidateV2(array $catalog, array $in): array {
     $factions=array_column($catalog['factions'],null,'id');
     $faction=$factions[$factionId]??null;
     if (!$faction) builderInvalid('Fazione sconosciuta.');
-    $units=array_column($catalog['units'],null,'id');
+    $units=array_column($catalog['units'],null,'id');$ruleTexts=array_column($catalog['texts']??[],'description','id');
     $limit=builderInt($in['limit']??null,'limite',100,5000);
     $dpLimit=$limit===1000?2:($limit===2000?3:builderInt($in['dpLimit']??3,'budget DP',0,20));
     $detachmentIds=$in['detachmentIds']??[];
@@ -156,6 +156,7 @@ function builderValidateV2(array $catalog, array $in): array {
         $notes=$entry['notes']??''; if (!is_string($notes) || strlen($notes)>4000 || !preg_match('//u',$notes)) builderInvalid('Note non valide.');
         $warlord=($entry['warlord']??false)===true; $warlords+=(int)$warlord;
         if ($warlord&&!preg_match('/\bCharacter\b/i',$u['keywords'])) builderInvalid('Solo un Character può essere Warlord.');
+        if (!$warlord)foreach(array_merge($u['abilities'],$u['composition']) as $rule){$text=($rule['description']??'')?:($ruleTexts[$rule['descriptionRef']??'']??'');if(preg_match('/If this (?:model|unit) is in your army,?\s+it must be your Warlord\b/i',$text)){$message=$u['name'].': questa unità deve essere il Warlord.';$issues[]=$message;$errors[]=$message;break;}}
         if ($u['support'] && $attached===null) {
             $message=$u['name'].': un Support deve essere associato a un’unità compatibile.';
             $issues[]=$message;$errors[]=$message;

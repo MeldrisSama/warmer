@@ -23,4 +23,7 @@ vm.runInContext(`const term=add('Terminator Assault Squad'),tu=wbUnits().get(ter
 assert.equal(vm.runInContext(`defence.find(m=>m._gear?.includes('Storm Shield')).W`,c),'4');
 assert.equal(vm.runInContext(`defence.filter(m=>!m._gear).every(m=>m.W==='3')`,c),true);
 assert.equal(catalog.stratagems.some(s=>/boarding|combat patrol/i.test(s.type)),false,'Wrong mode stratagem in imported library');
-console.log(JSON.stringify({version:catalog.version,azrael:true,ravenwing:true,imperiumSword:true,stormShield:true,modeFilter:true}));
+vm.runInContext(`const lion=add(catalog.units.find(u=>/^Lion El/i.test(u.name)).name),lu=wbUnits().get(lion.unitId);`,c);
+assert.equal(vm.runInContext('lion.warlord',c),true,'Lion not selected as mandatory Warlord');
+assert.doesNotMatch(vm.runInContext('wbUnitControls(lu,lion)',c),/Costi e composizione|Opzioni di equipaggiamento|Opzioni avanzate/,'Fixed Lion sheet has unnecessary drawers');
+console.log(JSON.stringify({version:catalog.version,azrael:true,ravenwing:true,imperiumSword:true,stormShield:true,modeFilter:true,lionWarlord:true}));

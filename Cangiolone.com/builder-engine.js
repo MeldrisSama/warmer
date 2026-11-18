@@ -67,6 +67,7 @@ function beGearErrors(entry){
   for(const w of unit.weapons)if((entry.weaponCounts[w.line]||0)>beWeaponLimit(unit,entry,w.line))errors.push(`${unit.name}: limite superato per ${w.name}.`);
   for(const g of unit.loadoutRecipe?.groups||[])if(g.sharedPer){const used=unit.loadoutRecipe.groups.filter(x=>x.sharedKey===g.sharedKey).reduce((s,x)=>s+Object.entries(entry.loadoutSelections?.[x.id]||{}).filter(([id])=>id!==x.default).reduce((n,[,q])=>n+q,0),0);if(used>Math.floor(entry.models/g.sharedPer)){errors.push(`${unit.name}: limite condiviso delle sostituzioni superato.`);break;}}
   if(entry.warlord&&!/\bCharacter\b/i.test(unit.keywords))errors.push(`${unit.name}: solo un Character può essere Warlord.`);
+  if(wbMustWarlord(unit)&&!entry.warlord)errors.push(`${unit.name}: questa unità deve essere il Warlord.`);
   if(entry.attachedTo){const target=wbEntry(entry.attachedTo);if(!target||target.attachedTo||!unit.leads.includes(target.unitId))errors.push(`${unit.name}: associazione a un'unità non valida.`);}
   if(entry.models>1)for(const id of entry.enhancementIds)if(unit.weapons.some(w=>w.enhancement_id===id)&&!entry.enhancementModels?.[id])errors.push(`${unit.name}: scegli il modello portatore del potenziamento.`);
   return errors;
@@ -253,7 +254,11 @@ function beGearLines(entry){
 function beExportText(format){
   const a=builderUi.army,units=wbUnits(),t=builderWorkbenchTotals(),detachments=wbDetachments().map(d=>d.name).join(', '),warlord=a.entries.find(e=>e.warlord);
   if(format==='names')return a.entries.map(e=>units.get(e.unitId).name).join('\n');
-  if(format==='units'||format==='short')return a.entries.map(e=>{const u=units.get(e.unitId),cost=(wbPrice(e)??0)+e.enhancementIds.reduce((sum,id)=>sum+Number(u.enhancements.find(x=>x.id===id)?.cost||0),0);return `${e.models}x ${u.name} · ${cost} pt`;}).join('\n');
+  if(format==='units'||format==='short'){
+    const lines=[a.name,`${t.total} / ${a.limit} pt`,`Detachments: ${detachments||'—'}`,''];
+    for(const e of a.entries){const u=units.get(e.unitId),cost=(wbPrice(e)??0)+e.enhancementIds.reduce((sum,id)=>sum+Number(u.enhancements.find(x=>x.id===id)?.cost||0),0);lines.push(`${e.models}x ${u.name} · ${cost} pt`);for(const id of e.enhancementIds){const item=u.enhancements.find(x=>x.id===id);if(item)lines.push(`  ${item.upgrade==='true'?'Upgrade':'Enhancement'}: ${item.name} · ${item.cost} pt`);}}
+    return lines.join('\n');
+  }
   const enhancements=a.entries.flatMap(e=>e.enhancementIds.map(id=>units.get(e.unitId).enhancements.find(x=>x.id===id)?.name).filter(Boolean));
   let lines;
   if(format==='wtc')lines=[`PLAYER NAME: ${state.user.name||''}`,`ARMY NAME: ${a.name}`,`FACTION: ${wbFaction().name}`,`TOTAL POINTS: ${t.total}/${a.limit}`,`DETACHMENTS: ${detachments}`,`DETACHMENT POINTS: ${wbDpSummary()}`,`FORCE DISPOSITION: ${a.disposition}`,`WARLORD: ${warlord?units.get(warlord.unitId).name:'—'}`,`ENHANCEMENTS / UPGRADES: ${enhancements.join(', ')||'—'}`,''];

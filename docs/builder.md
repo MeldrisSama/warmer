@@ -1,5 +1,17 @@
 # Army Builder 11ª: Build e Play
 
+## Catalogo compatto e controlli contestuali
+
+Categorie del catalogo inizialmente chiuse, ricerca più compatta e risultati aperti quando si cerca; le aperture manuali vengono conservate durante gli aggiornamenti. Rimosso il pannello «Armate salvate e catalogo» dal fondo dell'editor: archivio, import e ripristino sono raggiungibili da «Torna alle armate».
+
+Build mostra la sola scheda del membro attached selezionato, con i bonus del gruppo pertinenti. Play mostra insieme tutti i membri. Gli errori sono notifiche sovrapposte richiudibili: chiuderle non modifica gli errori della lista, i simboli rossi o il blocco di Play. Se il problema viene risolto e poi ricreato, l'avviso torna.
+
+Le unità con regola esplicita «If this model/unit is in your army, it must be your Warlord» vengono scelte come Warlord quando aggiunte. Aprendo una lista con un unico Warlord obbligatorio, la scelta viene corretta come modifica non salvata, senza scrivere automaticamente la lista. Se l'obbligo non è rispettato, il server lo segnala anche nel salvataggio della bozza. Nessuna scelta arbitraria all'apertura con più candidati obbligatori.
+
+Nei modelli senza opzioni, come Lion El'Jonson, non compaiono i cassetti superflui di equipaggiamento/costi. «Opzioni di equipaggiamento» sostituisce la vecchia etichetta «Dotazione di fonte e restrizioni» dove ci sono alternative. Correzione temporanea dei punti e note sono nel pulsante «⋯» della scheda. Tutti i popup del builder si chiudono cliccando sullo sfondo esterno, oltre a Chiudi/Escape.
+
+«Unità · punti e quantità» include titolo, totale/limite, distaccamenti e Enhancement/Upgrade sotto la relativa unità, mantenendo fuori i dettagli delle armi. «Solo nomi» resta strettamente un elenco di nomi. Per stato e lavoro residuo sulle ricette leggere [Completare le dotazioni guidate](builder-dotazioni.md).
+
 ## Archivio raggruppato e scheda unica
 
 L'archivio raggruppa sempre per esercito/edizione: l'ordinamento scelto si applica alle liste di ogni gruppo e determina l'ordine dei gruppi dalla prima lista. Titoli grandi, gruppi richiudibili e icone locali per i 35 eserciti giocabili. Le icone SVG provengono da [wh40k-icon](https://github.com/Certseeds/wh40k-icon), revisione fissata nel manifest, CC-BY-NC-SA-4.0; autori, licenza e file originali sono inclusi in `assets/factions`. Nessun codice dell'app upstream importato e nessuna dipendenza remota per mostrare i loghi.
@@ -10,7 +22,7 @@ La scheda Build non ha più tab Profili/Configura: difesa e statistiche, associa
 
 Le regole dei distaccamenti hanno intestazione e corpo in una scheda dedicata, sia nel popup diretto sia nella selezione. Il primo titolo della regola è separato dal testo operativo. Parole ambigue come «assault» dentro «assault doctrine» non aprono erroneamente la keyword d'arma; il riferimento esplicito `[ASSAULT]` resta cliccabile.
 
-Export: GW app · testo, WTC, **Unità · punti e quantità** e **Solo nomi**. Gli ultimi due omettono armi, note, attachment e metadati; Short resta solo un alias interno del formato essenziale. I formati completi usano nomi leggibili delle istanze senza ID e non includono validation/manual review o codici di catalogo. Gli avvisi restano nell'interfaccia; JSON conserva i dati completi.
+Export: GW app · testo, WTC, **Unità · punti e quantità** e **Solo nomi**. Il formato unità omette armi, note e attachment, mantenendo titolo, totale, distaccamenti e potenziamenti; Solo nomi omette anche questi metadati. Short resta solo un alias interno del formato essenziale. I formati completi usano nomi leggibili delle istanze senza ID e non includono validation/manual review o codici di catalogo. Gli avvisi restano nell'interfaccia; JSON conserva i dati completi.
 
 Stato delle dotazioni guidate sul catalogo v5: 1.407/1.487 voci con ricetta; 834 riconoscono tutte le righe delle opzioni, incluse quelle senza opzioni. 573 ricette sono parziali e 80 schede senza ricetta. Non considerare quindi risolte tutte le schede manuali né certificata la legalità di ogni restrizione in prosa.
 
@@ -22,7 +34,7 @@ Le sostituzioni «For every N models, 1 model» condividono il limite fra sottog
 
 Numeri e keyword modificati rispetto alla fonte sono blu; keyword già presente con valore uguale/superiore resta normale. L'associazione al gruppo determina i destinatari del bonus Leader. Gli effetti con condizioni di gioco (carica, dottrina, fase ecc.) non sono applicati ai profili e non hanno interruttori. Rimosso «Effetti e valori di fonte»; un riepilogo collassato spiega le fonti dei bonus effettivi. Le mappature non riconosciute restano nel testo delle regole.
 
-Solo i Character hanno Warlord. Taglie fisse senza campo Miniature; taglie variabili e quantità usano −/+. Punti personalizzati sotto «Opzioni avanzate». Le schede senza opzioni di wargear omettono azioni per default, ripristino o modalità manuale. Armi dei potenziamenti fissate a una, con scelta e salvataggio del portatore nelle unità con più modelli quando necessario. Unità attached in schede distinte collegate da banda laterale: ogni membro apre gli stessi profili di gruppo, mantenendo la configurazione individuale in Build. Simbolo rosso per problemi della scheda. «Squadra 1/2» distingue soltanto istanze dello stesso tipo, sostituendo l'indice generico «copia 2».
+Solo i Character hanno Warlord. Taglie fisse senza campo Miniature; taglie variabili e quantità usano −/+. Punti personalizzati e note nel menu «⋯». Le schede senza opzioni di wargear omettono azioni per default, ripristino o modalità manuale. Armi dei potenziamenti fissate a una, con scelta e salvataggio del portatore nelle unità con più modelli quando necessario. Unità attached in schede distinte collegate da banda laterale: Build apre il membro selezionato, Play mostra i profili del gruppo. Simbolo rosso per problemi della scheda. «Squadra 1/2» distingue soltanto istanze dello stesso tipo, sostituendo l'indice generico «copia 2».
 
 Editor fisso nell'altezza della finestra, pannelli con scorrimento indipendente anche su mobile; archivio e creazione mantengono lo scorrimento normale. «Esporta lista» apre preview inizialmente GW app · testo, scelta formato, copia (fallback selezione) e download opzionale. Keyword cliccabili anche nel testo delle regole.
 
