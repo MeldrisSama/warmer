@@ -18,7 +18,7 @@ header('Cache-Control: no-store');
   <meta property="og:title" content="Campionato Warhammer 40.000 · Cronache del settore">
   <meta property="og:description" content="Calendario, classifica e risultati del campionato.">
   <title>Campionato Warhammer 40.000 · Cronache del settore</title>
-  <link rel="stylesheet" href="campionato.css">
+  <link rel="stylesheet" href="campionato.css"><link rel="stylesheet" href="theme.css"><script src="theme.js"></script>
   <script defer src="standings.js"></script>
   <script defer src="campionato.js"></script>
 </head>
@@ -27,7 +27,7 @@ header('Cache-Control: no-store');
   <header class="nav masthead">
     <nav class="wrap masthead-inner" aria-label="Navigazione del campionato">
       <a href="index.php" class="wordmark">Cronache del settore</a>
-      <a href="index.php#campionati" class="back"><span aria-hidden="true">←</span> Tutti i campionati</a>
+      <a href="index.php#campionati" class="back"><span aria-hidden="true">←</span> <span data-theme-menu="Tutti i campionati">Tutti i campionati</span></a>
     </nav>
   </header>
   <main id="campionato" tabindex="-1">
@@ -44,8 +44,8 @@ header('Cache-Control: no-store');
     <p class="wrap" id="league-notice" role="status" aria-live="polite" hidden></p>
     <div class="wrap league-grid" id="league-content" hidden>
       <div class="league-tabs" id="league-tabs" role="tablist" aria-label="Campionato" hidden>
-        <button type="button" role="tab" id="tab-classifica" aria-controls="classifica" aria-selected="true">Classifica</button>
-        <button type="button" role="tab" id="tab-giornate" aria-controls="giornate" aria-selected="false" tabindex="-1">Giornate</button>
+        <button type="button" role="tab" data-theme-menu="Classifica" id="tab-classifica" aria-controls="classifica" aria-selected="true">Classifica</button>
+        <button type="button" role="tab" data-theme-menu="Giornate" id="tab-giornate" aria-controls="giornate" aria-selected="false" tabindex="-1">Giornate</button>
       </div>
       <section id="giornate" aria-labelledby="round-heading">
         <div class="section-head">
