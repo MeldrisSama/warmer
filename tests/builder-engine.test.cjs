@@ -8,6 +8,11 @@ function context(){
   for(const f of ['builder.js','builder-engine.js','builder-workbench.js'])vm.runInContext(fs.readFileSync(path.join(root,'Cangiolone.com',f),'utf8'),c);
   vm.runInContext(`builderUi.catalog=fixture;builderUi.active=fixture;builderUi.army=builderWorkbenchNewArmy();builderWorkbenchRender=()=>{};wbAdd('term');`,c);return c;
 }
+function exportDialog(c){
+  const nodes=new Map(),dialog={innerHTML:'',querySelector(selector){if(!nodes.has(selector))nodes.set(selector,{});return nodes.get(selector);}};
+  c.wbModal=(title,html)=>{dialog.innerHTML=html;dialog.querySelector('textarea').value=vm.runInContext("beExportText('gw')",c);dialog.querySelector('[data-wb-export-format]').value='gw';return dialog;};
+  vm.runInContext('beExport()',c);return dialog;
+}
 test('PHP compiles recipes and effects, derives quantities, isolates defaults and gates allies',()=>{catalog();});
 test('Guided replacements preserve squad size and the Sergeant; modes share a count',()=>{
   const c=context();vm.runInContext(`const entry=builderUi.army.entries[0],unit=wbUnits().get('term'),g=unit.loadoutRecipe.groups.find(g=>g.model==='m1'&&g.choices.length>1);beChangeChoice(entry,g.id,'choice1',1);`,c);
@@ -35,7 +40,7 @@ test('Derived weapon effects preserve base values and do not stack twice on repe
 });
 test('All text formats preserve gear and attachments; clipboard receives the selected format',async()=>{
   const c=context();for(const format of ['gw','wtc','short']){c.format=format;const text=vm.runInContext(`beExportText(format)`,c);assert.match(text,/Veterans/);assert.match(text,/Power Fist/);}
-  let copied;c.navigator={clipboard:{writeText:async text=>{copied=text;}}};await vm.runInContext('beCopyExport()',c);assert.equal(copied,vm.runInContext(`beExportText('short')`,c));
+  let copied;c.navigator={clipboard:{writeText:async text=>{copied=text;}}};const dialog=exportDialog(c),format=dialog.querySelector('[data-wb-export-format]');assert.equal(format.value,'gw');format.value='short';format.onchange();await dialog.querySelector('[data-wb-export-copy]').onclick();assert.equal(copied,vm.runInContext(`beExportText('short')`,c));
 });
 test('Situational effects never alter profiles, even with an old active toggle',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('term');u.effects=[{id:'conditional',source:'After charging',condition:'Unit charged',scope:'unit',weaponType:'melee',field:'A',operation:'add',value:1}];`,c);
@@ -58,10 +63,7 @@ test('Copy into the active catalog preserves the original and remaps selected we
   assert.equal(vm.runInContext(`builderUi.army.entries[0].weaponCounts['11']`,c),5);
   assert.equal(vm.runInContext('workbench.mode',c),'build');
 });
-test('Clipboard denial opens selectable text without downloading a file',async()=>{
-  const c=context();let selected=false,opened=false;
-  const field={focus(){},select(){selected=true;}};
-  const dialog={setAttribute(){},querySelector:selector=>selector==='textarea'?field:{},addEventListener(){},showModal(){opened=true;}};
-  c.document={createElement:()=>dialog,body:{appendChild(){}}};c.navigator={clipboard:{writeText:async()=>{throw Error('Denied');}}};
-  await vm.runInContext('beCopyExport()',c);assert.equal(opened,true);assert.equal(selected,true);assert.match(dialog.innerHTML,/Veterans/);
+test('Clipboard denial selects the export preview without a download or a second popup',async()=>{
+  const c=context();let selected=false;c.navigator={clipboard:{writeText:async()=>{throw Error('Denied');}}};const dialog=exportDialog(c),field=dialog.querySelector('textarea');field.focus=()=>{};field.select=()=>{selected=true;};
+  await dialog.querySelector('[data-wb-export-copy]').onclick();assert.equal(selected,true);assert.match(dialog.innerHTML,/Veterans/);assert.match(dialog.querySelector('[data-wb-export-status]').textContent,/Ctrl\+C/);
 });

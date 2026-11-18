@@ -1,6 +1,10 @@
 # Regression tests
 
-Build / Play, datasheets, automation and archive checks: `node --test tests/builder-datasheets.test.cjs tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs`.
+Build / Play, datasheets, automation and archive checks: `node --test tests/builder-refinements.test.cjs tests/builder-datasheets.test.cjs tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs`.
+
+`builder-refinements.test.cjs` and `refinements-model.php` check shared replacement limits across model types, defensive gear variants, fixed enhancement weapons and named bearers, fixed-size/non-Character controls, inline keyword lookup and collapsed stratagems. Clipboard checks exercise the export preview and format selector. HTTP checks cover private saved-list preview and league submission as an immutable snapshot, ownership, blind reveal and later edits/deletion in the builder.
+
+Full-catalog UI audit: `node scripts/check-builder-profiles.cjs C:/path/to/wahapedia-11-builder-v5.json`. Checks real Azrael/Inner Circle Companions keyword strength/removal, Lion Helm recipients, Ravenwing grenade ownership/limit, Imperium's Sword and Storm Shield variants. Reads no configuration or database.
 The workbench fixture contains synthetic game data. Checks cover copy-dependent prices, manual price overrides, Unique conflicts, DP availability, disposition compatibility, attachment cycles, weapon selections, escaping, persistence and ownership. The full Wahapedia export is kept outside Git. See `docs/builder.md` for import and an isolated HTTP preview.
 
 Additional checks cover grouped faction creation and battle size selection, the Incursion single-3-DP exception, catalog-only search updates, weapon quantity buttons, compatible attachment targets, unattached Support errors, consolidated Play sections and a simulated DOM for the detachment dialog. VM/DOM tests do not establish real-browser responsive behavior.

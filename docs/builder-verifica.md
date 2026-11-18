@@ -1,6 +1,20 @@
 # Verifica Build / Play — 18 novembre 2026
 
-## Aggiornamento: schede, keyword e stratagemmi
+## Aggiornamento: correzioni dal feedback e campionato
+
+**71/71 test passati** nella suite finale. I nuovi test coprono limite condiviso tra modelli, quantità manuale fuori limite, assegnazione del launcher, variante difensiva con scudo, arma del potenziamento fissa a una, portatore nominato, taglia fissa, Warlord non Character, keyword nei testi, esclusione delle modalità Boarding e stratagemmi collassati. I test appunti ora esercitano il nuovo popup e il cambio formato, con fallback sul testo selezionato.
+
+Le regressioni HTTP verificano anteprima privata di una lista salvata, rifiuto di liste altrui/fonti miste, consegna al campionato, visibilità dopo entrambe le consegne, testo immutato dopo modifica e cancellazione dal builder, e blocco dopo rivelazione. Database isolati, nessuna prova sul database sorgente.
+
+Catalogo v5 `2026-11-12 23:45:38 · b5-9e13d14d`, 10.212.742 byte: 1.487 voci, 1.407 ricette, 1.635 taglie, 35 core rules, 234 record effetti, 101 concessioni alleati; normalizzazione con 128 MB, picco 106 MiB. Audit PHP verifica limite Ravenwing e gear Storm Shield. `scripts/check-builder-profiles.cjs` sul catalogo reale verifica Azrael/ICC (keyword più forte non ricolorata, rimozione dopo scollegamento, destinatari Lion Helm), Ravenwing (uno, sul modello scelto), Imperium's Sword e modelli con/senza scudo. La copertura di tutte le altre regole in prosa non è certificata.
+
+Anteprima aggiornata e v5 importato via API: tutte le **tre** liste preesistenti del profilo di prova confrontate e preservate. Porta 8800 già occupata: nessun arresto; usata temporaneamente 8801. Le liste mantengono il catalogo originale, quindi per le nuove ricette va creata una copia con il catalogo attivo; le vecchie selezioni manuali richiedono assegnazione esplicita.
+
+Nuovo gate con Edge: **GATE: ERROR (consistency.mjs could not walk 1440, 390; check.mjs could not run (exit 2: check: timed out))**. Nessuna riesecuzione dopo errore; WARN copy-stat-strip sui numeri dei profili. Non attestata resa responsive o interazione reale di pagina fissa, pannelli e popup. I controlli DOM sono simulati.
+
+Primo commit di consolidamento `07d4c42`, branch `builder-build-play`; nessun coautore o riferimento all'assistente. Nessun push/deploy.
+
+## Aggiornamento precedente: schede, keyword e stratagemmi
 
 **65/65 test passati** nella suite finale, inclusi sei nuovi controlli datasheet e la deduplicazione degli stratagemmi nei gruppi attached. Verificati lookup con parametri/qualifiche e abilità della stessa unità, escaping, dialogo per ID con focus restituito (DOM simulato), vecchi cataloghi e campi operativi/costi aggiuntivi degli stratagemmi. Sintassi PHP valida; diff senza errori di whitespace.
 

@@ -112,6 +112,7 @@ function builderValidateV2(array $catalog, array $in): array {
         if (($catalog['featuresVersion']??0)<3&&!in_array($uid,$faction['unitIds'],true)) $issues[]=$units[$uid]['name'].': alleato da verificare.';
         $seen[$eid]=true; $u=$units[$uid]; $ordinal=($counts[$uid]??0)+1; $counts[$uid]=$ordinal;
         $models=builderInt($entry['models']??null,'modelli',1,200);
+        if (!empty($u['loadoutRecipe']['models'])&&!array_filter($u['loadoutRecipe']['models'],static fn($m)=>$m['variable'])&&$models!==array_sum(array_column($u['loadoutRecipe']['models'],'fixed')))builderInvalid('Il numero di modelli è fisso per '.$u['name']);
         $manual=$entry['manualPoints']??null;
         if ($manual!==null) $manual=builderInt($manual,'punti manuali',0,20000);
         $price=null;

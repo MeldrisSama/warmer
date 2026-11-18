@@ -1,0 +1,26 @@
+'use strict';
+// Read-only audit of an explicitly supplied local catalog. No database or source config.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+if(!process.argv[2])throw Error('Specify the local catalog JSON.');
+const root=path.resolve(__dirname,'..'),catalog=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+const c=vm.createContext({catalog,crypto:require('node:crypto').webcrypto,notify(){},esc:v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))});
+for(const f of ['builder.js','builder-engine.js','builder-workbench.js'])vm.runInContext(fs.readFileSync(path.join(root,'Cangiolone.com',f),'utf8'),c);
+vm.runInContext(`builderUi.catalog=catalog;builderUi.army=builderWorkbenchNewArmy();builderUi.army.factionId='sm_dark_angels';builderWorkbenchRender=()=>{};const add=name=>{const u=catalog.units.find(u=>u.name===name);wbAdd(u.id);return builderUi.army.entries.at(-1);};
+const body=add('Inner Circle Companions'),azrael=add('Azrael');azrael.attachedTo=body.entryId;
+const base=wbUnits().get(body.unitId),derived=beEffects(base,body).unit;
+`,c);
+assert.equal(vm.runInContext(`derived.weapons.find(w=>/Sweep/.test(w.name))._addedKeywords?.length||0`,c),0,'Existing stronger keyword recolored');
+assert.equal(vm.runInContext(`derived.weapons.find(w=>/Strike/.test(w.name))._addedKeywords.includes('SUSTAINED HITS 1')`,c),true,'Leader keyword missing');
+assert.equal(vm.runInContext(`azrael.attachedTo=null;beEffects(base,body).unit.weapons.find(w=>/Strike/.test(w.name))._addedKeywords?.length||0`,c),0,'Leader keyword persists after detach');
+assert.equal(vm.runInContext(`azrael.attachedTo=body.entryId;beEffects(base,body).unit.models.every(m=>m.inv_sv==='4')`,c),true,'Lion Helm recipient incorrect');
+vm.runInContext(`const raven=add('Ravenwing Command Squad'),ru=wbUnits().get(raven.unitId),groups=ru.loadoutRecipe.groups.filter(g=>g.choices.length>1),champion=groups.find(g=>/Champion/.test(g.name));beChangeChoice(raven,champion.id,'choice1',1);`,c);
+assert.equal(vm.runInContext(`beWeaponLimit(ru,raven,'2')`,c),1);
+assert.equal(vm.runInContext(`beChangeChoice(raven,groups[0].id,'choice1',1)`,c),false,'Shared grenade limit bypassed');
+assert.equal(vm.runInContext(`beWeaponOwners(ru,raven,ru.weapons.find(w=>w.line==='2'))[0].name`,c),'Ravenwing Champion');
+vm.runInContext(`const sword=ru.enhancements.find(e=>/Imperium/.test(e.name));raven.enhancementIds=[sword.id];raven.enhancementModels={[sword.id]:ru.models.find(m=>/Champion/.test(m.name)).line};beSyncEnhancements(ru,raven);`,c);
+assert.equal(vm.runInContext(`ru.weapons.filter(w=>w.enhancement_id===sword.id).every(w=>raven.weaponCounts[w.line]===1)`,c),true);
+vm.runInContext(`const term=add('Terminator Assault Squad'),tu=wbUnits().get(term.unitId),tg=tu.loadoutRecipe.groups.find(g=>/Terminator ·/.test(g.name));beChangeChoice(term,tg.id,'choice1',1);const defence=beEffects(tu,term).unit.models;`,c);
+assert.equal(vm.runInContext(`defence.find(m=>m._gear?.includes('Storm Shield')).W`,c),'4');
+assert.equal(vm.runInContext(`defence.filter(m=>!m._gear).every(m=>m.W==='3')`,c),true);
+assert.equal(catalog.stratagems.some(s=>/boarding|combat patrol/i.test(s.type)),false,'Wrong mode stratagem in imported library');
+console.log(JSON.stringify({version:catalog.version,azrael:true,ravenwing:true,imperiumSword:true,stormShield:true,modeFilter:true}));

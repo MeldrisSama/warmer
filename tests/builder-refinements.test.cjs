@@ -21,6 +21,8 @@ test('Shield changes only equipped models, keeps the source and marks the new W 
 test('Enhancement has exactly one immutable weapon and a named model bearer',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');e.enhancementIds=['gift'];e.enhancementModels={gift:'3'};beSyncEnhancements(u,e);`,c);assert.equal(vm.runInContext(`e.weaponCounts['4']`,c),1);assert.equal(vm.runInContext(`beWeaponOwners(u,e,u.weapons[3])[0].name`,c),'Champion');
   vm.runInContext(`workbench.selected=e.entryId;wbChangeWeapon('4',1);`,c);assert.equal(vm.runInContext(`e.weaponCounts['4']`,c),1);
+  vm.runInContext(`u.weapons[0].S='5';u.enhancements[0].effectsJson=JSON.stringify([{id:'bearer',source:'Gift',scope:'bearer',weaponType:'ranged',field:'S',operation:'add',value:1}]);const derived=beEffects(u,e).unit;`,c);
+  assert.equal(vm.runInContext(`derived.weapons[0]._variants.find(w=>w._forModel==='Champion').S`,c),'6');assert.equal(vm.runInContext(`derived.weapons[0]._variants.find(w=>w._forModel==='Keeper').S`,c),'5');assert.equal(vm.runInContext(`u.weapons[0].S`,c),'5');
 });
 test('Fixed configurations omit size/default controls; keywords inside rule prose stay safe and clickable',()=>{
   const c=context();vm.runInContext(`const u=wbUnits().get('signal'),e=builderUi.army.entries[0];workbench.selected=e.entryId;workbench.detailTab='config';`,c);c.main={querySelector:()=>null};

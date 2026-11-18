@@ -570,7 +570,16 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueLineup', { fixture: id, text: '\u0000Not valid' }, 422);
     await alice('leagueLineup', { fixture: id, text: '  \n  ' }, 422);
     await alice('leagueLineup', list('Army A draft'));
-    await alice('leagueLineup', { fixture: id, text: 'Army A final' });
+    const builderCatalog=(await alice('builderCatalog&edition=11')).catalog;
+    const savedBuilderArmy=(await alice('builderSave',{edition:'11',catalogId:builderCatalog.catalogId,name:'Army A final',factionId:'test',limit:2000,detachmentIds:[],disposition:'',entries:[{entryId:'league_squad',unitId:'squad',models:5,weaponCounts:{'1':5},enhancementIds:[],attachedTo:null}]})).army;
+    const frozenBuilderText=(await alice('builderArmyText&id='+savedBuilderArmy.id)).text;
+    assert.match(frozenBuilderText,/Squadra test/);
+    await bob('builderArmyText&id='+savedBuilderArmy.id,undefined,422);
+    await guest('builderArmyText&id='+savedBuilderArmy.id,undefined,401);
+    await bob('leagueLineup',{fixture:id,builderArmyId:savedBuilderArmy.id,text:''},422);
+    await alice('leagueLineup',{fixture:id,builderArmyId:savedBuilderArmy.id,text:'Mixed sources'},422);
+    await alice('leagueLineup',{fixture:id,builderArmyId:savedBuilderArmy.id,text:''});
+    await alice('builderSave',{...savedBuilderArmy,name:'Changed after submission'});
     assert.deepEqual((await bob('league')).fixtures.find(fixture => fixture.id === id).lineups, { mine: false, opponent: true });
     assert.equal((await fixtureFor(spectator)).lineups, null);
     assert.ok(!JSON.stringify(await bob('league')).includes('Army A final'));
@@ -578,7 +587,9 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await bob(download(aliceId), undefined, 403);
     await alice(download(aliceId), undefined, 403);
     await bob('leagueLineup', list('Army B'));
-    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
+    await alice('builderDelete',{id:savedBuilderArmy.id});
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
     assert.equal(await alice(download(bobId)), 'Army B');
     await spectator(download(aliceId), undefined, 403);
     await guest(download(aliceId), undefined, 401);
@@ -654,7 +665,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal((await pendingFixture()).pending.token, proposal);
     await admin('leagueConfirm', { fixture: unfinished.id, league: firstLeague, proposal }, 409);
     await admin('void', { id: saved.id, void: true }, 409);
-    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
     await admin('leagueResume', { league: firstLeague });
     assert.equal((await alice('league&id=' + firstLeague)).league.paused, null);
     assert.equal((await pendingFixture()).pending.token, proposal);
@@ -665,7 +676,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(archived.fixtures.length, 6);
     assert.equal(archived.fixtures.find(fixture => fixture.id === unfinished.id).awaiting, false);
     assert.equal((await fixtureFor(spectator)).result.scoreA, 67);
-    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
     await alice('leagueLineup', list('Archived'), 409);
     await alice('leaguePropose', { ...score, fixture: unfinished.id, league: firstLeague }, 409);
     await admin('void', { id: saved.id, void: true }, 409);

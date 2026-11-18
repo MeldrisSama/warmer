@@ -34,7 +34,7 @@ function builderCreationRender(){
     <form id="builder-create" class="wb-library builder-creation">
       <fieldset><legend>Scegli il tuo esercito</legend><div class="builder-faction-groups">${groups.map(group=>{const rows=factions.filter(f=>builderFactionGroup(f)===group).sort((a,b)=>a.name.localeCompare(b.name,'it'));return rows.length?`<details class="builder-faction-group"><summary>${esc(group)} <small>${rows.length}</small></summary>${rows.map(f=>`<label class="wb-check"><input type="radio" name="faction" value="${esc(f.id)}"><span>${esc(f.name)}</span></label>`).join('')}</details>`:'';}).join('')}</div></fieldset>
       <fieldset><legend>Formato della partita</legend><div class="builder-battle-sizes">${[[1000,'Incursion'],[2000,'Strike Force'],[3000,'Onslaught']].map(([points,name])=>`<label class="builder-battle-size"><input type="radio" name="battleSize" value="${points}" ${points===2000?'checked':''}><span><strong>${name}</strong><small>${points} punti</small></span></label>`).join('')}</div>
-      <div id="builder-custom-dp" hidden><p class="wb-muted">Onslaught: formato da 3000 punti del gruppo. Concordate i DP prima della partita.</p><label>Detachment Points (DP)<input id="builder-create-dp" type="number" min="0" max="20" value="3"></label></div></fieldset>
+      <div id="builder-custom-dp" hidden><p class="wb-muted">Onslaught: formato da 3000 punti del gruppo. Concordate i DP prima della partita.</p><label>Detachment Points (DP)<input id="builder-create-dp" type="text" inputmode="numeric" pattern="[0-9]+" value="3"></label></div></fieldset>
       <button class="primary" type="submit">Apri il builder</button>
     </form></section>`;
   builderCreationBind();

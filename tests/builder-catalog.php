@@ -34,4 +34,12 @@ if (!empty($catalog['coreRules'])) {
     checkCatalog(($core['LEADER']['reference']??'')==='24.22','Wrong Leader reference');
     foreach ($core as $rule)checkCatalog(!str_contains($rule['description'],'ShowFluff')&&!str_contains($rule['name'],'24.'),'Raw heading or lore markup in core library');
 }
+if (str_contains($catalog['version'],'b5-')) {
+    checkCatalog(!array_filter($catalog['stratagems'],static fn($s)=>preg_match('/boarding|combat patrol/i',$s['type']??'')),'Stratagems from other modes leaked');
+    $raven=array_values(array_filter($units,static fn($u)=>$u['name']==='Ravenwing Command Squad'))[0];
+    checkCatalog(builderGearLimit($raven,'2',3)===1,'Ravenwing launcher limit incorrect');
+    checkCatalog(count(array_filter($raven['loadoutRecipe']['groups'],static fn($g)=>count($g['choices'])>1))===3,'Ravenwing model choices missing');
+    $assault=array_values(array_filter($units,static fn($u)=>$u['name']==='Terminator Assault Squad'))[0];
+    checkCatalog(count(array_filter($assault['loadoutRecipe']['weapons'],static fn($w)=>($w['ability']??'')==='Storm Shield'))===1,'Storm Shield gear absent');
+}
 echo json_encode(['units'=>count($units),'recipes'=>$recipes,'testedSizes'=>$sizes,'abilityEffects'=>$effects,'allyGrants'=>$grants,'coreRules'=>count($catalog['coreRules']??[]),'peakMiB'=>round(memory_get_peak_usage(true)/1048576,1)],JSON_THROW_ON_ERROR)."\n";

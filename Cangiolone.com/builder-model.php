@@ -192,20 +192,41 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
     $army=json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR);$source=builderCatalogRow($pdo,$row['edition'],$row['catalog_id']);
     if (!$source) builderInvalid('Catalogo della lista non disponibile.');
     $catalog=json_decode($source['payload'],true,40,JSON_THROW_ON_ERROR);$units=array_column($catalog['units'],null,'id');$faction=array_column($catalog['factions'],null,'id')[$army['factionId']]??[];
-    $lines=[$army['name'].' ('.($army['points']??'?').' Points)',($faction['name']??'').' · '.($army['limit']??'').' Points'];
+    $total=0;$unknown=false;$counts=[];
+    foreach($army['entries'] as $entry){
+        $u=$units[$entry['unitId']]??[];$ordinal=($counts[$entry['unitId']]??0)+1;$counts[$entry['unitId']]=$ordinal;$points=$entry['manualPoints']??null;
+        if($points===null)foreach($u['points']??[] as $tier)if($tier['models']===($entry['models']??0)&&$ordinal>=($tier['first']??1)&&$ordinal<=($tier['last']??200))$points=$tier['points'];
+        $quantity=$entry['quantity']??1;
+        if($points===null)$unknown=true;else $total+=$points*$quantity;
+        foreach($u['equipment']??[] as $gear)if(in_array($gear['id'],$entry['equipmentIds']??[],true))$total+=$gear['points']*$quantity;
+        if(!isset($entry['manualPoints'])&&!empty($entry['loadoutSelections'])&&!empty($u['loadoutRecipe']))$total+=builderLoadoutCounts($u['loadoutRecipe'],$entry['loadoutSelections'],$entry['models'])['cost'];
+        foreach($u['enhancements']??[] as $e)if(in_array($e['id'],$entry['enhancementIds']??[],true))$total+=(int)$e['cost'];
+    }
+    $lines=[$army['name'].' ('.$total.($unknown?' + unknown':'').' Points)',($faction['name']??'').' · '.($army['limit']??'').' Points'];
     $detachments=$army['detachmentIds']??[$army['detachmentId']??''];
     foreach ($faction['detachments']??[] as $d) if (in_array($d['id'],$detachments,true))$lines[]=$d['name'];
     if (!empty($army['disposition']))$lines[]='Force Disposition: '.$army['disposition'];
     $entries=array_column($army['entries'],null,'entryId');
     foreach ($army['entries'] as $entry) {
         $u=$units[$entry['unitId']]??null;if (!$u)builderInvalid('Scheda della lista non disponibile.');
-        $lines[]='';$lines[]=($entry['models']??$entry['count']??1).'x '.$u['name'].(!empty($entry['warlord'])?' [Warlord]':'');
+        $lines[]='';$lines[]=($entry['models']??$entry['count']??1).'x '.$u['name'].(($entry['quantity']??1)>1?' · '.$entry['quantity'].' units':'').(!empty($entry['warlord'])?' [Warlord]':'');
+        foreach($u['equipment']??[] as $gear)if(in_array($gear['id'],$entry['equipmentIds']??[],true))$lines[]='  '.$gear['name'];
         if (!empty($entry['attachedTo']))$lines[]='  Attached to: '.($units[$entries[$entry['attachedTo']]['unitId']]['name']??'');
+        if (isset($entry['manualPoints']))$lines[]='  Points override: '.$entry['manualPoints'];
         foreach ($u['enhancements']??[] as $enhancement)if(in_array($enhancement['id'],$entry['enhancementIds']??[],true))$lines[]='  '.(($enhancement['upgrade']??'')==='true'?'Upgrade: ':'Enhancement: ').$enhancement['name'].' ('.$enhancement['cost'].' Points)';
+        $recipe=$u['loadoutRecipe']??[];$gearRows=[];$managed=[];
+        foreach ($recipe['groups']??[] as $group)foreach($group['choices'] as $choice)foreach($choice['weapons'] as $wid=>$per){
+            $n=($entry['loadoutSelections'][$group['id']][$choice['id']]??0)*$per;if(!$n)continue;
+            $gear=array_column($recipe['weapons'],null,'id')[$wid];$model=array_column($recipe['models'],null,'id')[$group['model']]['name'];
+            $key=$model.'|'.$wid;$gearRows[$key]=['name'=>$gear['name'],'model'=>$model,'n'=>($gearRows[$key]['n']??0)+$n];
+            foreach($gear['lines'] as $line)$managed[$line]=true;
+        }
+        foreach($gearRows as $gear)$lines[]='  '.$gear['n'].'x '.$gear['name'].' · '.$gear['model'];
         foreach ($u['weapons']??[] as $weapon) {
+            if (isset($managed[$weapon['line']]))continue;
             $n=$entry['weaponCounts'][$weapon['line']]??0;
             if (!empty($weapon['enhancement_id'])&&in_array($weapon['enhancement_id'],$entry['enhancementIds']??[],true))$n=1;
-            if ($n>0)$lines[]='  '.$n.'x '.$weapon['name'];
+            if ($n>0){$bearer=$entry['enhancementModels'][$weapon['enhancement_id']??'']??null;$model=$bearer?(array_column($u['models'],null,'line')[$bearer]['name']??''):'';$lines[]='  '.$n.'x '.$weapon['name'].($model?' · '.$model:'');}
         }
         if (!empty($entry['notes']))$lines[]='  Notes: '.$entry['notes'];
     }
@@ -235,7 +256,7 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): arr
         if (!is_array($entry['weaponCounts']??[])) builderInvalid('Quantità armi del default non valide.');
         if (!in_array($entry['models']??null,array_column($unit['points'],'models'),true)) builderInvalid('La taglia del default non è disponibile nel catalogo.');
         $factionId=$data['factionId']??null;
-        $entry['attachedTo']=null;$entry['enhancementIds']=[];$entry['notes']='';$entry['warlord']=false;$entry['manualPoints']=null;
+        $entry['attachedTo']=null;$entry['enhancementIds']=[];$entry['enhancementModels']=[];$entry['notes']='';$entry['warlord']=false;$entry['manualPoints']=null;
         foreach ($unit['weapons'] as $weapon) if (!empty($weapon['enhancement_id'])) unset($entry['weaponCounts'][$weapon['line']]);
         $validation=builderValidateV2($catalog,['factionId'=>$factionId,'limit'=>2000,'detachmentIds'=>[],'disposition'=>'','entries'=>[$entry]]);
         $clean=$validation['entries'][0];$payload=json_encode($clean,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);

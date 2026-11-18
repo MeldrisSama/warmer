@@ -33,7 +33,7 @@ function beChoiceAllowed(unit,entry,group,choiceId,delta){
   if(n>=beCapacity(unit.loadoutRecipe,group,entry.models))return false;
   if(choiceId!==group.default&&group.sharedPer){
     const used=unit.loadoutRecipe.groups.filter(g=>g.sharedKey===group.sharedKey).reduce((s,g)=>s+Object.entries(entry.loadoutSelections?.[g.id]||{}).filter(([id])=>id!==g.default).reduce((a,[,q])=>a+q,0),0);
-    if(used>=Math.floor(entry.models/group.sharedPer))return false;
+    if(used>=Math.floor(entry.models/group.sharedPer)&&(current[group.default]||0)>0)return false;
   }
   return Object.entries(current).some(([id,q])=>id!==choiceId&&q>0);
 }
@@ -55,6 +55,7 @@ function beSyncEnhancements(unit,entry){
   for(const w of unit.weapons)if(w.enhancement_id){if(entry.enhancementIds.includes(w.enhancement_id))entry.weaponCounts[w.line]=1;else delete entry.weaponCounts[w.line];}
 }
 function beWeaponOwners(unit,entry,weapon){
+  if(weapon._forModel!==undefined)return [{name:weapon._forModel,count:weapon._count}];
   if(!entry)return [{name:'',count:'—'}];
   if(weapon.enhancement_id){const bearer=unit.models.find(m=>m.line===entry.enhancementModels?.[weapon.enhancement_id]);return [{name:bearer?.name||(entry.models===1?unit.models[0]?.name:'Portatore da scegliere'),count:1}];}
   const recipe=unit.loadoutRecipe,w=recipe?.weapons.find(w=>w.lines.includes(weapon.line)),owners=new Map();
@@ -66,6 +67,7 @@ function beGearErrors(entry){
   for(const w of unit.weapons)if((entry.weaponCounts[w.line]||0)>beWeaponLimit(unit,entry,w.line))errors.push(`${unit.name}: limite superato per ${w.name}.`);
   for(const g of unit.loadoutRecipe?.groups||[])if(g.sharedPer){const used=unit.loadoutRecipe.groups.filter(x=>x.sharedKey===g.sharedKey).reduce((s,x)=>s+Object.entries(entry.loadoutSelections?.[x.id]||{}).filter(([id])=>id!==x.default).reduce((n,[,q])=>n+q,0),0);if(used>Math.floor(entry.models/g.sharedPer)){errors.push(`${unit.name}: limite condiviso delle sostituzioni superato.`);break;}}
   if(entry.warlord&&!/\bCharacter\b/i.test(unit.keywords))errors.push(`${unit.name}: solo un Character può essere Warlord.`);
+  if(entry.attachedTo){const target=wbEntry(entry.attachedTo);if(!target||target.attachedTo||!unit.leads.includes(target.unitId))errors.push(`${unit.name}: associazione a un'unità non valida.`);}
   if(entry.models>1)for(const id of entry.enhancementIds)if(unit.weapons.some(w=>w.enhancement_id===id)&&!entry.enhancementModels?.[id])errors.push(`${unit.name}: scegli il modello portatore del potenziamento.`);
   return errors;
 }
@@ -98,6 +100,7 @@ function beResize(entry,models){
     if(total>max){if(alternatives.length>1){notify('Riduci le dotazioni alternative prima di ridurre la squadra.',true);return false;}if(alternatives.length)current[alternatives[0][0]]=max;}
     current[group.default]=capacity-Object.entries(current).filter(([id])=>id!==group.default).reduce((sum,[,n])=>sum+n,0);
   }
+  for(const group of recipe.groups)if(group.sharedPer){const used=recipe.groups.filter(g=>g.sharedKey===group.sharedKey).reduce((s,g)=>s+Object.entries(next[g.id]||{}).filter(([id])=>id!==g.default).reduce((n,[,q])=>n+q,0),0);if(used>Math.floor(models/group.sharedPer)){notify('Riduci le dotazioni che condividono il limite prima di ridurre la squadra.',true);return false;}}
   entry.models=models;entry.loadoutSelections=next;beSync(unit,entry);return true;
 }
 function beStandard(entry){
@@ -130,7 +133,7 @@ function beCatalogIds(){
 }
 function beEffects(unit,entry){
   if(!entry)return {unit,sources:[]};
-  const root=entry.attachedTo?wbEntry(entry.attachedTo):entry,members=wbGroup(root),sources=[],derived=builderClone(unit),seen=new Set(),candidates=[];
+  const parent=entry.attachedTo?wbEntry(entry.attachedTo):null,root=parent&&!parent.attachedTo?parent:entry,members=wbGroup(root),sources=[],derived=builderClone(unit),seen=new Set(),candidates=[];
   derived.models=beModelVariants(unit,entry);
   for(const member of members){
     const from=wbUnits().get(member.unitId),enhancements=from.enhancements.filter(x=>member.enhancementIds.includes(x.id));
@@ -144,10 +147,11 @@ function beEffects(unit,entry){
       candidates.push({effect,from});
     }
   }
+  if(entry.models>1&&candidates.some(({effect})=>effect.scope==='bearer'&&effect._bearerModel))for(const weapon of derived.weapons)weapon._variants=beWeaponOwners(unit,entry,weapon).map(owner=>({...weapon,_forModel:owner.name,_count:owner.count}));
   const order={set:0,add:1,min:2,keyword:3};candidates.sort((a,b)=>(order[a.effect.operation]??9)-(order[b.effect.operation]??9));
   for(const {effect,from} of candidates){
       const identity=effect.source+':'+effect.field+':'+effect.value;if(seen.has(identity))continue;seen.add(identity);let changed=false;
-      if(['A','S','AP','D','keywords'].includes(effect.field))for(const weapon of derived.weapons){
+      if(['A','S','AP','D','keywords'].includes(effect.field))for(const weapon of derived.weapons.flatMap(w=>w._variants||[w])){
         if(effect.weaponType&&weapon.type.toLowerCase()!==effect.weaponType)continue;
         if(effect.gear&&effect.scope==='bearer')continue; // A model-specific weapon effect needs a separate recipient mapping.
         if(effect.scope==='bearer'&&entry.models>1){const owners=beWeaponOwners(unit,entry,weapon);if(owners.some(o=>o.name!==effect._bearerModel))continue;}
@@ -242,7 +246,8 @@ function beAllyErrors(){
 }
 function beGearLines(entry){
   const unit=wbUnits().get(entry.unitId),seen=new Set(),lines=[];
-  for(const weapon of unit.weapons){if(!entry.weaponCounts[weapon.line])continue;const group=unit.loadoutRecipe?.weapons.find(w=>w.lines.includes(weapon.line));const key=group?.id||weapon.line;if(seen.has(key))continue;seen.add(key);lines.push(`${entry.weaponCounts[weapon.line]}x ${group?.name||weapon.name}`);}
+  for(const weapon of unit.weapons){if(!entry.weaponCounts[weapon.line]&&!(weapon.enhancement_id&&entry.enhancementIds.includes(weapon.enhancement_id)))continue;const group=unit.loadoutRecipe?.weapons.find(w=>w.lines.includes(weapon.line));const key=group?.id||weapon.line;if(seen.has(key))continue;seen.add(key);for(const owner of beWeaponOwners(unit,entry,weapon))lines.push(`${owner.count}x ${group?.name||weapon.name}${owner.name?' · '+owner.name:''}`);}
+  for(const g of unit.loadoutRecipe?.groups||[])for(const c of g.choices)for(const [id,per] of Object.entries(c.weapons)){const gear=unit.loadoutRecipe.weapons.find(w=>w.id===id&&w.ability),n=(entry.loadoutSelections?.[g.id]?.[c.id]||0)*per;if(gear&&n)lines.push(`${n}x ${gear.name} · ${unit.loadoutRecipe.models.find(m=>m.id===g.model)?.name||''}`);}
   return lines;
 }
 function beExportText(format){
@@ -271,16 +276,6 @@ function beExport(){
   dialog.querySelector('[data-wb-export-download]').onclick=()=>wbDownload('armata-'+format.value+'.txt',text.value,'text/plain;charset=utf-8');
   return dialog;
 }
-async function beCopyExport(){
-  const format=main.querySelector('#wb-export-format')?.value||'gw',text=beExportText(format);
-  try{await navigator.clipboard.writeText(text);notify('Lista copiata negli appunti.');}
-  catch{
-    const dialog=document.createElement('dialog');dialog.className='workbench wb-detachment-dialog wb-export-dialog';
-    dialog.setAttribute('aria-labelledby','wb-copy-title');dialog.innerHTML=`<h2 id="wb-copy-title">Copia esportazione</h2><p>Seleziona il testo e copialo con Ctrl+C o con il menu del dispositivo.</p><label>Testo ${esc(format)}<textarea readonly rows="16">${esc(text)}</textarea></label><button type="button">Chiudi</button>`;
-    dialog.querySelector('button').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{dialog.remove();main.querySelector('#wb-copy')?.focus({preventScroll:true});});
-    document.body.appendChild(dialog);dialog.showModal();const field=dialog.querySelector('textarea');field.focus();field.select();
-  }
-}
 function beCopyActive(){
   if(!builderDiscard())return;
   const active=builderUi.active;if(!active||active.schemaVersion!==2)return;
@@ -289,6 +284,7 @@ function beCopyActive(){
     const old=oldUnits.get(entry.unitId),next=nextUnits.get(entry.unitId);if(!next){notify('Una scheda della lista non esiste nel catalogo attivo.',true);return;}
     const weapons={};for(const [line,n] of Object.entries(entry.weaponCounts)){if(!n)continue;const name=old.weapons.find(w=>w.line===line)?.name,weapon=next.weapons.find(w=>w.name===name);if(!weapon){notify('Una dotazione salvata non è presente nel nuovo catalogo: copia non creata.',true);return;}weapons[weapon.line]=n;}
     if(entry.enhancementIds.some(id=>!next.enhancements.some(x=>x.id===id))){notify('Un potenziamento non è più disponibile: copia non creata.',true);return;}
+    if(entry.enhancementModels){const bearers={};for(const [id,line] of Object.entries(entry.enhancementModels)){const name=old.models.find(m=>m.line===line)?.name,model=next.models.find(m=>m.name===name);if(!model){notify('Il modello portatore non è presente nel nuovo catalogo: copia non creata.',true);return;}bearers[id]=model.line;}entry.enhancementModels=bearers;}
     entry.weaponCounts=weapons;entry.entryId=ids.get(entry.entryId);entry.attachedTo=entry.attachedTo?ids.get(entry.attachedTo):null;
     if(JSON.stringify(old.loadoutRecipe)!==JSON.stringify(next.loadoutRecipe))delete entry.loadoutSelections;
   }
