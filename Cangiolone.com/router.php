@@ -20,7 +20,7 @@ if($path==='/campionato.php') {
     require __DIR__.'/campionato.php';
     return true;
 }
-if(in_array($path,['/app.js','/style.css','/standings.js','/campionato.css','/campionato.js','/builder.css','/builder.js','/builder-workbench.js'],true)) return false;
+if(in_array($path,['/app.js','/style.css','/standings.js','/campionato.css','/campionato.js','/builder.css','/builder.js','/builder-workbench.js','/builder-engine.js'],true)) return false;
 
 http_response_code(404);
 return true;

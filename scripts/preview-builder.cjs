@@ -13,7 +13,7 @@ const source=path.resolve(__dirname,'../Cangiolone.com');
 for(const entry of fs.readdirSync(source,{withFileTypes:true}))if(entry.isFile()&&entry.name!=='config.php')fs.copyFileSync(path.join(source,entry.name),path.join(directory,entry.name));
 fs.writeFileSync(path.join(directory,'config.php'),`<?php return ['setup_hash'=>'${createHash('sha256').update('builder-local-preview').digest('hex')}','database'=>['driver'=>'sqlite','path'=>__DIR__.'/preview.sqlite']];`);
 const php=process.env.PHP_BINARY||'php',base='http://127.0.0.1:8798';
-const server=spawn(php,['-d','memory_limit=256M','-S','127.0.0.1:8798','-t',directory,path.join(directory,'router.php')],{stdio:['ignore','ignore','inherit']});
+const server=spawn(php,['-d','memory_limit=256M','-d','post_max_size=32M','-S','127.0.0.1:8798','-t',directory,path.join(directory,'router.php')],{stdio:['ignore','ignore','inherit']});
 server.on('error',e=>{throw e;});
 let cookie='',csrf='';
 async function api(action,data){const response=await fetch(base+'/api.php?action='+action,{method:data?'POST':'GET',headers:{Cookie:cookie,'Content-Type':'application/json','X-CSRF-Token':csrf},body:data?JSON.stringify(data):undefined});for(const value of response.headers.getSetCookie())if(value.startsWith('sector_session='))cookie=value.split(';')[0];const text=await response.text();let result;try{result=JSON.parse(text);}catch{throw Error(text.slice(0,3000));}if(!response.ok)throw Error(JSON.stringify(result));if(result.csrf)csrf=result.csrf;return result;}

@@ -1,0 +1,43 @@
+<?php
+declare(strict_types=1);
+require __DIR__.'/../Cangiolone.com/builder-model.php';
+function expect(bool $ok,string $message): void {if (!$ok) throw new RuntimeException($message);}
+function roundtrip(array $value): array {return json_decode(json_encode($value,JSON_THROW_ON_ERROR),true,40,JSON_THROW_ON_ERROR);}
+$raw=json_decode(file_get_contents(__DIR__.'/workbench-fixture.json'),true,40,JSON_THROW_ON_ERROR);$raw['featuresVersion']=3;
+$raw['coreRules']=[['id'=>'core_24_23','name'=>'LETHAL HITS','reference'=>'24.23','description'=>'Synthetic lethal rule.']];
+$raw['factions'][0]['id']='sm_dark_angels';
+$raw['factions'][0]['detachments'][]=['id'=>'dw','name'=>'Deathwatch Support','dp'=>'1','description'=>'Verified fixture'];
+foreach ($raw['units'] as &$unit) {$unit['factionId']='sm';$unit['sourceUrl']='https://example.test/source';}unset($unit);
+$term=$raw['units'][0];$term['id']='term';$term['name']='Veterans';$term['keywords']='Infantry, Imperium';$term['category']='Infantry';
+$term['composition']=[['description'=>'1 Veteran Sergeant model'],['description'=>'4-9 Veteran models']];
+$term['loadout']='Every model is equipped with: 1 Power Fist; 1 Rifle.';
+$term['options']=[['description'=>'Any number of Veteran models can each have their Power Fist replaced with 1 Chainfist.'],['description'=>'The Veteran Sergeant can have their Power Fist replaced with one of the following:' . "\n• 1 Chainfist\n• 1 Sword"]];
+$term['weapons']=[['line'=>'1','name'=>'Power Fist','type'=>'Melee','A'=>'3','S'=>'8'],['line'=>'2','name'=>'Chainfist - Standard','type'=>'Melee','A'=>'2'],['line'=>'3','name'=>'Chainfist - Hunter','type'=>'Melee','A'=>'3'],['line'=>'4','name'=>'Rifle','type'=>'Ranged','A'=>'2'],['line'=>'5','name'=>'Sword','type'=>'Melee','A'=>'4']];
+$term['enhancements']=[['id'=>'upgrade','name'=>'Synthetic Upgrade','upgrade'=>'true','cost'=>'10','description'=>'This unit’s ranged attacks have +1 A.']];
+$term['abilities']=[['name'=>'Synthetic lethal','description'=>'This unit’s attacks have [LETHAL HITS].']];
+$raw['units'][]=$term;$raw['factions'][0]['unitIds'][]='term';
+$dw=$raw['units'][1];$dw['id']='deathwatch';$dw['keywords']='Imperium, Adeptus Astartes, Deathwatch, Kill Team';$dw['name']='DW test';$raw['units'][]=$dw;
+$agent=$raw['units'][1];$agent['id']='agent';$agent['factionId']='aoi';$agent['name']='Agent test';$agent['keywords']='Imperium, Character, Agents of the Imperium';$raw['units'][]=$agent;
+$catalog=builderNormalizeCatalog($raw);$units=array_column($catalog['units'],null,'id');$recipe=$units['term']['loadoutRecipe'];
+expect($catalog['coreRules']===$raw['coreRules'],'Core reference library lost on import');
+expect(count($recipe['groups'])===4,'Composition groups lost');
+$initial=builderLoadoutCounts($recipe,[],5);expect($initial['weaponCounts'][1]===5,'Standard fist quantity');
+$g=array_values(array_filter($recipe['groups'],static fn($g)=>$g['model']==='m1'&&count($g['choices'])>1))[0];
+$selected=$initial['selections'];$selected[$g['id']]=['base'=>3,'choice1'=>1];
+$chosen=builderLoadoutCounts($recipe,$selected,5);expect($chosen['weaponCounts'][1]===4&&$chosen['weaponCounts'][2]===1&&$chosen['weaponCounts'][3]===1,'Replacement or alternative modes incorrect');
+expect(count($units['term']['effects'])===1,'Keyword effect not compiled');
+$text=builderRuleText('<div class="abNameWrap">DEEP STRIKE<span class="h_number">24.09</span></div><p class="ShowFluff">Lore only</p><div><b>DOCTRINE</b></div><p>Operational <i>restriction</i>.</p><ul><li>First</li><li>Second</li></ul><script>alert(1)</script>');
+expect(!str_contains($text,'Lore only')&&!str_contains($text,'alert')&&str_contains($text,'Operational restriction.')&&str_contains($text,'• First'),'Structured safe rule conversion');
+$pdo=new PDO('sqlite::memory:');$pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);builderSchema($pdo,'sqlite');$me=['id'=>'owner','admin'=>true];
+$import=builderHandle($pdo,'builderImport',$me,['catalog'=>$raw]);
+$entry=['entryId'=>'one','unitId'=>'term','models'=>5,'weaponCounts'=>[],'enhancementIds'=>[],'loadoutSelections'=>$selected,'attachedTo'=>null];
+$army=['edition'=>'11','catalogId'=>$import['catalogId'],'factionId'=>'sm_dark_angels','name'=>'Automation','limit'=>2000,'detachmentIds'=>[],'disposition'=>'','entries'=>[$entry]];
+$saved=builderHandle($pdo,'builderSave',$me,$army)['army'];expect($saved['entries'][0]['weaponCounts']->{2}===1,'Server does not derive weapon counts');
+builderHandle($pdo,'builderDefaultSave',$me,['unitId'=>'term','catalogId'=>$import['catalogId'],'factionId'=>'sm_dark_angels','entry'=>$entry]);
+expect(count(builderHandle($pdo,'builderDefaults',$me)['defaults'])===1,'Default missing');
+$other=['id'=>'other','admin'=>false];expect(builderHandle($pdo,'builderDefaults',$other)['defaults']===[],'Default leaks to another owner');
+builderHandle($pdo,'builderDefaultDelete',$other,['unitId'=>'term']);expect(count(builderHandle($pdo,'builderDefaults',$me)['defaults'])===1,'Other owner deleted default');
+$dwArmy=$army;$dwArmy['entries']=[['entryId'=>'dw_one','unitId'=>'deathwatch','models'=>1,'weaponCounts'=>[],'enhancementIds'=>[]]];
+expect(count(builderValidateV2($catalog,$dwArmy)['errors'])===1,'DW allowed without detachment');
+$dwArmy['detachmentIds']=['dw'];expect(builderValidateV2($catalog,$dwArmy)['errors']===[],'DW not unlocked by support');
+echo json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);

@@ -230,6 +230,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
+  await copyFile(join(root, 'Cangiolone.com/builder-automation.php'), join(application, 'builder-automation.php'));
   const setupCode = 'isolated-test-setup';
   const hash = createHash('sha256').update(setupCode).digest('hex');
   // Never copy the deployed configuration or existing uploads into the test app.
@@ -374,6 +375,45 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       await guest('register', registration(`${username}2`, invite.code), 403);
     }
     await alice('invite', {}, 403);
+  });
+
+  await t.test('Builder archive persists dates, historical catalogs and owner isolation over HTTP', async () => {
+    await guest('builderArmies', undefined, 401);
+    const catalog=JSON.parse(await readFile(join(__dirname,'workbench-fixture.json'),'utf8'));
+    const first=await admin('builderImport',{catalog});
+    const data={schemaVersion:2,edition:'11',catalogId:first.catalogId,name:'Archive test',factionId:'test',limit:2000,dpLimit:3,detachmentIds:[],disposition:'',entries:[]};
+    const saved=(await alice('builderSave',data)).army;
+    assert.ok(saved.created);
+    const presetEntry={entryId:'default_squad',unitId:'squad',models:5,weaponCounts:{'1':5},enhancementIds:[],attachedTo:null};
+    await guest('builderDefaults',undefined,401);
+    await alice('builderDefaultSave',{unitId:'squad',catalogId:first.catalogId,factionId:'test',entry:presetEntry});
+    assert.equal((await alice('builderDefaults')).defaults.length,1);
+    assert.deepEqual((await bob('builderDefaults')).defaults,[]);
+    await bob('builderDefaultDelete',{unitId:'squad'});
+    assert.equal((await alice('builderDefaults')).defaults.length,1);
+    await alice('builderDefaultDelete',{unitId:'squad'});
+    const changed=(await alice('builderSave',{...saved,name:'Renamed',created:'1900-01-01'})).army;
+    assert.equal(changed.created,saved.created);
+    assert.ok(changed.updated);
+    const supportDraft=await alice('builderSave',{...changed,entries:[{entryId:'support_one',unitId:'support',models:1,weaponCounts:{},enhancementIds:[],attachedTo:null}]});
+    assert.equal(supportDraft.validation.errors.length,1);
+    assert.match(supportDraft.validation.errors[0],/Support/);
+    const active=await admin('builderImport',{catalog:{...catalog,version:'second version'}});
+    const armies=(await alice('builderArmies')).armies;
+    assert.equal(armies.length,1);
+    assert.equal(armies[0].factionName,catalog.factions[0].name);
+    assert.equal(armies[0].catalogId,first.catalogId);
+    assert.equal((await alice('builderCatalog&edition=11')).catalog.catalogId,active.catalogId);
+    assert.equal((await alice('builderCatalog&edition=11&catalogId='+first.catalogId)).catalog.version,catalog.version);
+    assert.deepEqual((await bob('builderArmies')).armies,[]);
+    await bob('builderSave',saved,422);
+    await bob('builderDelete',{id:saved.id},422);
+    // Simulate a stored list from before creation dates existed.
+    sql(`UPDATE w40k_builder_armies SET payload=json_remove(payload,'$.created') WHERE id='${saved.id}'`);
+    assert.equal((await alice('builderArmies')).armies[0].created,null);
+    assert.equal((await alice('builderSave',changed)).army.created,null);
+    await alice('builderDelete',{id:saved.id});
+    assert.deepEqual((await alice('builderArmies')).armies,[]);
   });
 
   await t.test('Login rejects unknown accounts and wrong passwords as form errors; logout removes access', async () => {

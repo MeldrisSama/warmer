@@ -314,7 +314,7 @@ if($action==='download') {
 
 }
 
-if(in_array($action,['builderCatalog','builderArmies'],true)) {
+if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
     try {
@@ -429,13 +429,18 @@ try {
     }
     if(!$me) fail('Accedi per continuare.',401);
 
-    if(in_array($action,['builderImport','builderSave','builderDelete'],true)) {
+    if(in_array($action,['builderImport','builderSave','builderDelete','builderDefaultSave','builderDefaultDelete'],true)) {
         try {
             builderSchema($storage->builderConnection(),$storage->builderDriver());
             result(builderHandle($storage->builderConnection(),$action,$me,$in));
         } catch(BuilderInputError $e) { fail($e->getMessage()); }
     }
     if($leagueWrite) {
+        if ($action==='leagueLineup'&&!empty($in['builderArmyId'])) {
+            if (!empty($in['filename'])||!is_string($in['text']??'')||trim($in['text']??'')!=='') fail('Scegli una sola fonte per la lista.');
+            try {$in['text']=builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));}
+            catch(BuilderInputError $e){fail($e->getMessage());}
+        }
         $leagueId=updateLeague($action,$in,$me,$db,$mail);
         save();
         result($leagueId===null ? ['ok'=>true] : ['ok'=>true,'id'=>$leagueId]);

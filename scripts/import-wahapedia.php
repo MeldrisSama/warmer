@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// php scripts/import-wahapedia.php /path/to/csv /path/to/catalog.json /path/to/faction-pages
+// php scripts/import-wahapedia.php /path/to/csv /path/to/catalog.json /path/to/faction-pages [/path/to/core-rules.html]
 require __DIR__.'/../Cangiolone.com/builder-model.php';
 $directory=$argv[1]??throw new InvalidArgumentException('Specifica cartella CSV e JSON di destinazione.');
 $destination=$argv[2]??throw new InvalidArgumentException('Specifica JSON di destinazione.');
@@ -29,10 +29,7 @@ function exportGroup(string $table, string $key='datasheet_id'): array {
     return $out;
 }
 function exportText(string $text): string {
-    $text=preg_replace('/<(script|style)\b[^>]*>.*?<\/\1>/is','',$text);
-    $text=preg_replace('/<br\s*\/?>|<\/p>|<\/li>|<\/div>/i',"\n",$text);
-    $text=preg_replace('/<\/(?:b|strong|td|th)>/i',' ',$text);
-    return trim(preg_replace('/\n[\s\n]+/',"\n\n",html_entity_decode(strip_tags($text),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+    return builderRuleText($text);
 }
 function exportCosts(array $rows): array {
     usort($rows,static fn($a,$b)=>(int)$a['line']<=>(int)$b['line']);
@@ -71,10 +68,10 @@ foreach (glob($rulesDirectory.'/*.html') as $path) {
 if (!$unique) throw new RuntimeException('Nessun tag Unique trovato nelle pagine delle fazioni.');
 $dpOverrides=exportGroup('Detachments_chapter_dp','detachment_id');
 $leader=exportGroup('Datasheets_leader','leader_id');
-$sourceEditions=array_column(exportRows('Source'),'edition','id');
+$sources=array_column(exportRows('Source'),null,'id');$sourceEditions=array_column($sources,'edition','id');
 $chapterDetachments=[
     'Black Templars'=>['000001209','000001230','000001231'], 'Blood Angels'=>['000001004','000001214','000001215'],
-    'Dark Angels'=>['000000835','000001059','000001205'], 'Deathwatch'=>['000000808','000001229'],
+    'Dark Angels'=>['000000835','000001059','000001205'], 'Deathwatch'=>['000000808'],
     'Imperial Fists'=>['000001146'], 'Iron Hands'=>['000001232'], 'Raven Guard'=>['000001104'],
     'Salamanders'=>['000001086'], 'Space Wolves'=>['000001008','000001070','000001126'],
     'Ultramarines'=>['000001120'], 'White Scars'=>['000001119']
@@ -96,13 +93,16 @@ foreach (exportRows('Datasheets') as $sheet) {
     $upgrades=[];
     foreach ($groups['enhancements'][$id]??[] as $r) if (isset($enhancements[$r['enhancement_id']])) $upgrades[]=$enhancements[$r['enhancement_id']];
     $strats=[];
-    foreach ($groups['stratagems'][$id]??[] as $r) if (isset($stratagems[$r['stratagem_id']])) $strats[]=$stratagems[$r['stratagem_id']];
+    foreach ($groups['stratagems'][$id]??[] as $r) if (isset($stratagems[$r['stratagem_id']])&&!preg_match('/boarding|combat patrol/i',$stratagems[$r['stratagem_id']]['type'])) $strats[]=$stratagems[$r['stratagem_id']];
     $weapons=$groups['wargear'][$id]??[];
+    $modelProfiles=$groups['models'][$id]??[];
+    foreach ($modelProfiles as &$profile) $profile['keywords']=implode(', ',array_column(array_filter($groups['keywords'][$id]??[],static fn($k)=>$k['model']===''||strcasecmp($k['model'],$profile['name'])===0),'keyword'));
+    unset($profile);
     $nextLine=max(array_map('intval',array_column($weapons,'line'))?:[0]);
     foreach ($upgrades as $upgrade) foreach ($enhancementWeapons[$upgrade['id']]??[] as $weapon) { $weapon['line']=(string)++$nextLine; $weapons[]=$weapon; }
-    $units[]=['id'=>$id,'name'=>$sheet['name'],'category'=>$sheet['role']?:'Altro','maxCopies'=>in_array('Epic Hero',$keys,true)?1:((in_array('Battleline',$keys,true)||$sheet['role']==='Dedicated Transport')?6:3),
+    $units[]=['id'=>$id,'name'=>$sheet['name'],'factionId'=>strtolower($fid),'sourceUrl'=>$sheet['link'],'legends'=>stripos($sources[$sheet['source_id']]['name']??'','Legends')!==false,'category'=>$sheet['role']?:'Altro','maxCopies'=>in_array('Epic Hero',$keys,true)?1:((in_array('Battleline',$keys,true)||$sheet['role']==='Dedicated Transport')?6:3),
         'support'=>$sheet['is_support']==='true','loadout'=>$sheet['loadout'],'leaderText'=>$sheet['leader_head']."\n".$sheet['leader_footer'],'keywords'=>implode(', ',$keys),
-        'leads'=>array_column($leader[$id]??[],'attached_id'),'models'=>$groups['models'][$id]??[],'weapons'=>$weapons,
+        'leads'=>array_column($leader[$id]??[],'attached_id'),'models'=>$modelProfiles,'weapons'=>$weapons,
         'abilities'=>$rules,'options'=>$groups['options'][$id]??[],'composition'=>$groups['unit_composition'][$id]??[],
         'costs'=>$groups['models_cost'][$id]??[],'points'=>exportCosts($groups['models_cost'][$id]??[]),'enhancements'=>$upgrades,'stratagems'=>$strats];
     $factions[$fid]['unitIds'][]=$id;
@@ -126,6 +126,10 @@ foreach ($chapterDetachments as $name=>$ids) {
     unset($d); $factions[$f['id']]=$f;
 }
 $texts=[]; $stratagemLibrary=[];
+foreach ($units as $unit) if ($unit['factionId']==='tl') {
+    $traitor=$unit;$traitor['id'].='_traitoris';$traitor['name'].=' (Titanicus Traitoris)';$traitor['factionId']='traitoris';
+    $traitor['keywords']=str_replace(['Imperium','Adeptus Titanicus'],['Chaos','Titanicus Traitoris'],$traitor['keywords']);$units[]=$traitor;
+}
 foreach ($units as &$u) {
     foreach (['models','weapons','abilities','options','composition','costs','enhancements','stratagems'] as $field) {
         foreach ($u[$field] as $recordIndex=>&$record) {
@@ -138,7 +142,7 @@ foreach ($units as &$u) {
                 $record['descriptionRef']=$ref; $record['description']='';
             }
             if ($field==='stratagems') { $stratagemLibrary[$record['id']]=$record; $record=['id'=>$record['id']]; }
-            if ($field==='enhancements') $record=array_intersect_key($record,array_flip(['id','name','cost','detachment_id','description','descriptionRef']));
+            if ($field==='enhancements') $record=array_intersect_key($record,array_flip(['id','name','cost','detachment_id','description','descriptionRef','upgrade','support_leader']));
             unset($record['line_in_wargear'],$record['dice']);
             $record=array_filter($record,static fn($value)=>$value!=='');
         } unset($record);
@@ -146,7 +150,27 @@ foreach ($units as &$u) {
     foreach (['loadout','leaderText','keywords'] as $field) $u[$field]=exportText($u[$field]);
 } unset($u);
 foreach ($factions as &$f) foreach ($f['detachments'] as &$d) { unset($d['legend']); $d['description']=exportText($d['description']); } unset($f,$d);
-$catalog=builderNormalizeCatalog(['schemaVersion'=>2,'edition'=>'11','version'=>exportRows('Last_update')[0]['last_update'],'source'=>'Wahapedia','units'=>$units,'factions'=>array_values($factions),'texts'=>array_values($texts),'stratagems'=>array_values($stratagemLibrary)]);
+$coreRules=[];
+if (isset($argv[4])) {
+    $html=file_get_contents($argv[4]);
+    if ($html===false || !str_contains($html,'wh40k11ed')) throw new RuntimeException('Pagina Core Rules 11ª non valida.');
+    $doc=new DOMDocument();$previous=libxml_use_internal_errors(true);
+    $doc->loadHTML('<?xml encoding="UTF-8">'.$html);libxml_clear_errors();libxml_use_internal_errors($previous);
+    $xpath=new DOMXPath($doc);
+    foreach ($xpath->query('//*[contains(concat(" ",normalize-space(@class)," ")," abWrap ")]') as $block) {
+        $title=$xpath->query('.//*[contains(concat(" ",normalize-space(@class)," ")," abName ")]',$block)->item(0);
+        $references=$xpath->query('.//*[contains(concat(" ",normalize-space(@class)," ")," h_number ")]',$block);
+        $reference=$references->item(0);
+        if (!$title || $references->length!==1) continue;
+        $number=trim($reference->textContent);$name=trim(str_replace($number,'',$title->textContent),' []');
+        if (!preg_match('/^24\.\d{2}$/D',$number)) continue;
+        $id='core_'.str_replace('.','_',$number);
+        // First occurrence is the reference chapter; repeated tooltip copies are ignored.
+        if (!isset($coreRules[$id])) $coreRules[$id]=['id'=>$id,'name'=>$name,'reference'=>$number,'description'=>exportText($doc->saveHTML($block)),'sourceUrl'=>'https://wahapedia.ru/wh40k11ed/the-rules/core-rules/'];
+    }
+    if (count($coreRules)<30) throw new RuntimeException('Libreria Core Rules incompleta: verificare la struttura della fonte.');
+}
+$catalog=builderNormalizeCatalog(['schemaVersion'=>2,'featuresVersion'=>3,'edition'=>'11','version'=>exportRows('Last_update')[0]['last_update'].' · b5-'.substr(hash('sha256',file_get_contents(__FILE__).file_get_contents(__DIR__.'/../Cangiolone.com/builder-automation.php')),0,8),'source'=>'Wahapedia','units'=>$units,'factions'=>array_values($factions),'texts'=>array_values($texts),'stratagems'=>array_values($stratagemLibrary),'coreRules'=>array_values($coreRules)]);
 $json=json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
 if (strlen($json)>28000000) throw new RuntimeException('Catalogo oltre 28 MB.');
 if (file_put_contents($destination,$json)===false) throw new RuntimeException('Scrittura catalogo fallita.');

@@ -1,7 +1,15 @@
 # Regression tests
 
-Build / Play checks: `node --test tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs`.
+Build / Play, datasheets, automation and archive checks: `node --test tests/builder-datasheets.test.cjs tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs`.
 The workbench fixture contains synthetic game data. Checks cover copy-dependent prices, manual price overrides, Unique conflicts, DP availability, disposition compatibility, attachment cycles, weapon selections, escaping, persistence and ownership. The full Wahapedia export is kept outside Git. See `docs/builder.md` for import and an isolated HTTP preview.
+
+Additional checks cover grouped faction creation and battle size selection, the Incursion single-3-DP exception, catalog-only search updates, weapon quantity buttons, compatible attachment targets, unattached Support errors, consolidated Play sections and a simulated DOM for the detachment dialog. VM/DOM tests do not establish real-browser responsive behavior.
+
+`automation-model.php` builds a synthetic enriched catalog and exercises recipe compilation, mode synchronisation, server-derived counts, default ownership and ally detachment gating. `builder-engine.test.cjs` covers replacements and resize, future-only defaults, conditional effects, recipient changes, unchanged source profiles, text exports and clipboard output. The HTTP regression suite covers default endpoints and cross-owner isolation.
+
+The separately acquired full catalog stays outside Git. Check it explicitly with `php -d memory_limit=128M tests/builder-catalog.php C:/path/to/wahapedia-11-builder-v4.json`. This normalizes all records, tests all interpreted unit sizes, verifies contingent IDs and the important detachment grants, and checks the real Chainfist replacement, Deep Strike text and optional core reference library. It is not a complete legality audit of every prose restriction.
+
+`builder-datasheets.test.cjs` checks parameterized and qualified weapon keywords, same-unit ability lookup, escaped rendering, catalog-ID dialog lookup and focus return, old catalogs without core rules, and stratagem metadata and operational fields. Workbench checks also verify stratagem deduplication across attached members. Dialog tests use a DOM mock; they do not certify real-browser interaction.
 
 From the repository root, run:
 

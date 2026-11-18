@@ -1,0 +1,31 @@
+<?php
+declare(strict_types=1);
+require __DIR__.'/../Cangiolone.com/builder-model.php';
+function verifyRefinement(bool $ok,string $message): void {if(!$ok)throw new RuntimeException($message);}
+$raw=json_decode(file_get_contents(__DIR__.'/workbench-fixture.json'),true,40,JSON_THROW_ON_ERROR);$raw['featuresVersion']=3;
+$unit=$raw['units'][0];$unit['id']='signal';$unit['name']='Signal Squad';$unit['factionId']='sm';$unit['sourceUrl']='https://example.test/source';$unit['keywords']='Infantry, Character, Imperium';$unit['support']=false;$unit['leads']=[];$unit['enhancements']=[];$unit['stratagems']=[];$unit['costs']=[];
+$unit['models']=array_map(static fn($name,$i)=>['line'=>(string)$i,'name'=>$name,'W'=>'3','Sv'=>'3+','keywords'=>'Character'],['Keeper','Medic','Champion'],[1,2,3]);
+$unit['composition']=array_map(static fn($m)=>['description'=>'1 '.$m['name'].' model'],$unit['models']);
+$unit['loadout']='Every model is equipped with: 1 Rifle.';
+$unit['weapons']=[['line'=>'1','name'=>'Rifle','type'=>'Ranged','A'=>'2'],['line'=>'2','name'=>'Launcher - Frag','type'=>'Ranged','A'=>'4'],['line'=>'3','name'=>'Launcher - Krak','type'=>'Ranged','A'=>'1'],['line'=>'4','name'=>'Gift Sword','type'=>'Melee','A'=>'6','enhancement_id'=>'gift']];
+$unit['options']=[['description'=>'For every 3 models in this unit, 1 model can have their Rifle replaced with 1 Launcher.']];
+$unit['points']=[['models'=>3,'points'=>100]];$unit['abilities']=[];
+$unit['enhancements']=[['id'=>'gift','name'=>'Gift Sword','cost'=>'10','description'=>'This model has the following weapon.']];
+$guard=$unit;$guard['id']='guard';$guard['name']='Guard';$guard['keywords']='Infantry, Imperium';$guard['models']=[['line'=>'1','name'=>'Guard','W'=>'3','Sv'=>'2+']];$guard['composition']=[['description'=>'5-10 Guard models']];$guard['loadout']='Every model is equipped with: 1 Claws.';
+$guard['weapons']=[['line'=>'1','name'=>'Claws','type'=>'Melee','A'=>'4'],['line'=>'2','name'=>'Hammer','type'=>'Melee','A'=>'3']];
+$guard['abilities']=[['name'=>'Shield','type'=>'Wargear','description'=>'This model has +1 W.']];$guard['options']=[['description'=>'Any number of models can each have their Claws replaced with 1 Shield and 1 Hammer.']];$guard['enhancements']=[];$guard['points']=[['models'=>5,'points'=>100],['models'=>10,'points'=>200]];
+$raw['units']=[$unit,$guard];$raw['factions']=[['id'=>'sm','name'=>'Space Marines','unitIds'=>['signal','guard'],'detachments'=>[]]];
+$raw['coreRules']=[['id'=>'sustained','name'=>'SUSTAINED HITS','description'=>'Synthetic sustained rule.']];
+$catalog=builderNormalizeCatalog($raw);$units=array_column($catalog['units'],null,'id');$recipe=$units['signal']['loadoutRecipe'];$state=builderLoadoutCounts($recipe,[],3);
+$groups=array_values(array_filter($recipe['groups'],static fn($g)=>count($g['choices'])>1));verifyRefinement(count($groups)===3,'Model-specific choices missing');
+$state['selections'][$groups[0]['id']]=['base'=>0,'choice1'=>1];$one=builderLoadoutCounts($recipe,$state['selections'],3);verifyRefinement($one['weaponCounts'][2]===1&&$one['weaponCounts'][3]===1,'Launcher modes not linked');
+$bad=$state['selections'];$bad[$groups[1]['id']]=['base'=>0,'choice1'=>1];$rejected=false;try{builderLoadoutCounts($recipe,$bad,3);}catch(BuilderInputError){$rejected=true;}verifyRefinement($rejected,'Shared launcher limit bypassed');
+verifyRefinement(builderGearLimit($units['signal'],'2',3)===1,'Manual launcher limit missing');
+$army=['factionId'=>'sm','limit'=>2000,'detachmentIds'=>[],'entries'=>[['entryId'=>'entry','unitId'=>'signal','models'=>3,'weaponCounts'=>['2'=>2],'enhancementIds'=>[]]]];
+$rejected=false;try{builderValidateV2($catalog,$army);}catch(BuilderInputError){$rejected=true;}verifyRefinement($rejected,'Manual count bypassed validation');
+$army['entries'][0]['weaponCounts']=[];$army['entries'][0]['enhancementIds']=['gift'];$army['entries'][0]['enhancementModels']=['gift'=>'3'];
+$saved=builderValidateV2($catalog,$army);verifyRefinement($saved['entries'][0]['weaponCounts']->{4}===1,'Enhancement weapon is not fixed at one');verifyRefinement($saved['entries'][0]['enhancementModels']['gift']==='3','Bearer lost');
+$army['entries']=[['entryId'=>'entry','unitId'=>'guard','models'=>5,'weaponCounts'=>[],'enhancementIds'=>[],'warlord'=>true]];$rejected=false;try{builderValidateV2($catalog,$army);}catch(BuilderInputError){$rejected=true;}verifyRefinement($rejected,'Non-character Warlord allowed');
+$pdo=new PDO('sqlite::memory:');builderSchema($pdo,'sqlite');$me=['id'=>'owner','admin'=>true];$import=builderHandle($pdo,'builderImport',$me,['catalog'=>$raw]);$army['catalogId']=$import['catalogId'];$army['edition']='11';$army['name']='Snapshot';$army['entries'][0]['warlord']=false;
+$stored=builderHandle($pdo,'builderSave',$me,$army)['army'];$text=builderSavedArmyText($pdo,'owner',$stored['id']);verifyRefinement(str_contains($text,'Guard'),'Saved snapshot empty');$rejected=false;try{builderSavedArmyText($pdo,'other',$stored['id']);}catch(BuilderInputError){$rejected=true;}verifyRefinement($rejected,'Saved snapshot leaks across owners');
+echo json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
