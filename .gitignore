@@ -19,6 +19,7 @@ Desktop.ini
 # Dependencies
 vendor/
 node_modules/
+.taste-skill/
 
 # Logs and local databases
 *.log

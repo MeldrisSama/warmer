@@ -1,5 +1,7 @@
 # Regression tests
 
+Appearance checks: `node --test tests/theme.test.cjs`. Covers all 20 presets in the dropdown, three custom colors and swatches, browser persistence/reset, malformed or unavailable storage, and contrast on independent light/dark/saturated backgrounds. The Orks check covers explicitly marked menu labels, dynamically rendered menus, restoration on a different preset/custom colors, and unchanged rules/user content. The HTTP suite verifies shared assets and early loading on both entry pages. Preference storage is browser-local and shared by accounts using that browser.
+
 From the repository root, run:
 
 ```sh

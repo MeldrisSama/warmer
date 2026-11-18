@@ -270,8 +270,8 @@ function render(){
 
     ${esc(state.user.name)}
 
-    <a href="#profilo">Profilo</a>
-    <button id="logout" type="button">Esci</button>
+    <a href="#profilo" data-theme-menu="Profilo">Profilo</a>
+    <button id="logout" type="button" data-theme-menu="Esci">Esci</button>
 
   `;
 
@@ -314,7 +314,7 @@ function render(){
 
     ([id,label])=>
 
-      `<a href="#${id}" ${
+      `<a href="#${id}" data-theme-menu="${label}" ${
 
         p===id
 
@@ -421,6 +421,12 @@ function profilePage(onboarding=false){
       </form>
     </section>`}
   </section>`;
+  if(!onboarding) {
+    const appearance=document.createElement('section');
+    appearance.className='account-settings';
+    main.querySelector('.panel').append(appearance);
+    window.SectorTheme.mount(appearance);
+  }
   if(state.mailEnabled) bindForm('profile-email',async form=>{
     const data=Object.fromEntries(new FormData(form));
     const response=await api('emailSet',data);
