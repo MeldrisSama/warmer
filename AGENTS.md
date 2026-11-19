@@ -28,7 +28,7 @@ Run commands from the repository root. Use PHP 8.1 or newer, with the PDO driver
 - `php -l Cangiolone.com/api.php`: check PHP syntax; repeat for `index.php`, `storage.php`, and `config.php`.
 - `node --check Cangiolone.com/app.js`: check JavaScript syntax when Node.js is available.
 - `node --test tests/regression.test.cjs`: run regressions with Node.js 22+ and PHP 8.1+ with `pdo_sqlite`; set `PHP_BINARY` if PHP is not on PATH. See `tests/README.md`.
-- Full application, builder, theme and HTTP suite: `node --test tests/site-profile.test.cjs tests/builder-loadout-rules.test.cjs tests/builder-refinements.test.cjs tests/builder-datasheets.test.cjs tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/theme.test.cjs tests/regression.test.cjs`.
+- Full application, builder, theme and HTTP suite: `node --test tests/builder-enhancements.test.cjs tests/builder-allies.test.cjs tests/site-profile.test.cjs tests/builder-loadout-rules.test.cjs tests/builder-refinements.test.cjs tests/builder-datasheets.test.cjs tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/theme.test.cjs tests/regression.test.cjs`.
 
 Use an isolated database for API checks. MySQL credentials come from the sibling `wiki/LocalSettings.php`; SQLite settings require `driver: sqlite` and a writable `path`.
 

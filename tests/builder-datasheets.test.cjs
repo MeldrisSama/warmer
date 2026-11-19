@@ -23,6 +23,7 @@ test('Weapon keywords resolve parameterized source rules without confusing param
 test('Weapon rows retain all statistics and put keywords under the escaped name',()=>{
   const c=context();c.rows=[{origin:'Bodyguard',count:5,weapon:{name:'Rifle <script>',range:'24',A:'2',BS_WS:'3',S:'4',AP:'-1',D:'1',description:'Lethal Hits'}}];
   const html=vm.runInContext('wbWeaponTable(rows)',c);assert.match(html,/Bodyguard/);assert.match(html,/Rifle /);assert.doesNotMatch(html,/<script>/);assert.match(html,/24&quot;/);assert.match(html,/3\+/);assert.doesNotMatch(html,/<th scope="col">Regole/);assert.ok(html.indexOf('wb-weapon-name')<html.indexOf('data-wb-rule="lethal"'));
+  assert.match(html,/<strong class="wb-weapon-count">\(×5\)<\/strong>/);assert.doesNotMatch(html,/<th scope="col">N\./);assert.match(html,/<td class="">24&quot;<\/td><td class="">2<\/td>/);
 });
 test('Rule dialog uses catalog IDs, opens modally and returns focus after closing',()=>{
   const c=context();let focused=false,shown=false,removed=false,closeHandler,clickHandler;

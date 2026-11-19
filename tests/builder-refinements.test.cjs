@@ -19,10 +19,10 @@ test('Phone additions keep the army visible, while desktop additions open the ex
 
 test('Identical named-model weapons combine quantities; different stats and alternative modes stay distinct',()=>{
   const c=context();c.rows=['Ancient','Apothecary','Champion'].map(model=>({unitId:'signal',model,count:1,weapon:{name:'Plasma Talon',range:'18',A:'2',BS_WS:'3',S:'7',AP:'-2',D:'1',description:''}}));
-  let html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/class="wb-weapon-name"/g)||[]).length,1);assert.match(html,/<td class="">3<\/td>/);assert.match(html,/Ancient, Apothecary, Champion/);
+  let html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/class="wb-weapon-name"/g)||[]).length,1);assert.match(html,/Plasma Talon <strong class="wb-weapon-count">\(×3\)<\/strong>/);assert.doesNotMatch(html,/>N\.</);assert.match(html,/Ancient, Apothecary, Champion/);
   c.rows[2].weapon={...c.rows[2].weapon,S:'8',_changed:['S']};html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/class="wb-weapon-name"/g)||[]).length,2);
   c.rows=[{unitId:'signal',count:1,weapon:{name:'Cyclone Missile Launcher - Frag',A:'D6',description:''}},{unitId:'signal',count:1,weapon:{name:'Cyclone Missile Launcher - Krak',A:'2',description:''}}];
-  html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/wb-weapon-family/g)||[]).length,1);assert.equal((html.match(/wb-mode-marker/g)||[]).length,2);assert.match(html,/1× Cyclone Missile Launcher/);
+  html=vm.runInContext('wbWeaponTable(rows)',c);assert.doesNotMatch(html,/wb-weapon-family|profili alternativi/);assert.equal((html.match(/wb-mode-marker/g)||[]).length,2);assert.match(html,/Cyclone Missile Launcher - Frag/);assert.match(html,/Cyclone Missile Launcher - Krak/);
 });
 
 test('Ravenwing enhancement bearer is only the Champion; unit Upgrades have no bearer selection',()=>{

@@ -363,11 +363,11 @@ function builderGearLimit(array $unit,string $line,int $models,array $modelCount
 function builderCompileEffects(array $rows,callable $description): array {
     $out=[];
     foreach ($rows as $index=>$row) {
-        $text=trim($description($row));$body=preg_replace('/^.{1,130}?models? only\.\s*/i','',$text);
+        $text=trim($description($row));$body=preg_replace('/^[^.\r\n]{1,220}?\b(?:models?|units?)(?:\s+\([^.]*\))?\s+only(?:\s+\([^.]*\))?\.\s*/iu','',$text);
         $effects=[];$scope='unit';$weaponType='';$condition='';
         if (preg_match('/^(?:While (?:this model|the bearer) is leading a unit,\s*)(.+)$/isu',$body,$m)) { $body=$m[1];$condition='leading'; }
         elseif (preg_match('/^((?:If|While) [^,\n]{1,160}),\s*(.+)$/isu',$body,$m)) {$condition=$m[1];$body=$m[2];}
-        if (preg_match('/^(This unit[’\']s|This model[’\']s|The bearer[’\']s) (ranged |melee )?attacks have \[([a-z0-9 -]+)\]\.?$/iu',$body,$m)) {
+        if (preg_match('/^(This unit[’\']s|This model[’\']s|The bearer[’\']s) (ranged |melee )?attacks have \[([^\]\r\n]+)\]\.?$/iu',$body,$m)) {
             $scope=stripos($m[1],'unit')!==false?'unit':'bearer';$weaponType=trim($m[2]??'');$effects[]=['field'=>'keywords','operation'=>'keyword','value'=>strtoupper($m[3])];
         } elseif (preg_match('/^(This unit|This model|The bearer) has (\d)\+ (?:InSv|invulnerable save)\.?$/iu',$body,$m)) {
             $scope=stripos($m[1],'unit')!==false?'unit':'bearer';$effects[]=['field'=>'inv_sv','operation'=>'min','value'=>(int)$m[2]];
@@ -394,22 +394,98 @@ function builderCompileEffects(array $rows,callable $description): array {
     }
     return $out;
 }
+function builderCompileEnhancementEffects(array $row,callable $description): array {
+    $text=trim($description($row));
+    $body=preg_replace('/^[^.\r\n]{1,220}?\b(?:models?|units?)(?:\s+\([^.]*\))?\s+only(?:\s+\([^.]*\))?\.\s*/iu','',$text);
+    $out=builderCompileEffects([$row],$description);
+    $subject='(?:This unit|This model|The bearer|The bearer[’\']s unit|This model[’\']s unit)';
+    $weaponSubject='(?:(?:This unit[’\']s|This model[’\']s|The bearer[’\']?s)(?: melee| ranged)? (?:attacks|weapons)|(?:Melee |Ranged )?weapons equipped by (?:the bearer|this model|models in (?:the bearer[’\']s unit|this unit)))';
+    $scope=static fn($target)=>preg_match('/\bunit\b/i',$target)?'unit':'bearer';
+    $type=static fn($target)=>preg_match('/\b(melee|ranged)\b/i',$target,$m)?strtolower($m[1]):'';
+    $parts=preg_split('/(?<=[.!])\s+|\r?\n|,?\s+and(?:,\s*|\s+)(?=(?:the bearer|this unit|those weapons|each time|while|if)\b)/iu',$body);
+    $lastWeapon=null;
+    foreach($parts as $part) {
+        $part=trim(preg_replace('/^[•\s]+/u','',$part));if($part==='')continue;
+        $condition='';
+        if(preg_match('/^While (?:the bearer|this model) is leading a unit,\s*(.+)$/iu',$part,$m)){$condition='leading';$part=$m[1];}
+        // Keyword qualifiers inside brackets are part of the keyword, not an
+        // instruction to bake a situational bonus into the printed profile.
+        $plain=preg_replace('/\[[^\]]*\]/u','',$part);
+        if(preg_match('/\b(if|while|when|until|after|before|each time|once per|select|choose|at the start)\b/iu',$plain))break;
+        $effects=[];$target='';$weaponType='';
+        if(preg_match('/^('.$weaponSubject.'|Those weapons) (?:have|has) (?:the )?(\[[^\]\r\n]+\](?:\s+and\s+\[[^\]\r\n]+\])*)(?: abilit(?:y|ies))?\.?$/iu',$part,$m)) {
+            if(strcasecmp($m[1],'Those weapons')===0){if(!$lastWeapon)continue;[$target,$weaponType]=$lastWeapon;}
+            else{$target=$m[1];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];}
+            preg_match_all('/\[([^\]]+)\]/u',$m[2],$keywords);
+            foreach($keywords[1] as $keyword)$effects[]=['field'=>'keywords','operation'=>'keyword','value'=>strtoupper($keyword)];
+        } elseif(preg_match('/^('.$subject.') has (?:the )?((?:Deep Strike|Stealth|Fights First|Infiltrators|Scouts \d+["”]|Feel No Pain \d\+|Lone Operative(?: \d+["”])?))(?: ability)?\.?$/iu',$part,$m)) {
+            $target=$m[1];$effects[]=['field'=>'abilities','operation'=>'keyword','value'=>$m[2]];
+        } elseif(preg_match('/^('.$subject.') has (?:a|an) (Move|Toughness|Wounds|Leadership|Objective Control|Save) characteristic of (\d+)(?:[+"”])?\.?$/iu',$part,$m)) {
+            $target=$m[1];$field=['move'=>'M','toughness'=>'T','wounds'=>'W','leadership'=>'Ld','objective control'=>'OC','save'=>'Sv'][strtolower($m[2])];
+            $effects[]=['field'=>$field,'operation'=>'set','value'=>(int)$m[3]];
+        } elseif(preg_match('/^('.$subject.') has \+(\d+) (W|M|T|OC)\.?$/iu',$part,$m)) {
+            $target=$m[1];$effects[]=['field'=>strtoupper($m[3]),'operation'=>'add','value'=>(int)$m[2]];
+        } elseif(preg_match('/^Add (\d+) to the (Attacks|Strength|Damage) characteristic of (.+?)\.?$/iu',$part,$m)&&preg_match('/^(?:the bearer[’\']?s (?:melee|ranged) weapons|(?:melee|ranged) weapons equipped by the bearer)$/iu',$m[3])) {
+            $target=$m[3];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];
+            $effects[]=['field'=>['attacks'=>'A','strength'=>'S','damage'=>'D'][strtolower($m[2])],'operation'=>'add','value'=>(int)$m[1]];
+        } elseif(preg_match('/^Improve the\s+Armour Penetration characteristic of (the bearer[’\']?s (?:melee|ranged) weapons) by (\d+)\.?$/iu',$part,$m)) {
+            $target=$m[1];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];$effects[]=['field'=>'AP','operation'=>'add','value'=>-(int)$m[2]];
+        } elseif(preg_match('/^Add (\d+) to the ((?:Strength|Attacks|Damage)(?:(?:,| and) (?:Strength|Attacks|Damage))*) characteristics? of (the bearer[’\']?s (?:melee|ranged) weapons)\.?$/iu',$part,$m)) {
+            $target=$m[3];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];preg_match_all('/Strength|Attacks|Damage/i',$m[2],$fields);
+            foreach($fields[0] as $field)$effects[]=['field'=>['attacks'=>'A','strength'=>'S','damage'=>'D'][strtolower($field)],'operation'=>'add','value'=>(int)$m[1]];
+        }
+        foreach($effects as $effect)$out[]=$effect+['id'=>'effect_'.substr(hash('sha256',$row['id'].'|'.$part.'|'.$effect['field'].'|'.$effect['value']),0,20),'source'=>$row['name'],'scope'=>$scope($target),'weaponType'=>$weaponType,'condition'=>$condition,'gear'=>'','text'=>$text];
+        if($condition!=='')break;
+    }
+    $seen=[];return array_values(array_filter($out,static function($effect) use(&$seen){$key=json_encode(array_intersect_key($effect,array_flip(['field','operation','value','scope','weaponType','condition','gear'])));if(isset($seen[$key]))return false;$seen[$key]=true;return true;}));
+}
+function builderRefreshEnhancementEffects(array $catalog): array {
+    $texts=array_column($catalog['texts']??[],'description','id');$cache=[];
+    $description=static fn($row)=>$row['description']??($texts[$row['descriptionRef']??'']??'');
+    foreach($catalog['units'] as &$unit)foreach($unit['enhancements'] as &$row){
+        $key=$row['id'].'|'.$description($row);
+        $row['effectsJson']=$cache[$key]??=json_encode(builderCompileEnhancementEffects($row,$description),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    }
+    unset($unit,$row);return $catalog;
+}
 function builderBuildAllies(array $catalog): array {
     $units=$catalog['units'];$has=static fn($u,$key)=>in_array(strtolower($key),array_map('strtolower',array_map('trim',explode(',',$u['keywords']))),true);
+    $byId=array_column($units,null,'id');
     $select=static fn(callable $test)=>array_column(array_values(array_filter($units,$test)),'id');
     $factions=[];$imperium=['aoi','am','tl','gk','adm','qi','sm','ac','as'];$chaos=['csm','dg','ec','ts','we','qt','cd'];
     foreach ($catalog['factions'] as $faction) {
         $fid=$faction['id'];$grants=[];$marine=$fid==='sm'||str_starts_with($fid,'sm_');$imperial=$marine||in_array($fid,$imperium,true);
+        // The export repeats allies under the host faction. CSV faction_id and
+        // the host keyword on these copies do not authorize native recruitment.
+        $borrowed=static function($u) use ($fid,$marine,$has): bool {
+            return match($fid) {
+                'gc'=>$has($u,'Astra Militarum')||$has($u,'Tyranids'),
+                'dru'=>$has($u,'Harlequins')||$has($u,'Anhrathe'),
+                'qi'=>$has($u,'Adeptus Mechanicus'),
+                'qt'=>$has($u,'Heretic Astartes')||$has($u,'Damned'),
+                'cd'=>$has($u,'Heretic Astartes'),
+                'csm'=>in_array(strtolower($u['name']),['khorne berzerkers','rubric marines','plague marines','noise marines'],true),
+                default=>$marine&&$fid!=='sm_deathwatch'&&$has($u,'Deathwatch')
+            };
+        };
+        $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$borrowed($byId[$id])));
+        $belongs=static function($u,$from) use($fid,$has): bool {
+            if(($u['factionId']??'')===$from)return true;
+            if(($u['factionId']??'')!==$fid)return false;
+            $keys=['am'=>['Astra Militarum'],'tyr'=>['Tyranids'],'adm'=>['Adeptus Mechanicus'],'csm'=>['Heretic Astartes','Damned'],'ae'=>['Harlequins','Anhrathe']][$from]??[];
+            foreach($keys as $key)if($has($u,$key))return true;
+            return false;
+        };
         $conditionalKeyword=['ts'=>'Scintillating Legions','dg'=>'Plague Legions','ec'=>'Legions of Excess','we'=>'Blood Legions'][$fid]??null;
         if ($conditionalKeyword) $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$has(array_column($units,null,'id')[$id],$conditionalKeyword)));
         if ($fid==='ae') $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$has(array_column($units,null,'id')[$id],'Ynnari')||$has(array_column($units,null,'id')[$id],'Asuryani')||$has(array_column($units,null,'id')[$id],'Harlequins')));
         $add=static function(string $id,string $name,array $ids,array $extra=[]) use (&$grants) {if ($ids) $grants[]=$extra+['id'=>$id,'name'=>$name,'unitIds'=>$ids,'detachmentIds'=>[],'excludedDetachmentIds'=>[],'points'=>[],'warlord'=>false,'enhancements'=>false,'kind'=>'points'];};
         $dids=static fn(string $name)=>array_column(array_filter($faction['detachments'],static fn($d)=>strcasecmp(str_replace('’',"'",$d['name']),str_replace('’',"'",$name))===0),'id');
         if ($imperial&&$fid!=='aoi') $add('assigned_agents','Assigned Agents',$select(static fn($u)=>($u['factionId']??'')==='aoi'),['kind'=>'agents','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-agents/#Assigned-Agents']);
-        if ($imperial&&$fid!=='qi') $add('freeblades','Freeblades',$select(static fn($u)=>($u['factionId']??'')==='qi'),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-knights/#Freeblades']);
+        if ($imperial&&$fid!=='qi') $add('freeblades','Freeblades',$select(static fn($u)=>($u['factionId']??'')==='qi'&&!$has($u,'Adeptus Mechanicus')),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-knights/#Freeblades']);
         if ($imperial&&$fid!=='tl') $add('titanic_support','Titanic Support',$select(static fn($u)=>($u['factionId']??'')==='tl'),['kind'=>'titan','source'=>'https://wahapedia.ru/wh40k11ed/factions/adeptus-titanicus/']);
-        if (in_array($fid,$chaos,true)&&$fid!=='qt') $add('dreadblades','Dreadblades',$select(static fn($u)=>($u['factionId']??'')==='qt'),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-knights/#Dreadblades']);
-        if (in_array($fid,['csm','dg','ec','ts','we','qt'],true)) $add('daemonic_pact','Daemonic Pact',$select(static fn($u)=>($u['factionId']??'')==='cd'),['kind'=>'daemons','points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-daemons/#Daemonic-Pact']);
+        if (in_array($fid,$chaos,true)&&$fid!=='qt') $add('dreadblades','Dreadblades',$select(static fn($u)=>($u['factionId']??'')==='qt'&&!$has($u,'Damned')&&!$has($u,'Heretic Astartes')),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-knights/#Dreadblades']);
+        if (in_array($fid,['csm','dg','ec','ts','we','qt'],true)) $add('daemonic_pact','Daemonic Pact',$select(static fn($u)=>($u['factionId']??'')==='cd'&&!$has($u,'Heretic Astartes')),['kind'=>'daemons','points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-daemons/#Daemonic-Pact']);
         if ($fid==='csm') $add('cult_marines','Cult Marines',$select(static fn($u)=>in_array(strtolower($u['name']),['khorne berzerkers','rubric marines','plague marines','noise marines'],true)),['points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-space-marines/']);
         if ($marine&&$dids('Deathwatch Support')) $add('deathwatch_support','Deathwatch Allies',$select(static fn($u)=>($u['factionId']??'')==='sm'&&$has($u,'Deathwatch')),['detachmentIds'=>$dids('Deathwatch Support'),'points'=>[1000=>500,2000=>500,3000=>500],'enhancements'=>true,'source'=>'https://wahapedia.ru/wh40k11ed/factions/space-marines/#Deathwatch-Support']);
         $special=[
@@ -425,8 +501,8 @@ function builderBuildAllies(array $catalog): array {
             ['dru',"Reaper's Wager",'reapers','ae','Harlequins',[]]
         ];
         foreach ($special as [$host,$detachment,$id,$from,$keyword,$exclude]) if ($host===$fid && $dids($detachment)) {
-            $ids=$select(static function($u) use ($from,$keyword,$exclude,$has,$id) {
-                if (($u['factionId']??'')!==$from || ($keyword&&!$has($u,$keyword))) return false;
+            $ids=$select(static function($u) use ($from,$keyword,$exclude,$has,$id,$belongs) {
+                if (!$belongs($u,$from) || ($keyword&&!$has($u,$keyword))) return false;
                 foreach ($exclude as $key) if ($has($u,$key)||strcasecmp($u['name'],$key)===0) return false;
                 if ($id==='forgepact') return in_array(strtolower($u['name']),['tech-priest dominus','tech-priest manipulus','skitarii marshal','skitarii rangers','skitarii vanguard'],true);
                 if ($id==='shadow_legion') return $has($u,'Damned')||in_array(strtolower($u['name']),['chaos lord','chaos lord in terminator armour','chaos lord with jump pack','chaos terminator squad','chosen','dark apostle','havocs','legionaries','master of possession','possessed','raptors','sorcerer','sorcerer in terminator armour','warp talons'],true);
@@ -434,7 +510,7 @@ function builderBuildAllies(array $catalog): array {
             });
             $add($id,$detachment,$ids,['detachmentIds'=>$dids($detachment),'points'=>in_array($id,['thralls','forgepact'],true)?[1000=>500,2000=>500,3000=>500]:[1000=>500,2000=>1000,3000=>1500],'enhancements'=>true,'source'=>'https://wahapedia.ru/wh40k11ed/factions/'.str_replace([' ','’',"'"],['-','',''],strtolower($faction['name'])).'/']);
         }
-        if ($fid==='dru') $add('travelling_players','Corsairs and Travelling Players',$select(static fn($u)=>($u['factionId']??'')==='ae'&&($has($u,'Harlequins')||$has($u,'Anhrathe'))),['excludedDetachmentIds'=>$dids("Reaper's Wager"),'points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/drukhari/#Corsairs-and-Travelling-Players']);
+        if ($fid==='dru') $add('travelling_players','Corsairs and Travelling Players',$select(static fn($u)=>$belongs($u,'ae')&&($has($u,'Harlequins')||$has($u,'Anhrathe'))),['excludedDetachmentIds'=>$dids("Reaper's Wager"),'points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/drukhari/#Corsairs-and-Travelling-Players']);
         if ($fid==='ae'&&$dids('Devoted of Ynnead')) $add('ynnari','Servants of the Whispering God',$select(static fn($u)=>($u['factionId']??'')==='ae'&&$has($u,'Ynnari')&&!$has($u,'Asuryani')&&!$has($u,'Harlequins')),['detachmentIds'=>$dids('Devoted of Ynnead'),'kind'=>'ynnari','warlord'=>true,'enhancements'=>true,'source'=>'https://wahapedia.ru/wh40k11ed/factions/aeldari/']);
         if (in_array($fid,$chaos,true)) $add('titanicus_traitoris','Titanicus Traitoris',$select(static fn($u)=>($u['factionId']??'')==='traitoris'),['kind'=>'titan','source'=>'https://wahapedia.ru/wh40k11ed/factions/adeptus-titanicus/']);
         $faction['allies']=$grants;$factions[]=$faction;

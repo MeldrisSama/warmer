@@ -55,3 +55,7 @@ Photo tests enforce authentication, reject direct upload URLs, and verify cleanu
 Transport tests simulate IIS HTTPS server variables and remote HTTP requests. They verify redirects, rejected HTTP writes, Secure cookies, and HSTS. The loopback-only PHP development server continues to support HTTP.
 
 MySQL locking and SQL compatibility, SQLite concurrency, deployed TLS certificates, backups, and browser rendering are not covered. SQLite integration tests do not establish MySQL correctness.
+
+Ally catalog regressions: `node --test tests/builder-allies.test.cjs` (PHP_BINARY as above). Covers duplicated host-faction datasheets, conditional recruitment, ally points caps, forbidden selections, canonical/host alias display deduplication and runtime correction of stored catalogs without rewriting their payload. Set BUILDER_CATALOG_PATH to a local enriched JSON to also run the real-catalog visibility checks; otherwise only that external-data test is skipped.
+
+Enhancement effect regressions: `node --test tests/builder-enhancements.test.cjs`. Covers qualified keywords, compound stat/keyword effects, bearer scope, native keyword preservation, situational and activated effects left unapplied, added abilities and runtime refresh of existing catalogs without rewriting payloads. Set BUILDER_CATALOG_PATH to include the real Deathwing Knights/Furious Assault example in Build and Play.

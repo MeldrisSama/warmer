@@ -12,7 +12,7 @@ Aggiungere dal catalogo sul telefono mantiene visibile l'armata, senza aprire au
 
 Armi con stesso nome, caratteristiche, keyword, modificatori e provenienza nella stessa unità vengono raccolte in una sola riga, sommando le quantità e conservando i nomi dei modelli portatori. Profili modificati o armi di unità diverse restano distinti. Questo vale anche in Play e nei gruppi attached.
 
-Le modalità di una stessa arma hanno un'intestazione comune con quantità e nome dell'arma, e il simbolo ↳ davanti ai profili alternativi (ad esempio Frag e Krak). La quantità non viene raddoppiata sommando modalità alternative.
+Ogni modalità mostra il nome completo in evidenza, ad esempio «Fealty - Sweep» e «Fealty - Strike», con il piccolo simbolo ↳ davanti ai profili alternativi. Nessuna intestazione separata spezza il nome dell'arma. La quantità non viene raddoppiata sommando modalità alternative.
 
 Le scelte di wargear a pagamento indicano esplicitamente il costo aggiuntivo per modello o per unità, anche nei selettori con molte configurazioni. Il valore deriva dai costi strutturati del catalogo: non vengono inventati sovrapprezzi dalle descrizioni.
 

@@ -232,9 +232,12 @@ function beAllyRule(id){
   return beAllyRules().filter(r=>r.unitIds.includes(id)).sort((a,b)=>Number(Boolean(b.detachmentIds.length))-Number(Boolean(a.detachmentIds.length)))[0];
 }
 function beCatalogIds(){
-  const ids=[...new Set([...wbFaction().unitIds,...beAllyRules().flatMap(r=>r.unitIds)])];
+  const units=wbUnits();
+  // Old alias IDs remain valid in armies; offer each allied datasheet once.
+  const allies=beAllyRules().flatMap(rule=>{const seen=new Set();return rule.unitIds.filter(id=>{const u=units.get(id);if(!u)return false;const key=u.name.toLowerCase().replace(/[’']/g,'')+'|'+Boolean(u.legends);if(seen.has(key))return false;seen.add(key);return true;});});
+  const ids=[...new Set([...wbFaction().unitIds,...allies])];
   if(!beAllyRules().some(r=>r.id==='shadow_legion'))return ids;
-  const units=wbUnits();return ids.filter(id=>{const u=units.get(id);return /^Be[’']lakor$/i.test(u.name)||(!/Daemon Prince/i.test(u.name)&&!/(?:^|,\s*)Epic Hero(?:,|$)/i.test(u.keywords));});
+  return ids.filter(id=>{const u=units.get(id);return /^Be[’']lakor$/i.test(u.name)||(!/Daemon Prince/i.test(u.name)&&!/(?:^|,\s*)Epic Hero(?:,|$)/i.test(u.keywords));});
 }
 function beEffects(unit,entry){
   if(!entry)return {unit,sources:[]};
@@ -255,28 +258,36 @@ function beEffects(unit,entry){
   if(entry.models>1&&candidates.some(({effect})=>effect.scope==='bearer'&&effect._bearerModel))for(const weapon of derived.weapons)weapon._variants=beWeaponOwners(unit,entry,weapon).map(owner=>({...weapon,_forModel:owner.name,_count:owner.count}));
   const order={set:0,add:1,min:2,keyword:3};candidates.sort((a,b)=>(order[a.effect.operation]??9)-(order[b.effect.operation]??9));
   for(const {effect,from} of candidates){
-      const identity=effect.source+':'+effect.field+':'+effect.value;if(seen.has(identity))continue;seen.add(identity);let changed=false;
+      const identity=JSON.stringify([effect.source,effect.scope,effect.field,effect.operation,effect.value,effect.weaponType,effect._bearerModel]);if(seen.has(identity))continue;seen.add(identity);let changed=false;
       if(['A','S','AP','D','keywords'].includes(effect.field))for(const weapon of derived.weapons.flatMap(w=>w._variants||[w])){
         if(effect.weaponType&&weapon.type.toLowerCase()!==effect.weaponType)continue;
         if(effect.gear&&effect.scope==='bearer')continue; // A model-specific weapon effect needs a separate recipient mapping.
         if(effect.scope==='bearer'&&entry.models>1){const owners=beWeaponOwners(unit,entry,weapon);if(owners.some(o=>o.name!==effect._bearerModel))continue;}
         if(effect.field==='keywords'){
-          const keyword=String(effect.value),stem=keyword.replace(/\s+\d+$/,'');let names=(wbDescription(weapon)||'').split(/,\s*/).filter(Boolean);
-          const existing=names.find(n=>n.toUpperCase().startsWith(stem));
-          if(!existing)names.push(keyword);else if((Number(keyword.match(/\d+$/)?.[0])||0)>(Number(existing.match(/\d+$/)?.[0])||0))names=names.map(n=>n===existing?keyword:n);
+          const keyword=String(effect.value),parse=value=>{const text=value.trim().toUpperCase(),m=text.match(/^(.+?)\s+(\d+)(\+?)(?::\s*(.+))?$/);return m?{stem:m[1],n:Number(m[2]),qualifier:m[4]||''}:{stem:text,n:0,qualifier:''};};
+          let names=(wbDescription(weapon)||'').split(/,\s*/).filter(Boolean);const next=parse(keyword);
+          const covers=names.some(name=>{const old=parse(name);return old.stem===next.stem&&(!old.qualifier||old.qualifier===next.qualifier)&&(/^ANTI-/i.test(next.stem)?old.n<=next.n:old.n>=next.n);});
+          if(covers)continue;
+          if(!covers){const existing=names.find(name=>{const old=parse(name);return old.stem===next.stem&&old.qualifier===next.qualifier;});if(existing)names=names.map(name=>name===existing?keyword:name);else names.push(keyword);}
           const before=wbDescription(weapon);weapon.description=names.join(', ');delete weapon.descriptionRef;
           if(before!==weapon.description){weapon._addedKeywords=[...(weapon._addedKeywords||[]),keyword];changed=true;}
         }else{
           const old=String(weapon[effect.field]||''),n=Number(old);
-          weapon[effect.field]=Number.isFinite(n)?String(effect.operation==='set'?effect.value:n+effect.value):/^D\d+(?:\+\d+)?$/i.test(old)?old+'+'+effect.value:old;
+          const dice=old.match(/^(\d*D\d+)(?:\+(\d+))?$/i);
+          weapon[effect.field]=effect.operation==='set'?String(effect.value):Number.isFinite(n)?String(n+effect.value):dice?dice[1]+((Number(dice[2]||0)+Number(effect.value))>=0?'+':'')+(Number(dice[2]||0)+Number(effect.value)):old;
           if(old!==weapon[effect.field]){weapon._changed=[...(weapon._changed||[]),effect.field];changed=true;}
+        }
+      }else if(effect.field==='abilities'){
+        if(!derived.abilities.some(rule=>rule.name.toUpperCase()===String(effect.value).toUpperCase()&&(!rule._bearerModel||rule._bearerModel===effect._bearerModel))){
+          const core=wbCoreRule(effect.value);
+          derived.abilities.push({name:String(effect.value),type:'Enhancement',description:core?wbDescription(core):effect.text,_added:true,_bearerModel:effect.scope==='bearer'?effect._bearerModel:undefined});changed=true;
         }
       }else for(const model of derived.models){
         if(effect.gear&&effect.scope==='bearer'&&!model._gear?.includes(effect.gear))continue;
         if(effect._bearerModel&&effect.scope==='bearer'&&(model._baseName||model.name)!==effect._bearerModel)continue;
         const old=parseInt(model[effect.field],10),value=Number(effect.value);
         const result=effect.operation==='min'?Math.min(Number.isFinite(old)?old:99,value):effect.operation==='set'?value:old+value;
-        if(Number.isFinite(result)&&result!==old){model[effect.field]=String(effect.field==='Sv'?Math.max(1,result):result)+(effect.field==='Sv'?'+':effect.field==='M'?'"':'');model._changed=[...(model._changed||[]),effect.field];changed=true;}
+        if(Number.isFinite(result)&&result!==old){model[effect.field]=String(effect.field==='Sv'?Math.max(1,result):result)+(['Sv','Ld'].includes(effect.field)?'+':effect.field==='M'?'"':'');model._changed=[...(model._changed||[]),effect.field];changed=true;}
       }
       if(changed)sources.push(`${from.name} · ${effect.source}`);
   }
