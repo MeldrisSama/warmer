@@ -332,7 +332,7 @@ function wbRules(rows,unitId=''){return rows.map(r=>{
   let description=wbDescription(r);const core=wbCoreRule(r.name);
   // Some old exports contain only a repeated title/reference in place of the rule.
   if(core&&(!description.trim()||description.replace(/\s|24\.\d{2}/g,'').toUpperCase()===String(r.name).replace(/\s/g,'').toUpperCase()))description=wbDescription(core);
-  const title=wbText(r.name||description)+(r.upgrade==='true'?' · Upgrade':''),body=r.name?beRich(description,unitId):'';
+  const label=(r._bearerModel?wbText(r._bearerModel)+' · ':'')+wbText(r.name||description)+(r.upgrade==='true'?' · Upgrade':''),title=r._added?`<span class="wb-bonus">${label}</span>`:label,body=r.name?beRich(description,unitId):'';
   return description.length>450?`<details class="wb-rule wb-rule-card wb-rule-long"><summary><strong>${title}</strong><span>Leggi regola</span></summary><div>${body}</div></details>`:`<article class="wb-rule wb-rule-card"><h4>${title}</h4>${body}</article>`;
 }).join('');}
 function wbSheetRules(unit,enhancements=[]){

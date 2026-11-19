@@ -363,11 +363,11 @@ function builderGearLimit(array $unit,string $line,int $models,array $modelCount
 function builderCompileEffects(array $rows,callable $description): array {
     $out=[];
     foreach ($rows as $index=>$row) {
-        $text=trim($description($row));$body=preg_replace('/^.{1,130}?models? only\.\s*/i','',$text);
+        $text=trim($description($row));$body=preg_replace('/^[^.\r\n]{1,220}?\b(?:models?|units?)(?:\s+\([^.]*\))?\s+only(?:\s+\([^.]*\))?\.\s*/iu','',$text);
         $effects=[];$scope='unit';$weaponType='';$condition='';
         if (preg_match('/^(?:While (?:this model|the bearer) is leading a unit,\s*)(.+)$/isu',$body,$m)) { $body=$m[1];$condition='leading'; }
         elseif (preg_match('/^((?:If|While) [^,\n]{1,160}),\s*(.+)$/isu',$body,$m)) {$condition=$m[1];$body=$m[2];}
-        if (preg_match('/^(This unit[’\']s|This model[’\']s|The bearer[’\']s) (ranged |melee )?attacks have \[([a-z0-9 -]+)\]\.?$/iu',$body,$m)) {
+        if (preg_match('/^(This unit[’\']s|This model[’\']s|The bearer[’\']s) (ranged |melee )?attacks have \[([^\]\r\n]+)\]\.?$/iu',$body,$m)) {
             $scope=stripos($m[1],'unit')!==false?'unit':'bearer';$weaponType=trim($m[2]??'');$effects[]=['field'=>'keywords','operation'=>'keyword','value'=>strtoupper($m[3])];
         } elseif (preg_match('/^(This unit|This model|The bearer) has (\d)\+ (?:InSv|invulnerable save)\.?$/iu',$body,$m)) {
             $scope=stripos($m[1],'unit')!==false?'unit':'bearer';$effects[]=['field'=>'inv_sv','operation'=>'min','value'=>(int)$m[2]];
@@ -393,6 +393,60 @@ function builderCompileEffects(array $rows,callable $description): array {
         foreach ($effects as $effect) $out[]=$effect+['id'=>'effect_'.substr(hash('sha256',($row['name']??'Rule').'|'.$text.'|'.$effect['field'].'|'.$effect['value']),0,20),'source'=>$row['name']??'Rule','scope'=>$scope,'weaponType'=>$weaponType,'condition'=>$condition,'gear'=>($row['type']??'')==='Wargear'?($row['name']??''):'','text'=>$text];
     }
     return $out;
+}
+function builderCompileEnhancementEffects(array $row,callable $description): array {
+    $text=trim($description($row));
+    $body=preg_replace('/^[^.\r\n]{1,220}?\b(?:models?|units?)(?:\s+\([^.]*\))?\s+only(?:\s+\([^.]*\))?\.\s*/iu','',$text);
+    $out=builderCompileEffects([$row],$description);
+    $subject='(?:This unit|This model|The bearer|The bearer[’\']s unit|This model[’\']s unit)';
+    $weaponSubject='(?:(?:This unit[’\']s|This model[’\']s|The bearer[’\']?s)(?: melee| ranged)? (?:attacks|weapons)|(?:Melee |Ranged )?weapons equipped by (?:the bearer|this model|models in (?:the bearer[’\']s unit|this unit)))';
+    $scope=static fn($target)=>preg_match('/\bunit\b/i',$target)?'unit':'bearer';
+    $type=static fn($target)=>preg_match('/\b(melee|ranged)\b/i',$target,$m)?strtolower($m[1]):'';
+    $parts=preg_split('/(?<=[.!])\s+|\r?\n|,?\s+and(?:,\s*|\s+)(?=(?:the bearer|this unit|those weapons|each time|while|if)\b)/iu',$body);
+    $lastWeapon=null;
+    foreach($parts as $part) {
+        $part=trim(preg_replace('/^[•\s]+/u','',$part));if($part==='')continue;
+        $condition='';
+        if(preg_match('/^While (?:the bearer|this model) is leading a unit,\s*(.+)$/iu',$part,$m)){$condition='leading';$part=$m[1];}
+        // Keyword qualifiers inside brackets are part of the keyword, not an
+        // instruction to bake a situational bonus into the printed profile.
+        $plain=preg_replace('/\[[^\]]*\]/u','',$part);
+        if(preg_match('/\b(if|while|when|until|after|before|each time|once per|select|choose|at the start)\b/iu',$plain))break;
+        $effects=[];$target='';$weaponType='';
+        if(preg_match('/^('.$weaponSubject.'|Those weapons) (?:have|has) (?:the )?(\[[^\]\r\n]+\](?:\s+and\s+\[[^\]\r\n]+\])*)(?: abilit(?:y|ies))?\.?$/iu',$part,$m)) {
+            if(strcasecmp($m[1],'Those weapons')===0){if(!$lastWeapon)continue;[$target,$weaponType]=$lastWeapon;}
+            else{$target=$m[1];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];}
+            preg_match_all('/\[([^\]]+)\]/u',$m[2],$keywords);
+            foreach($keywords[1] as $keyword)$effects[]=['field'=>'keywords','operation'=>'keyword','value'=>strtoupper($keyword)];
+        } elseif(preg_match('/^('.$subject.') has (?:the )?((?:Deep Strike|Stealth|Fights First|Infiltrators|Scouts \d+["”]|Feel No Pain \d\+|Lone Operative(?: \d+["”])?))(?: ability)?\.?$/iu',$part,$m)) {
+            $target=$m[1];$effects[]=['field'=>'abilities','operation'=>'keyword','value'=>$m[2]];
+        } elseif(preg_match('/^('.$subject.') has (?:a|an) (Move|Toughness|Wounds|Leadership|Objective Control|Save) characteristic of (\d+)(?:[+"”])?\.?$/iu',$part,$m)) {
+            $target=$m[1];$field=['move'=>'M','toughness'=>'T','wounds'=>'W','leadership'=>'Ld','objective control'=>'OC','save'=>'Sv'][strtolower($m[2])];
+            $effects[]=['field'=>$field,'operation'=>'set','value'=>(int)$m[3]];
+        } elseif(preg_match('/^('.$subject.') has \+(\d+) (W|M|T|OC)\.?$/iu',$part,$m)) {
+            $target=$m[1];$effects[]=['field'=>strtoupper($m[3]),'operation'=>'add','value'=>(int)$m[2]];
+        } elseif(preg_match('/^Add (\d+) to the (Attacks|Strength|Damage) characteristic of (.+?)\.?$/iu',$part,$m)&&preg_match('/^(?:the bearer[’\']?s (?:melee|ranged) weapons|(?:melee|ranged) weapons equipped by the bearer)$/iu',$m[3])) {
+            $target=$m[3];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];
+            $effects[]=['field'=>['attacks'=>'A','strength'=>'S','damage'=>'D'][strtolower($m[2])],'operation'=>'add','value'=>(int)$m[1]];
+        } elseif(preg_match('/^Improve the\s+Armour Penetration characteristic of (the bearer[’\']?s (?:melee|ranged) weapons) by (\d+)\.?$/iu',$part,$m)) {
+            $target=$m[1];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];$effects[]=['field'=>'AP','operation'=>'add','value'=>-(int)$m[2]];
+        } elseif(preg_match('/^Add (\d+) to the ((?:Strength|Attacks|Damage)(?:(?:,| and) (?:Strength|Attacks|Damage))*) characteristics? of (the bearer[’\']?s (?:melee|ranged) weapons)\.?$/iu',$part,$m)) {
+            $target=$m[3];$weaponType=$type($target);$lastWeapon=[$target,$weaponType];preg_match_all('/Strength|Attacks|Damage/i',$m[2],$fields);
+            foreach($fields[0] as $field)$effects[]=['field'=>['attacks'=>'A','strength'=>'S','damage'=>'D'][strtolower($field)],'operation'=>'add','value'=>(int)$m[1]];
+        }
+        foreach($effects as $effect)$out[]=$effect+['id'=>'effect_'.substr(hash('sha256',$row['id'].'|'.$part.'|'.$effect['field'].'|'.$effect['value']),0,20),'source'=>$row['name'],'scope'=>$scope($target),'weaponType'=>$weaponType,'condition'=>$condition,'gear'=>'','text'=>$text];
+        if($condition!=='')break;
+    }
+    $seen=[];return array_values(array_filter($out,static function($effect) use(&$seen){$key=json_encode(array_intersect_key($effect,array_flip(['field','operation','value','scope','weaponType','condition','gear'])));if(isset($seen[$key]))return false;$seen[$key]=true;return true;}));
+}
+function builderRefreshEnhancementEffects(array $catalog): array {
+    $texts=array_column($catalog['texts']??[],'description','id');$cache=[];
+    $description=static fn($row)=>$row['description']??($texts[$row['descriptionRef']??'']??'');
+    foreach($catalog['units'] as &$unit)foreach($unit['enhancements'] as &$row){
+        $key=$row['id'].'|'.$description($row);
+        $row['effectsJson']=$cache[$key]??=json_encode(builderCompileEnhancementEffects($row,$description),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    }
+    unset($unit,$row);return $catalog;
 }
 function builderBuildAllies(array $catalog): array {
     $units=$catalog['units'];$has=static fn($u,$key)=>in_array(strtolower($key),array_map('strtolower',array_map('trim',explode(',',$u['keywords']))),true);

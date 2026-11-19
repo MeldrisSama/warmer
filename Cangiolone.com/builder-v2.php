@@ -60,7 +60,7 @@ function builderNormalizeV2(array $raw): array {
             $gearNames=array_column(array_filter($clean['loadoutRecipe']['weapons']??[],static fn($w)=>isset($w['ability'])),'ability');
             foreach($clean['abilities'] as &$ability)if(($ability['type']??'')==='Datasheet'&&in_array($ability['name'],$gearNames,true))$ability['type']='Wargear';unset($ability);
             $clean['effects']=builderCompileEffects($clean['abilities'],$description);
-            foreach ($clean['enhancements'] as &$enhancement) $enhancement['effectsJson']=json_encode(builderCompileEffects([$enhancement],$description),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+            foreach ($clean['enhancements'] as &$enhancement) $enhancement['effectsJson']=json_encode(builderCompileEnhancementEffects($enhancement,$description),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
             unset($enhancement);
         }
         $out['units'][]=$clean;

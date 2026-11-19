@@ -117,7 +117,7 @@ function builderGetCatalog(PDO $pdo, string $edition, ?string $catalogId=null): 
     $row=builderCatalogRow($pdo,$edition,$catalogId);
     if (!$row) return ['catalog'=>null];
     $catalog=json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR);
-    if(($catalog['featuresVersion']??0)>=3)$catalog['factions']=builderBuildAllies($catalog);
+    if(($catalog['featuresVersion']??0)>=3){$catalog=builderRefreshEnhancementEffects($catalog);$catalog['factions']=builderBuildAllies($catalog);}
     return ['catalog'=>$catalog+['catalogId'=>$row['id'],'created'=>$row['created']]];
 }
 function builderGetArmies(PDO $pdo, string $user): array {
