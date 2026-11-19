@@ -90,3 +90,4 @@
 .profile-footer{display:flex;justify-content:flex-end;border-top:1px solid var(--line);margin-top:24px;padding-top:20px}
 .match-photo{white-space:nowrap}
 @media(max-width:650px){.profile-heading{gap:12px}.profile-heading h1{font-size:25px}.profile-symbol{width:48px;height:48px}.profile-symbol svg{width:28px;height:28px}.profile-card{padding:16px}.profile-identity{align-items:start;flex-direction:column}}
+.army-list-reader{width:min(48rem,calc(100% - 2rem));max-height:85dvh;overflow:auto;background:var(--bg,#101813);color:var(--text,#eee);border:1px solid var(--gold,#bca56a);padding:1.25rem}.army-list-reader::backdrop{background:#0009}.army-list-reader .reader-head{display:flex;justify-content:space-between;align-items:center;gap:1rem}.army-list-reader h2{margin:0 0 1rem}.army-list-reader pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.9rem;line-height:1.6;max-height:55dvh;overflow:auto}.army-list-reader select{width:100%;min-width:0}

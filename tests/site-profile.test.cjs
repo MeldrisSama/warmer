@@ -43,6 +43,26 @@ test('Profile and match text remain escaped',()=>{
   const c=context();vm.runInContext(`state.user.name='<img src=x onerror=alert(1)>';state.account.email='<verified@example.test>';profilePage();`,c);assert.doesNotMatch(c.mainNode.innerHTML,/<img src=x/);assert.match(c.mainNode.innerHTML,/&lt;verified@example\.test&gt;/);
 });
 
+test('Standings link only published match snapshots and the match opens its own lists',()=>{
+  const c=context();c.rankStandings=()=>[{id:'owner',name:'Player',rank:1,played:1,w:1,d:0,l:0,diff:10,points:3}];
+  vm.runInContext(`state.lists=[{id:'legacy',owner:'owner',name:'Legacy'}];standings();`,c);
+  assert.doesNotMatch(c.mainNode.innerHTML,/data-player-lists=/);
+  vm.runInContext(`state.readableLists=[{player:'owner',match:'confirmed',title:'League',url:'api.php?action=leagueDownload'}];standings();`,c);
+  assert.match(c.mainNode.innerHTML,/data-player-lists="owner"/);
+  c.match={id:'confirmed',a:'owner',b:'other',by:'owner',date:'2026-11-19',scoreA:90,scoreB:80,leagueLocked:true};
+  assert.match(vm.runInContext('recentMatchRow(match)',c),/data-match-lists="confirmed"/);
+  c.match.id='pending';assert.doesNotMatch(vm.runInContext('recentMatchRow(match)',c),/data-match-lists/);
+});
+
+test('League observers can read revealed lists without receiving participant controls',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
+  const c=vm.createContext({state:{user:{id:'observer'},league:{}},mine:f=>f.lineups!==null,player:id=>id,confirmed:()=>false,playable:()=>true,playerArmy:()=>'',openFixture:null});
+  vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function fixtureRow('),source.indexOf('function renderRounds(')),c);
+  c.fixture={id:'fixture',a:'one',b:'two',lineups:null,listsReadable:true};
+  let html=vm.runInContext('fixtureRow(fixture)',c);assert.match(html,/data-lineup="one"/);assert.match(html,/data-lineup="two"/);assert.doesNotMatch(html,/<form|leaguePropose|leagueConfirm/);
+  c.fixture.listsReadable=false;html=vm.runInContext('fixtureRow(fixture)',c);assert.doesNotMatch(html,/data-lineup|<details/);
+});
+
 test('Logout inside Profile preserves the existing API flow and handles failure without leaving the page',async()=>{
   const c=context();const calls=[];c.api=async action=>{calls.push(action);};c.refresh=async()=>{calls.push('refresh');};vm.runInContext('profilePage()',c);
   const button=c.nodes.get('#logout');await button.onclick({currentTarget:button});assert.deepEqual(calls,['logout','refresh']);assert.equal(c.location.hash,'classifica');

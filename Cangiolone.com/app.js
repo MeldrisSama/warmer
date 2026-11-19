@@ -398,10 +398,44 @@ function profilePage(onboarding=false){
   };
 }
 
+function sharedArmyLists(){
+  return state.readableLists||[];
+}
+
+function openArmyLists(lists,title){
+  document.getElementById('army-list-reader')?.close();
+  const reader=document.createElement('dialog');
+  reader.id='army-list-reader';reader.className='army-list-reader';
+  reader.setAttribute('aria-labelledby','army-reader-title');
+  reader.innerHTML=`<div class="reader-head"><h2 id="army-reader-title">${esc(title)}</h2><button type="button" data-close>Chiudi</button></div><label>Lista<select aria-label="Scegli la lista">${lists.map((list,index)=>`<option value="${index}">${esc(name(list.player))} · ${esc(list.title)}</option>`).join('')}</select></label><p role="status"></p><pre tabindex="0" aria-label="Testo della lista" hidden></pre><a hidden>Scarica TXT</a>`;
+  document.body.append(reader);
+  const select=reader.querySelector('select'),status=reader.querySelector('[role="status"]'),text=reader.querySelector('pre'),download=reader.querySelector('a');
+  let request;
+  async function load(){
+    request?.abort();const controller=new AbortController();request=controller;
+    text.textContent='';text.hidden=download.hidden=true;
+    const list=lists[Number(select.value)];
+    if(!list){status.textContent='Nessuna lista condivisa disponibile.';return;}
+    status.textContent='Caricamento della lista…';
+    try{
+      const response=await fetch(list.url,{signal:controller.signal});
+      if(!response.ok) throw new Error();
+      const content=await response.text();if(controller.signal.aborted)return;
+      text.textContent=content;text.hidden=download.hidden=false;download.href=list.url;status.textContent='';
+    }catch(error){if(!controller.signal.aborted)status.textContent='Lista non disponibile. Riprova.';}
+  }
+  select.onchange=load;
+  reader.querySelector('[data-close]').onclick=()=>reader.close();
+  reader.addEventListener('close',()=>{request?.abort();reader.remove();},{once:true});
+  reader.addEventListener('click',event=>{if(event.target!==reader)return;const box=reader.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)reader.close();});
+  reader.showModal();load();
+}
+
 function recentMatchRow(match){
   const photo=match.photo?`<button class="small-button" data-photo="${esc(match.photo)}" type="button" aria-label="Vedi foto della partita tra ${esc(name(match.a))} e ${esc(name(match.b))}">Foto</button>`:'<span class="muted" aria-label="Nessuna foto">—</span>';
   const canChange=!match.leagueLocked&&(state.user.admin||match.by===state.user.id);
-  return `<tr class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${esc(name(match.a))}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${esc(name(match.b))}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
+  const lists=(state.readableLists||[]).some(list=>list.match===match.id)?`<button class="small-button" type="button" data-match-lists="${esc(match.id)}">Liste</button>`:'';
+  return `<tr class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${esc(name(match.a))}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${esc(name(match.b))}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${lists}${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
 }
 
 
@@ -1007,7 +1041,7 @@ function standings(){
 
                       <td>
 
-                        ${esc(u.name)}
+                        ${esc(u.name)} ${sharedArmyLists().some(list=>list.player===u.id)?`<button class="small-button" type="button" data-player-lists="${esc(u.id)}">Liste</button>`:''}
 
                         ${
 
@@ -1254,6 +1288,9 @@ function standings(){
   `;
 
 
+
+  document.querySelectorAll('[data-player-lists]').forEach(button=>button.onclick=()=>openArmyLists(sharedArmyLists().filter(list=>list.player===button.dataset.playerLists),name(button.dataset.playerLists)));
+  document.querySelectorAll('[data-match-lists]').forEach(button=>button.onclick=()=>openArmyLists((state.readableLists||[]).filter(list=>list.match===button.dataset.matchLists),'Liste della partita'));
 
   document
 

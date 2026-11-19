@@ -13,3 +13,11 @@ In Ultime partite, Foto è una colonna autonoma. I comandi Annulla/Ripristina so
 Verifiche: 38 test pertinenti passati (profilo, temi e regressione HTTP in ambiente SQLite isolato). Prova browser locale con fixture: profilo a390pixel e tabella a1440, interazioni dei temi/cambio password, form verifica assente per email confermata, sette colonne/celle coerenti e assenza di overflow orizzontale. Non verificati Safari fisico o hosting IIS/MySQL.
 
 File applicativi modificati: app.js, style.css, campionato.php e campionato.css. Nessuna modifica a database, configurazione o file del builder. Il codice è da distribuire solo quando richiesto; non usare il pacchetto FTPS del builder per queste modifiche.
+
+## Lettura delle liste
+
+La classifica generale ora mostra un pulsante Liste accanto al giocatore e nelle azioni delle sue partite di campionato concluse. Apre un popup di testo, con scelta della lista e download TXT: non apre il builder. Vengono mostrate le copie consegnate per incontri con risultato confermato e non annullato, non le bozze private del builder. Se non ci sono copie consultabili, il pulsante non compare. Le vecchie liste condivise senza collegamento a una partita non sono incluse in questa nuova vista.
+
+Nel calendario del campionato tutti gli utenti autenticati possono leggere entrambe le liste appena entrambi i giocatori le hanno consegnate, anche prima del risultato. Una sola consegna rimane nascosta. La home non anticipa queste liste: le indicizza solo dopo la conferma del risultato. Le copie restano immutabili rispetto a successive modifiche o eliminazioni delle armate nel builder. Leggere un incontro altrui non permette di consegnare liste, proporre o confermare risultati per quell'incontro.
+
+Questa aggiunta modifica anche api.php, league.php, storage.php e campionato.js; non richiede migrazioni o nuovi pacchetti. Lo stato generale carica soltanto metadati delle consegne, mentre il testo viene richiesto all'apertura del popup. Restano richiesti login e controlli sulle due consegne nell'endpoint di lettura.

@@ -148,6 +148,7 @@ function renderStandings() {
 }
 
 function listPanel(fixture) {
+  if (!mine(fixture)) return fixture.listsReadable ? `<div class="fixture-block"><h3>Liste esercito</h3><div class="action-row">${[fixture.a,fixture.b].map(id=>`<button type="button" class="secondary" data-lineup="${id}">Lista di ${player(id)}</button>`).join('')}</div></div>` : '';
   const { mine: submitted, opponent } = fixture.lineups;
   if (submitted && opponent) {
     const other = fixture.a === state.user.id ? fixture.b : fixture.a;
@@ -161,7 +162,7 @@ function listPanel(fixture) {
     <h3>Liste esercito</h3>
     <p>${submitted ? 'La tua lista è stata consegnata. In attesa dell’avversario.' : opponent
       ? 'L’avversario ha consegnato. Carica la tua lista per sbloccare entrambe.'
-      : 'Le liste saranno visibili ai due giocatori dopo entrambe le consegne.'}</p>
+      : 'Le liste saranno visibili a tutti i giocatori dopo entrambe le consegne.'}</p>
     <form class="lineup-form">
       <label>Lista dal tuo List Builder<select name="builderArmyId" ${builderListsLoaded?'':'disabled'}>${builderListOptions()}</select></label>
       <p class="fine-print">Puoi consegnare una lista salvata nel tuo profilo. Al momento della consegna ne viene conservata una copia: le successive modifiche nel builder non cambiano la lista consegnata.</p>
@@ -215,10 +216,10 @@ function fixtureRow(fixture) {
   if (!playable(fixture)) {
     return `<div class="fixture row bye"><span>${player(fixture.a)}</span><span>Riposa</span></div>`;
   }
-  if (!mine(fixture)) return `<div class="fixture row">${contents}</div>`;
+  if (!mine(fixture) && !fixture.listsReadable) return `<div class="fixture row">${contents}</div>`;
   return `<details class="fixture" data-fixture="${fixture.id}"${fixture.id === openFixture ? ' open' : ''}>
     <summary class="row">${contents}<span class="expand" aria-hidden="true">+</span></summary>
-    ${listPanel(fixture)}${resultPanel(fixture)}
+    ${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}
   </details>`;
 }
 
@@ -474,6 +475,7 @@ $('round').addEventListener('click', async event => {
 });
 
 $('lineup-close').addEventListener('click', () => $('lineup-reader').close());
+$('lineup-reader').addEventListener('click', event => { if(event.target===event.currentTarget) { const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom) event.currentTarget.close(); } });
 $('lineup-reader').addEventListener('close', event => {
   if (!event.currentTarget.open) lineupRequest?.abort();
 });

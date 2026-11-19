@@ -86,6 +86,7 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
             'result'=>$match ? array_intersect_key($match,array_flip(['scoreA','scoreB','date','mission','void'])) : null,
             'pending'=>$mine ? $pending : null,
             'awaiting'=>$pending!==null,
+            'listsReadable'=>isset($lineups[$fixture['a']],$lineups[$fixture['b']]),
             'lineups'=>$mine ? [
                 'mine'=>isset($lineups[$myId]),
                 'opponent'=>isset($lineups[$fixture['a']===$myId ? $fixture['b'] : $fixture['a']])
@@ -112,11 +113,34 @@ function leagueFixture(array $fixtures, string $id, string $player): int {
     return $index;
 }
 
+/** Only metadata is shared here; list text is read lazily through the authenticated endpoint. */
+function leagueReadableLists(array $db): array {
+    $submitted=[];
+    foreach($db['league_lineups'] as $list) $submitted[$list['fixture']][$list['player']]=true;
+    $leagues=array_column($db['league'],null,'id');
+    $matches=array_column($db['matches'],null,'id');
+    $result=[];
+    foreach($db['league_fixtures'] as $fixture) {
+        $match=$matches[$fixture['match_id']]??null;
+        if($fixture['b']===null || $match===null || $match['void']) continue;
+        if(!isset($submitted[$fixture['id']][$fixture['a']],$submitted[$fixture['id']][$fixture['b']])) continue;
+        foreach([$fixture['a'],$fixture['b']] as $owner) $result[]=[
+            'player'=>$owner,'fixture'=>$fixture['id'],'match'=>$fixture['match_id'],
+            'title'=>($leagues[$fixture['league_id']]['name']??'Campionato').' · Turno '.$fixture['round'],
+            'url'=>'api.php?action=leagueDownload&fixture='.rawurlencode($fixture['id']).'&player='.rawurlencode($owner)
+        ];
+    }
+    return $result;
+}
+
 function leagueDownload(SectorStorage $storage, array $db, string $player): never {
     $id=$_GET['fixture']??'';
     $owner=$_GET['player']??'';
     if(!is_string($id) || !is_string($owner)) fail('Lista non trovata.',404);
-    $fixture=$db['league_fixtures'][leagueFixture($db['league_fixtures'],$id,$player)];
+    $index=array_search($id,array_column($db['league_fixtures'],'id'),true);
+    if($index===false || $db['league_fixtures'][$index]['b']===null) fail('Incontro non trovato.',404);
+    $fixture=$db['league_fixtures'][$index];
+    if(!in_array($owner,[$fixture['a'],$fixture['b']],true)) fail('Lista non trovata.',404);
     $lists=array_column($db['league_lineups'],null,'id');
     $requested=$lists[$id.':'.$owner]??null;
     if(!$requested) fail('Lista non trovata.',404);
