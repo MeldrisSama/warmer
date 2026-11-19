@@ -207,6 +207,24 @@ function resultPanel(fixture) {
     </form></div>`;
 }
 
+function photoPanel(fixture) {
+  if(!fixture.result)return '';
+  const photo=fixture.result.photo;
+  const upload=mine(fixture)&&!fixture.result.void;
+  if(!photo&&!upload)return '';
+  return `<div class="fixture-block fixture-photo"><h3>Foto della partita</h3>
+    ${photo?`<a href="${escapeHtml(photo)}" target="_blank" rel="noopener"><img src="${escapeHtml(photo)}" alt="Foto della partita tra ${player(fixture.a)} e ${player(fixture.b)}" loading="lazy"><span>Apri foto</span></a>`:''}
+    ${upload?`<form><label>${photo?'Sostituisci la foto':'Aggiungi una foto'}<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required></label>
+    <p class="fine-print">JPG, PNG o WebP · massimo 5 MB. Visibile anche nelle ultime partite.</p>${action('leaguePhoto',photo?'Sostituisci foto':'Carica foto','secondary')}</form>`:''}</div>`;
+}
+
+async function matchPhotoData(file) {
+  if(!file?.size)throw new Error('Scegli una foto da caricare.');
+  if(file.size>5*1024*1024)throw new Error('La foto non può superare 5 MB.');
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('La foto deve essere JPG, PNG o WebP.');
+  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Impossibile leggere la foto. Riprova.'));reader.onabort=reader.onerror;reader.readAsDataURL(file);});
+}
+
 function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
     <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
@@ -216,10 +234,10 @@ function fixtureRow(fixture) {
   if (!playable(fixture)) {
     return `<div class="fixture row bye"><span>${player(fixture.a)}</span><span>Riposa</span></div>`;
   }
-  if (!mine(fixture) && !fixture.listsReadable) return `<div class="fixture row">${contents}</div>`;
+  if (!mine(fixture) && !fixture.listsReadable && !fixture.result?.photo) return `<div class="fixture row">${contents}</div>`;
   return `<details class="fixture" data-fixture="${fixture.id}"${fixture.id === openFixture ? ' open' : ''}>
     <summary class="row">${contents}<span class="expand" aria-hidden="true">+</span></summary>
-    ${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}
+    ${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}${photoPanel(fixture)}
   </details>`;
 }
 
@@ -298,6 +316,7 @@ function render() {
 }
 
 const notices = {
+  leaguePhoto: 'Foto della partita salvata.',
   leagueOpen: 'Iscrizioni aperte.',
   leagueAnnounce: 'Messaggio inviato agli iscritti con email verificata.',
   leagueJoin: 'Iscrizione confermata.',
@@ -366,6 +385,7 @@ document.addEventListener('submit', async event => {
       data.scoreA = Number(data.scoreA);
       data.scoreB = Number(data.scoreB);
     }
+    if (name === 'leaguePhoto') data.photo=await matchPhotoData(data.photo);
     const result = await request(name, data);
     if (name === 'leagueAnnounce') announcementToken = null;
     if (name === 'leagueOpen') {

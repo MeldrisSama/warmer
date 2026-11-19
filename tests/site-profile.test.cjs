@@ -43,12 +43,12 @@ test('Profile and match text remain escaped',()=>{
   const c=context();vm.runInContext(`state.user.name='<img src=x onerror=alert(1)>';state.account.email='<verified@example.test>';profilePage();`,c);assert.doesNotMatch(c.mainNode.innerHTML,/<img src=x/);assert.match(c.mainNode.innerHTML,/&lt;verified@example\.test&gt;/);
 });
 
-test('Standings link only published match snapshots and the match opens its own lists',()=>{
+test('Standings have no per-player Lists button and a completed match opens its own lists',()=>{
   const c=context();c.rankStandings=()=>[{id:'owner',name:'Player',rank:1,played:1,w:1,d:0,l:0,diff:10,points:3}];
   vm.runInContext(`state.lists=[{id:'legacy',owner:'owner',name:'Legacy'}];standings();`,c);
   assert.doesNotMatch(c.mainNode.innerHTML,/data-player-lists=/);
   vm.runInContext(`state.readableLists=[{player:'owner',match:'confirmed',title:'League',url:'api.php?action=leagueDownload'}];standings();`,c);
-  assert.match(c.mainNode.innerHTML,/data-player-lists="owner"/);
+  assert.doesNotMatch(c.mainNode.innerHTML,/data-player-lists=/);
   c.match={id:'confirmed',a:'owner',b:'other',by:'owner',date:'2026-11-19',scoreA:90,scoreB:80,leagueLocked:true};
   assert.match(vm.runInContext('recentMatchRow(match)',c),/data-match-lists="confirmed"/);
   c.match.id='pending';assert.doesNotMatch(vm.runInContext('recentMatchRow(match)',c),/data-match-lists/);
@@ -57,10 +57,23 @@ test('Standings link only published match snapshots and the match opens its own 
 test('League observers can read revealed lists without receiving participant controls',()=>{
   const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
   const c=vm.createContext({state:{user:{id:'observer'},league:{}},mine:f=>f.lineups!==null,player:id=>id,confirmed:()=>false,playable:()=>true,playerArmy:()=>'',openFixture:null});
-  vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function fixtureRow('),source.indexOf('function renderRounds(')),c);
+  vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function photoPanel('),source.indexOf('function renderRounds(')),c);
   c.fixture={id:'fixture',a:'one',b:'two',lineups:null,listsReadable:true};
   let html=vm.runInContext('fixtureRow(fixture)',c);assert.match(html,/data-lineup="one"/);assert.match(html,/data-lineup="two"/);assert.doesNotMatch(html,/<form|leaguePropose|leagueConfirm/);
   c.fixture.listsReadable=false;html=vm.runInContext('fixtureRow(fixture)',c);assert.doesNotMatch(html,/data-lineup|<details/);
+});
+
+test('League photos are visible to observers while upload stays with participants after confirmation',async()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
+  const c=vm.createContext({mine:f=>f.lineups!==null,escapeHtml:s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;'),player:id=>id,action:(name,label)=>`<button value="${name}">${label}</button>`});
+  vm.runInContext(source.slice(source.indexOf('function photoPanel('),source.indexOf('function fixtureRow(')),c);
+  c.fixture={a:'one',b:'two',lineups:{},result:null};assert.equal(vm.runInContext('photoPanel(fixture)',c),'');
+  c.fixture.result={void:false,photo:null};assert.match(vm.runInContext('photoPanel(fixture)',c),/name="photo"/);
+  c.fixture.result.photo='api.php?action=photo&id=match';c.fixture.lineups=null;
+  const html=vm.runInContext('photoPanel(fixture)',c);assert.match(html,/<img/);assert.doesNotMatch(html,/<form|name="photo"/);
+  c.fixture.lineups={};c.fixture.result.void=true;assert.doesNotMatch(vm.runInContext('photoPanel(fixture)',c),/<form/);
+  await assert.rejects(c.matchPhotoData({size:6*1024*1024,type:'image/png'}),/5 MB/);
+  await assert.rejects(c.matchPhotoData({size:100,type:'text/html'}),/JPG/);
 });
 
 test('Logout inside Profile preserves the existing API flow and handles failure without leaving the page',async()=>{

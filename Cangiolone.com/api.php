@@ -190,7 +190,7 @@ catch(Throwable $error) { error_log('Warhammer mail configuration invalid'); $ma
 require __DIR__.'/builder-model.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
@@ -437,6 +437,27 @@ try {
         } catch(BuilderInputError $e) { fail($e->getMessage()); }
     }
     if($leagueWrite) {
+        if($action==='leaguePhoto') {
+            $fixture=$db['league_fixtures'][leagueFixture($db['league_fixtures'],field($in,'fixture',24),$me['id'])];
+            $league=field($in,'league',24,false);
+            if($league!=='' && $league!==$fixture['league_id']) fail('Incontro non trovato.',404);
+            $index=array_search($fixture['match_id'],array_column($db['matches'],'id'),true);
+            if($fixture['match_id']===null || $index===false || $db['matches'][$index]['void']) fail('Conferma il risultato della partita prima di aggiungere una foto.',409);
+            if(!is_string($in['photo']??null) || $in['photo']==='') fail('Scegli una foto da caricare.');
+            $previous=$db['matches'][$index]['photo'];
+            // A new filename preserves the previous image if persistence fails.
+            $photo=saveMatchPhoto($in['photo'],ident());
+            $db['matches'][$index]['photo']=$photo;
+            try { save(); }
+            catch(Throwable $error) {
+                if($photo!==null && !unlink(__DIR__.'/'.$photo)) error_log('Warhammer league photo cleanup failed');
+                throw $error;
+            }
+            if(is_string($previous) && preg_match('#^uploads/matches/[a-f0-9]{24}\.(jpg|png|webp)$#D',$previous) && is_file(__DIR__.'/'.$previous)) {
+                if(!unlink(__DIR__.'/'.$previous)) error_log('Warhammer previous league photo cleanup failed');
+            }
+            result(['ok'=>true]);
+        }
         if ($action==='leagueLineup'&&!empty($in['builderArmyId'])) {
             if (!empty($in['filename'])||!is_string($in['text']??'')||trim($in['text']??'')!=='') fail('Scegli una sola fonte per la lista.');
             try {$in['text']=builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));}
