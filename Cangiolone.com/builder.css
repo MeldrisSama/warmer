@@ -156,3 +156,21 @@ dialog.workbench.wb-detachment-dialog{max-height:calc(100dvh - 24px);overflow-y:
 .wb-roster-category .wb-roster-group{margin-bottom:8px}
 body:has(dialog.workbench[open]) .wb-mobile-add{visibility:hidden}
 .wb-popup-search-toolbar{display:flex;gap:8px;align-items:end;margin-bottom:12px}.workbench .wb-popup-search-toolbar label{flex:1;margin:16px 0 0;min-width:0}.wb-popup-search-toolbar>button{flex-shrink:0}
+/* Desktop retains the original persistent Build / Play controls and columns. */
+@media(min-width:851px){
+ .workbench:has(.wb-columns)>.wb-mobile-header,.workbench:has(.wb-columns)>.wb-mobile-add,.workbench:has(.wb-columns)>.wb-mobile-tabs{display:none}
+ .workbench:has(.wb-columns)>.wb-heading,.workbench:has(.wb-columns)>.wb-toolbar,.workbench:has(.wb-columns)>.wb-catalog-update{display:flex}
+ .workbench:has(.wb-columns)>.wb-army-settings{display:block}
+ .workbench:has(.wb-columns) .wb-columns{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(280px,1fr) minmax(360px,1.4fr)}
+ .workbench:has(.wb-columns) .wb-catalog,.workbench:has(.wb-columns) .wb-roster,.workbench:has(.wb-columns) .wb-detail{display:block}
+ .workbench[data-mode=play] .wb-catalog{display:none}
+ .workbench[data-mode=play] .wb-columns{grid-template-columns:minmax(260px,.8fr) minmax(0,1.8fr)}
+ .workbench .wb-roster{padding-bottom:16px}
+ .workbench .wb-roster>h2{display:block}
+ .wb-roster-category-head button{display:none}
+}
+@media(min-width:851px) and (max-width:1100px){
+ .workbench:has(.wb-columns) .wb-columns{grid-template-columns:minmax(200px,.8fr) minmax(220px,1fr) minmax(280px,1.2fr)}
+ .workbench[data-mode=play] .wb-columns{grid-template-columns:minmax(220px,.8fr) minmax(0,1.8fr)}
+}
+.wb-catalog-tools .wb-search-field input{padding-right:44px}
