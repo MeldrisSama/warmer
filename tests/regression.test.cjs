@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
 const { once } = require('node:events');
 const { createHash, randomUUID } = require('node:crypto');
-const { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } = require('node:fs/promises');
+const { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } = require('node:fs/promises');
 const { createServer } = require('node:net');
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -226,7 +226,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
@@ -344,8 +344,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     for (const file of ['index.php', 'campionato.php']) {
       const response = await fetch(`${base}/${file}`);
       const html = await response.text();
-      assert.match(html, /<script src="theme\.js"><\/script>/);
-      assert.match(html, /href="theme\.css"/);
+      assert.match(html, /<script src="theme\.js\?v=[a-f0-9]{64}"><\/script>/);
+      assert.match(html, /href="theme\.css\?v=[a-f0-9]{64}"/);
     }
   });
 
@@ -376,6 +376,60 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(current.user.admin, true);
     assert.equal(current.user.password, undefined);
     await admin('setup', registration('another', setupCode), 403);
+  });
+
+  await t.test('Asset URLs track content changes, preserve timestamps and keep the login valid', async () => {
+    async function pages() {
+      const result = {};
+      for (const page of ['index.php', 'campionato.php']) {
+        const response = await fetch(`${base}/${page}`);
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+        assert.equal(response.headers.get('clear-site-data'), null);
+        const html = await response.text();
+        const urls = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
+        assert.equal(urls.length, page === 'index.php' ? 9 : 5);
+        result[page] = {};
+        for (const url of urls) {
+          const [file, query] = url.split('?');
+          const content = await readFile(join(application, file));
+          assert.equal(query, 'v=' + createHash('sha256').update(content).digest('hex'));
+          const asset = await fetch(`${base}/${url}`);
+          assert.equal(asset.status, 200, url);
+          assert.deepEqual(Buffer.from(await asset.arrayBuffer()), content);
+          result[page][file] = url;
+        }
+      }
+      return result;
+    }
+    const initial = await state();
+    const before = await pages();
+    assert.deepEqual(await pages(), before);
+    for (const file of ['theme.js', 'style.css']) {
+      const path = join(application, file);
+      const original = await readFile(path);
+      const times = await stat(path);
+      try {
+        await writeFile(path, Buffer.concat([original, Buffer.from('\n/* updated release */\n')]));
+        await utimes(path, times.atime, times.mtime);
+        const after = await pages();
+        for (const page of Object.keys(before)) {
+          for (const asset of Object.keys(before[page])) {
+            if (asset === file) assert.notEqual(after[page][asset], before[page][asset]);
+            else assert.equal(after[page][asset], before[page][asset]);
+          }
+        }
+      } finally {
+        await writeFile(path, original);
+        await utimes(path, times.atime, times.mtime);
+      }
+    }
+    const current = await state();
+    assert.equal(current.user.id, initial.user.id);
+    assert.equal(current.csrf, initial.csrf);
+    const response = await fetch(`${base}/api.php?action=state`);
+    assert.match(response.headers.get('cache-control'), /\bno-store\b/);
+    await response.text();
   });
 
   await t.test('Invites create ordinary users and cannot be reused', async () => {
