@@ -232,9 +232,12 @@ function beAllyRule(id){
   return beAllyRules().filter(r=>r.unitIds.includes(id)).sort((a,b)=>Number(Boolean(b.detachmentIds.length))-Number(Boolean(a.detachmentIds.length)))[0];
 }
 function beCatalogIds(){
-  const ids=[...new Set([...wbFaction().unitIds,...beAllyRules().flatMap(r=>r.unitIds)])];
+  const units=wbUnits();
+  // Old alias IDs remain valid in armies; offer each allied datasheet once.
+  const allies=beAllyRules().flatMap(rule=>{const seen=new Set();return rule.unitIds.filter(id=>{const u=units.get(id);if(!u)return false;const key=u.name.toLowerCase().replace(/[’']/g,'')+'|'+Boolean(u.legends);if(seen.has(key))return false;seen.add(key);return true;});});
+  const ids=[...new Set([...wbFaction().unitIds,...allies])];
   if(!beAllyRules().some(r=>r.id==='shadow_legion'))return ids;
-  const units=wbUnits();return ids.filter(id=>{const u=units.get(id);return /^Be[’']lakor$/i.test(u.name)||(!/Daemon Prince/i.test(u.name)&&!/(?:^|,\s*)Epic Hero(?:,|$)/i.test(u.keywords));});
+  return ids.filter(id=>{const u=units.get(id);return /^Be[’']lakor$/i.test(u.name)||(!/Daemon Prince/i.test(u.name)&&!/(?:^|,\s*)Epic Hero(?:,|$)/i.test(u.keywords));});
 }
 function beEffects(unit,entry){
   if(!entry)return {unit,sources:[]};

@@ -396,20 +396,42 @@ function builderCompileEffects(array $rows,callable $description): array {
 }
 function builderBuildAllies(array $catalog): array {
     $units=$catalog['units'];$has=static fn($u,$key)=>in_array(strtolower($key),array_map('strtolower',array_map('trim',explode(',',$u['keywords']))),true);
+    $byId=array_column($units,null,'id');
     $select=static fn(callable $test)=>array_column(array_values(array_filter($units,$test)),'id');
     $factions=[];$imperium=['aoi','am','tl','gk','adm','qi','sm','ac','as'];$chaos=['csm','dg','ec','ts','we','qt','cd'];
     foreach ($catalog['factions'] as $faction) {
         $fid=$faction['id'];$grants=[];$marine=$fid==='sm'||str_starts_with($fid,'sm_');$imperial=$marine||in_array($fid,$imperium,true);
+        // The export repeats allies under the host faction. CSV faction_id and
+        // the host keyword on these copies do not authorize native recruitment.
+        $borrowed=static function($u) use ($fid,$marine,$has): bool {
+            return match($fid) {
+                'gc'=>$has($u,'Astra Militarum')||$has($u,'Tyranids'),
+                'dru'=>$has($u,'Harlequins')||$has($u,'Anhrathe'),
+                'qi'=>$has($u,'Adeptus Mechanicus'),
+                'qt'=>$has($u,'Heretic Astartes')||$has($u,'Damned'),
+                'cd'=>$has($u,'Heretic Astartes'),
+                'csm'=>in_array(strtolower($u['name']),['khorne berzerkers','rubric marines','plague marines','noise marines'],true),
+                default=>$marine&&$fid!=='sm_deathwatch'&&$has($u,'Deathwatch')
+            };
+        };
+        $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$borrowed($byId[$id])));
+        $belongs=static function($u,$from) use($fid,$has): bool {
+            if(($u['factionId']??'')===$from)return true;
+            if(($u['factionId']??'')!==$fid)return false;
+            $keys=['am'=>['Astra Militarum'],'tyr'=>['Tyranids'],'adm'=>['Adeptus Mechanicus'],'csm'=>['Heretic Astartes','Damned'],'ae'=>['Harlequins','Anhrathe']][$from]??[];
+            foreach($keys as $key)if($has($u,$key))return true;
+            return false;
+        };
         $conditionalKeyword=['ts'=>'Scintillating Legions','dg'=>'Plague Legions','ec'=>'Legions of Excess','we'=>'Blood Legions'][$fid]??null;
         if ($conditionalKeyword) $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$has(array_column($units,null,'id')[$id],$conditionalKeyword)));
         if ($fid==='ae') $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$has(array_column($units,null,'id')[$id],'Ynnari')||$has(array_column($units,null,'id')[$id],'Asuryani')||$has(array_column($units,null,'id')[$id],'Harlequins')));
         $add=static function(string $id,string $name,array $ids,array $extra=[]) use (&$grants) {if ($ids) $grants[]=$extra+['id'=>$id,'name'=>$name,'unitIds'=>$ids,'detachmentIds'=>[],'excludedDetachmentIds'=>[],'points'=>[],'warlord'=>false,'enhancements'=>false,'kind'=>'points'];};
         $dids=static fn(string $name)=>array_column(array_filter($faction['detachments'],static fn($d)=>strcasecmp(str_replace('’',"'",$d['name']),str_replace('’',"'",$name))===0),'id');
         if ($imperial&&$fid!=='aoi') $add('assigned_agents','Assigned Agents',$select(static fn($u)=>($u['factionId']??'')==='aoi'),['kind'=>'agents','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-agents/#Assigned-Agents']);
-        if ($imperial&&$fid!=='qi') $add('freeblades','Freeblades',$select(static fn($u)=>($u['factionId']??'')==='qi'),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-knights/#Freeblades']);
+        if ($imperial&&$fid!=='qi') $add('freeblades','Freeblades',$select(static fn($u)=>($u['factionId']??'')==='qi'&&!$has($u,'Adeptus Mechanicus')),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-knights/#Freeblades']);
         if ($imperial&&$fid!=='tl') $add('titanic_support','Titanic Support',$select(static fn($u)=>($u['factionId']??'')==='tl'),['kind'=>'titan','source'=>'https://wahapedia.ru/wh40k11ed/factions/adeptus-titanicus/']);
-        if (in_array($fid,$chaos,true)&&$fid!=='qt') $add('dreadblades','Dreadblades',$select(static fn($u)=>($u['factionId']??'')==='qt'),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-knights/#Dreadblades']);
-        if (in_array($fid,['csm','dg','ec','ts','we','qt'],true)) $add('daemonic_pact','Daemonic Pact',$select(static fn($u)=>($u['factionId']??'')==='cd'),['kind'=>'daemons','points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-daemons/#Daemonic-Pact']);
+        if (in_array($fid,$chaos,true)&&$fid!=='qt') $add('dreadblades','Dreadblades',$select(static fn($u)=>($u['factionId']??'')==='qt'&&!$has($u,'Damned')&&!$has($u,'Heretic Astartes')),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-knights/#Dreadblades']);
+        if (in_array($fid,['csm','dg','ec','ts','we','qt'],true)) $add('daemonic_pact','Daemonic Pact',$select(static fn($u)=>($u['factionId']??'')==='cd'&&!$has($u,'Heretic Astartes')),['kind'=>'daemons','points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-daemons/#Daemonic-Pact']);
         if ($fid==='csm') $add('cult_marines','Cult Marines',$select(static fn($u)=>in_array(strtolower($u['name']),['khorne berzerkers','rubric marines','plague marines','noise marines'],true)),['points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-space-marines/']);
         if ($marine&&$dids('Deathwatch Support')) $add('deathwatch_support','Deathwatch Allies',$select(static fn($u)=>($u['factionId']??'')==='sm'&&$has($u,'Deathwatch')),['detachmentIds'=>$dids('Deathwatch Support'),'points'=>[1000=>500,2000=>500,3000=>500],'enhancements'=>true,'source'=>'https://wahapedia.ru/wh40k11ed/factions/space-marines/#Deathwatch-Support']);
         $special=[
@@ -425,8 +447,8 @@ function builderBuildAllies(array $catalog): array {
             ['dru',"Reaper's Wager",'reapers','ae','Harlequins',[]]
         ];
         foreach ($special as [$host,$detachment,$id,$from,$keyword,$exclude]) if ($host===$fid && $dids($detachment)) {
-            $ids=$select(static function($u) use ($from,$keyword,$exclude,$has,$id) {
-                if (($u['factionId']??'')!==$from || ($keyword&&!$has($u,$keyword))) return false;
+            $ids=$select(static function($u) use ($from,$keyword,$exclude,$has,$id,$belongs) {
+                if (!$belongs($u,$from) || ($keyword&&!$has($u,$keyword))) return false;
                 foreach ($exclude as $key) if ($has($u,$key)||strcasecmp($u['name'],$key)===0) return false;
                 if ($id==='forgepact') return in_array(strtolower($u['name']),['tech-priest dominus','tech-priest manipulus','skitarii marshal','skitarii rangers','skitarii vanguard'],true);
                 if ($id==='shadow_legion') return $has($u,'Damned')||in_array(strtolower($u['name']),['chaos lord','chaos lord in terminator armour','chaos lord with jump pack','chaos terminator squad','chosen','dark apostle','havocs','legionaries','master of possession','possessed','raptors','sorcerer','sorcerer in terminator armour','warp talons'],true);
@@ -434,7 +456,7 @@ function builderBuildAllies(array $catalog): array {
             });
             $add($id,$detachment,$ids,['detachmentIds'=>$dids($detachment),'points'=>in_array($id,['thralls','forgepact'],true)?[1000=>500,2000=>500,3000=>500]:[1000=>500,2000=>1000,3000=>1500],'enhancements'=>true,'source'=>'https://wahapedia.ru/wh40k11ed/factions/'.str_replace([' ','’',"'"],['-','',''],strtolower($faction['name'])).'/']);
         }
-        if ($fid==='dru') $add('travelling_players','Corsairs and Travelling Players',$select(static fn($u)=>($u['factionId']??'')==='ae'&&($has($u,'Harlequins')||$has($u,'Anhrathe'))),['excludedDetachmentIds'=>$dids("Reaper's Wager"),'points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/drukhari/#Corsairs-and-Travelling-Players']);
+        if ($fid==='dru') $add('travelling_players','Corsairs and Travelling Players',$select(static fn($u)=>$belongs($u,'ae')&&($has($u,'Harlequins')||$has($u,'Anhrathe'))),['excludedDetachmentIds'=>$dids("Reaper's Wager"),'points'=>[1000=>250,2000=>500,3000=>750],'source'=>'https://wahapedia.ru/wh40k11ed/factions/drukhari/#Corsairs-and-Travelling-Players']);
         if ($fid==='ae'&&$dids('Devoted of Ynnead')) $add('ynnari','Servants of the Whispering God',$select(static fn($u)=>($u['factionId']??'')==='ae'&&$has($u,'Ynnari')&&!$has($u,'Asuryani')&&!$has($u,'Harlequins')),['detachmentIds'=>$dids('Devoted of Ynnead'),'kind'=>'ynnari','warlord'=>true,'enhancements'=>true,'source'=>'https://wahapedia.ru/wh40k11ed/factions/aeldari/']);
         if (in_array($fid,$chaos,true)) $add('titanicus_traitoris','Titanicus Traitoris',$select(static fn($u)=>($u['factionId']??'')==='traitoris'),['kind'=>'titan','source'=>'https://wahapedia.ru/wh40k11ed/factions/adeptus-titanicus/']);
         $faction['allies']=$grants;$factions[]=$faction;
