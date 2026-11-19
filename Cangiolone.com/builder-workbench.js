@@ -9,14 +9,10 @@ const wbId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toStri
 const wbDescription=row=>row.description||(builderUi.catalog.texts||[]).find(t=>t.id===row.descriptionRef)?.description||'';
 const wbPlus=value=>/^\d+$/.test(String(value))?value+'+':value;
 const wbCategories=['Epic Hero','Character','Battleline','Infantry','Mounted/Beast','Vehicle','Other'];
-const wbMobileCategories=['Character','Infantry','Vehicle','Mounted','Other'];
+const wbMobileCategories=['Character','Battleline','Infantry','Mounted','Vehicle','Other'];
 function wbMobileCategory(unit){
-  const keys=unit?.keywords||'';
-  if(/\bCharacter\b/i.test(keys)||wbCategory(unit)==='Epic Hero')return 'Character';
-  if(/\bVehicle\b/i.test(keys)||wbCategory(unit)==='Vehicle')return 'Vehicle';
-  if(/\b(Mounted|Beast)\b/i.test(keys))return 'Mounted';
-  if(/\bInfantry\b/i.test(keys)||wbCategory(unit)==='Battleline')return 'Infantry';
-  return 'Other';
+  if(!unit)return 'Other';
+  const category=wbCategory(unit);return category==='Epic Hero'?'Character':category==='Mounted/Beast'?'Mounted':category;
 }
 function wbMobileHeader(totals){
   const a=builderUi.army,detail=workbench.pane==='detail';
@@ -185,7 +181,7 @@ function wbSizes(unit){return [...new Set(unit.points.map(p=>p.models))].sort((a
 function wbInstanceName(entry){const unit=wbUnits().get(entry.unitId),copies=builderUi.army.entries.filter(e=>e.unitId===entry.unitId);return unit.name+(copies.length>1?' · squadra '+(copies.indexOf(entry)+1):'');}
 function wbArmySettings(open=false){
   const a=builderUi.army,f=wbFaction();
-  return `<details class="wb-configuration wb-army-settings" ${open?'open':''}><summary><strong>${esc(f.name)}</strong><span>${a.limit} pt · ${a.dpLimit} DP</span><span>Configura armata</span></summary><div class="wb-army-settings-grid"><label>Fazione<select id="wb-faction">${builderUi.catalog.factions.filter(x=>x.id===f.id||builderPlayableFactions().some(p=>p.id===x.id)).map(x=>`<option value="${x.id}" ${x.id===f.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label><div class="wb-fields">${wbNumber('Limite punti','limit',a.limit,100,5000,100)}${wbNumber('DP','dpLimit',a.dpLimit,0,20,1,[1000,2000].includes(a.limit))}</div><div class="wb-detachment-summary"><button id="wb-detachments" type="button">Distaccamenti · ${a.detachmentIds.length} selezionati</button><label>Disposizione<select id="wb-disposition">${wbDispositionOptions()}</select></label><div class="wb-detachment-recap">${wbDetachments().map(d=>`<button class="wb-detachment-link" data-wb-detachment-rule="${esc(d.id)}">${esc(d.name)}</button>`).join('')||'<p class="wb-muted">Nessun distaccamento selezionato</p>'}</div>${wbArmyRules()}</div></div></details>`;
+  return `<details class="wb-configuration wb-army-settings" ${open?'open':''}><summary><strong>${esc(f.name)}</strong><span>${a.limit} pt · ${a.dpLimit} DP</span><span>Configura armata</span></summary><div class="wb-army-settings-grid"><label>Fazione<select id="wb-faction">${builderUi.catalog.factions.filter(x=>x.id===f.id||builderPlayableFactions().some(p=>p.id===x.id)).map(x=>`<option value="${x.id}" ${x.id===f.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label><div class="wb-fields">${wbNumber('Limite punti','limit',a.limit,100,5000,100)}${wbNumber('DP','dpLimit',a.dpLimit,0,20,1,[1000,2000].includes(a.limit))}</div><div class="wb-detachment-summary"><button id="wb-detachments" type="button">Distaccamenti · ${a.detachmentIds.length} selezionati</button><label>Disposizione<select id="wb-disposition">${wbDispositionOptions()}</select></label><div class="wb-detachment-recap">${wbDetachments().map(d=>`<button class="wb-detachment-link" data-wb-detachment-rule="${esc(d.id)}">${esc(d.name)}</button>`).join('')||'<p class="wb-muted">Nessun distaccamento selezionato</p>'}</div></div></div></details>`;
 }
 function wbOpenFilters(trigger){
   const dialog=wbModal('Filtri del catalogo',`<fieldset class="wb-filters"><legend>Mostra unità</legend>${[['legends','Legends'],['allies','Alleati'],['titanic','Titanic']].map(([key,label])=>`<label class="wb-check"><input type="checkbox" data-wb-filter="${key}" ${workbench.filters[key]?'checked':''}>${label}</label>`).join('')}</fieldset>`,trigger);

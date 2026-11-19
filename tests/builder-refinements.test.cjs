@@ -13,7 +13,7 @@ test('Adding a unit keeps the army visible; opening its row explicitly shows the
   const c=context();assert.equal(vm.runInContext('workbench.pane',c),'roster');
   vm.runInContext('wbSelect(builderUi.army.entries[0].entryId)',c);assert.equal(vm.runInContext('workbench.pane',c),'detail');
   assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Character, Mounted',category:'Other'})`,c),'Character');
-  assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Infantry',category:'Battleline'})`,c),'Infantry');
+  assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Infantry',category:'Battleline'})`,c),'Battleline');
 });
 
 test('Identical named-model weapons combine quantities; different stats and alternative modes stay distinct',()=>{
@@ -33,6 +33,18 @@ test('Ravenwing enhancement bearer is only the Champion; unit Upgrades have no b
 test('Paid wargear is labelled per bearer, including choices in the compact picker',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal'),g=u.loadoutRecipe.groups.find(g=>g.choices.length>1);u.loadoutRecipe.weapons.find(w=>g.choices[1].weapons[w.id]).cost=5;`,c);
   assert.match(vm.runInContext('beLoadoutGroupHtml(u,e,g)',c),/\+5 pt per modello/);
+});
+
+test('Combined loadouts show the retained melee weapon and chosen gun instead of duplicate option labels',()=>{
+  const c=context();c.recipe={weapons:[{id:'choppa',name:'Kustom Choppa'},{id:'klaw',name:'Power Klaw'},{id:'rokkit',name:'Kombi-rokkit'}]};
+  assert.equal(vm.runInContext(`beChoiceLabel(recipe,{name:'1 Kombi-rokkit',weapons:{klaw:1,rokkit:1}})`,c),'1 Power Klaw + 1 Kombi-rokkit');
+  assert.equal(vm.runInContext(`beChoiceLabel(recipe,{name:'1 Kombi-rokkit',weapons:{choppa:1,rokkit:1}})`,c),'1 Kustom Choppa + 1 Kombi-rokkit');
+});
+
+test('Army groups keep Battleline and selected detachments open only through their reference popup',()=>{
+  const c=context();assert.equal(vm.runInContext(`JSON.stringify(wbMobileCategories)`,c),JSON.stringify(['Character','Battleline','Infantry','Mounted','Vehicle','Other']));
+  vm.runInContext(`builderUi.catalog.factions[0].detachments=[{id:'alpha',name:'Alpha',dp:'1',force_disposition:'Take and Hold',description:'Rule'}];builderUi.army.detachmentIds=['alpha'];`,c);
+  const html=vm.runInContext('wbArmySettings(true)',c);assert.match(html,/data-wb-detachment-rule="alpha"/);assert.doesNotMatch(html,/wb-detachment-resources|wb-detachment-rule-card/);
 });
 
 test('Datasheet rules are prominent cards, generic rules are in Other rules, long prose starts folded',()=>{

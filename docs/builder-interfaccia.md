@@ -4,7 +4,7 @@ Aggiornamento del 19 novembre 2026 dopo il riscontro su iPhone. Questo flusso va
 
 Il nome della lista viene chiesto durante la creazione, insieme a esercito e formato. Entrando si vede l'armata, con nome, punti e Salva in vista. Il menu apre cambio Build/Play, rinomina, configurazione dell'armata/distaccamenti, esportazioni, backup e ritorno all'archivio. In Play offre anche gli stratagemmi generali. Sul telefono la navigazione generale occupa una sola riga scorrevole e l'intestazione estesa del sito lascia spazio al builder.
 
-L'armata è raggruppata in Character, Infantry, Vehicle e Mounted; eventuali schede fuori da questi tipi restano in Other, senza nasconderle o chiamarle Infantry. Gli alleati seguono il loro tipo. I gruppi attached rimangono uniti nella categoria del bodyguard. Ogni categoria ha un pulsante + per aprire il catalogo filtrato. Il pulsante flottante apre tutto il catalogo e scompare nei dettagli, in Play e mentre è aperto un popup. La ricerca ha un pulsante × esplicito per cancellare il testo.
+L'armata è raggruppata, nell'ordine, in Character, Battleline, Infantry, Mounted e Vehicle; eventuali schede fuori da questi tipi restano in Other, senza nasconderle o chiamarle Infantry. Gli alleati seguono il loro tipo. I gruppi attached rimangono uniti nella categoria del bodyguard. Ogni categoria ha un pulsante + per aprire il catalogo filtrato. Il pulsante flottante apre tutto il catalogo e scompare nei dettagli, in Play e mentre è aperto un popup. La ricerca ha un pulsante × esplicito per cancellare il testo.
 
 Aggiungere dal catalogo mantiene visibile l'armata, senza aprire automaticamente la configurazione. Toccare una voce dell'armata apre la scheda con profili e controlli. Sul telefono il dettaglio occupa il pannello e ha un pulsante per tornare; sul desktop può affiancare l'elenco. Menu, configurazione e distaccamenti sono dialoghi scorrevoli entro l'altezza disponibile. La selezione di un distaccamento aggiorna anche il riepilogo della configurazione quando si chiude il selettore.
 
@@ -16,6 +16,10 @@ Le modalità di una stessa arma hanno un'intestazione comune con quantità e nom
 
 Le scelte di wargear a pagamento indicano esplicitamente il costo aggiuntivo per modello o per unità, anche nei selettori con molte configurazioni. Il valore deriva dai costi strutturati del catalogo: non vengono inventati sovrapprezzi dalle descrizioni.
 
+Ogni scelta mostra l'inventario completo, comprese le armi mantenute: ad esempio «Power Klaw + Kombi-rokkit» è distinguibile da «Kustom Choppa + Kombi-rokkit». Il catalogo Boyz ammetteva già le combinazioni indipendenti, ma l'etichetta mostrava soltanto l'ultima sostituzione, creando due voci apparentemente uguali. La prova sul catalogo reale verifica entrambi i Nob della squadra da venti con Klaw e Rokkit insieme.
+
+I distaccamenti già scelti compaiono soltanto come nomi cliccabili: la regola si legge nel popup. Rimossa l'espansione duplicata dentro la configurazione.
+
 ## Enhancement, Upgrade e regole
 
 Il portatore di un Enhancement deve essere un modello Character. Per Ravenwing Command Squad viene ammesso soltanto Ravenwing Champion, correggendo il CSV che estendeva Character a tutti i modelli; il server rifiuta Ancient/Apothecary come portatori. Riferimento ufficiale: [descrizione GW della Ravenwing Command Squad](https://www.warhammer-community.com/en-gb/articles/i5taZMDC/run-rings-around-your-enemies-with-the-new-ravenwing-detachment-in-codex-supplement-dark-angels/). La correzione opera anche sui cataloghi già importati.
@@ -26,7 +30,7 @@ Regole Datasheet, Wargear ed Enhancement/Upgrade sono riquadri leggibili con tes
 
 ## Verifiche e rilascio
 
-99 test automatici passati, inclusi casi di raggruppamento delle armi, modalità alternative, costi, portatore Ravenwing, Upgrade senza portatore e regole lunghe. Audit del catalogo v6 e dei profili reali passati. Verifica browser Edge headless con interazioni reali su fixture del catalogo v6, a 320/390/1440 pixel: menu, ricerca/cancellazione, aggiunta, apertura scheda, ritorno, Build/Play e popup distaccamenti. Safari e iPhone fisici non disponibili nell'ambiente: la correzione parte dalle immagini dell'utente, ma non viene dichiarata una prova su dispositivo reale.
+101 test automatici passati, inclusi casi di raggruppamento delle armi, modalità alternative, costi, portatore Ravenwing, Upgrade senza portatore, regole lunghe, etichette delle combinazioni e popup dei distaccamenti senza duplicati. Audit del catalogo v6 e dei profili reali passati, compresa la combinazione Klaw/Rokkit di entrambi i Nob. Verifica browser Edge headless con interazioni reali su fixture del catalogo v6, a 320/390/1440 pixel: menu, ricerca/cancellazione, aggiunta, apertura scheda, ritorno, Build/Play e popup distaccamenti. Safari e iPhone fisici non disponibili nell'ambiente: la correzione parte dalle immagini dell'utente, ma non viene dichiarata una prova su dispositivo reale.
 
 Per un sito che ha già ricevuto il primo pacchetto, aggiornare **solo** questi file nella directory `/cangiolone.com/warhammer/`:
 
