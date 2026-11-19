@@ -21,3 +21,9 @@ La classifica generale ora mostra un pulsante Liste accanto al giocatore e nelle
 Nel calendario del campionato tutti gli utenti autenticati possono leggere entrambe le liste appena entrambi i giocatori le hanno consegnate, anche prima del risultato. Una sola consegna rimane nascosta. La home non anticipa queste liste: le indicizza solo dopo la conferma del risultato. Le copie restano immutabili rispetto a successive modifiche o eliminazioni delle armate nel builder. Leggere un incontro altrui non permette di consegnare liste, proporre o confermare risultati per quell'incontro.
 
 Questa aggiunta modifica anche api.php, league.php, storage.php e campionato.js; non richiede migrazioni o nuovi pacchetti. Lo stato generale carica soltanto metadati delle consegne, mentre il testo viene richiesto all'apertura del popup. Restano richiesti login e controlli sulle due consegne nell'endpoint di lettura.
+
+## Verifica completa e rilascio
+
+Branch aggiornato su main dopo la correzione della cache degli asset. Suite completa applicazione/builder/temi/HTTP: **111 test passati**. I precedenti 40 erano la selezione pertinente alle modifiche generali; i controlli dell'intero catalogo esterno restano separati e non sono compresi in questo numero. Rimangono i limiti di verifica Safari fisico e hosting MySQL/IIS.
+
+Il pacchetto locale FTPS di questo aggiornamento contiene 10 file per `/cangiolone.com/warhammer/`: `app.js`, `campionato.js`, `style.css`, `campionato.css`, `assets.php`, `storage.php`, `league.php`, `api.php`, `campionato.php`, `index.php`. Include helper e pagine della correzione cache già presente su main, per evitare di ripristinare URL statici vecchi. Caricare dipendenze e asset prima di API e pagine di ingresso. Il pacchetto non contiene configurazioni, upload, database o cataloghi e non richiede una nuova importazione del catalogo.
