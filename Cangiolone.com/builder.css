@@ -174,3 +174,11 @@ body:has(dialog.workbench[open]) .wb-mobile-add{visibility:hidden}
  .workbench[data-mode=play] .wb-columns{grid-template-columns:minmax(220px,.8fr) minmax(0,1.8fr)}
 }
 .wb-catalog-tools .wb-search-field input{padding-right:44px}
+@media(min-width:851px){
+ .wb-roster-category .wb-roster-row{display:block;min-height:0}
+ .wb-roster-category .wb-unit-name{padding:12px 8px}
+ .wb-roster-category .wb-unit-name strong{margin-top:8px}
+ .wb-roster-category .wb-row-actions{padding:0 8px 8px;gap:8px}
+ .wb-roster-category .wb-row-actions button{width:auto;height:auto;padding:8px;font-size:12px}
+ .wb-roster-category [data-wb-duplicate]::before,.wb-roster-category [data-wb-remove]::before{content:none}
+}
