@@ -43,7 +43,7 @@ test('Combined loadouts show the retained melee weapon and chosen gun instead of
 });
 
 test('Army groups keep Battleline and selected detachments open only through their reference popup',()=>{
-  const c=context();assert.equal(vm.runInContext(`JSON.stringify(wbMobileCategories)`,c),JSON.stringify(['Character','Battleline','Infantry','Mounted','Vehicle','Other']));
+  const c=context();assert.equal(vm.runInContext(`JSON.stringify(wbMobileCategories)`,c),JSON.stringify(['Character','Battleline','Infantry','Mounted','Vehicle','Other','Alleati']));
   vm.runInContext(`builderUi.catalog.factions[0].detachments=[{id:'alpha',name:'Alpha',dp:'1',force_disposition:'Take and Hold',description:'Rule'}];builderUi.army.detachmentIds=['alpha'];`,c);
   const html=vm.runInContext('wbArmySettings(true)',c);assert.match(html,/data-wb-detachment-rule="alpha"/);assert.doesNotMatch(html,/wb-detachment-resources|wb-detachment-rule-card/);
 });
@@ -51,6 +51,7 @@ test('Army groups keep Battleline and selected detachments open only through the
 test('Datasheet rules are prominent cards, generic rules are in Other rules, long prose starts folded',()=>{
   const c=context();vm.runInContext(`const u=wbUnits().get('signal');u.abilities=[{name:'Own rule',type:'Datasheet',description:'Local rule'},{name:'Deep Strike',type:'Core',description:'Generic rule'},{name:'Long wargear',type:'Wargear',description:'Long rule '.repeat(70)}];`,c);
   const html=vm.runInContext('wbSheetRules(u)',c);assert.ok(html.indexOf('Own rule')<html.indexOf('Altre regole'));assert.ok(html.indexOf('Deep Strike')>html.indexOf('Altre regole'));assert.match(html,/<details class="wb-rule wb-rule-card wb-rule-long">/);assert.doesNotMatch(html,/<details class="wb-rule wb-rule-card wb-rule-long" open/);
+  assert.match(html,/<details class="wb-rule wb-rule-card" open><summary><strong>Own rule/);assert.match(html,/<details class="wb-rule wb-rule-card" open><summary><strong>Deep Strike/);assert.doesNotMatch(html,/<article class="wb-rule wb-rule-card/);
 });
 test('Unified sheet puts controls after defence and before weapons, omits unavailable upgrades and deduplicates prices',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');u.points.push({...u.points[0]});u.enhancements=[{id:'hidden',name:'Unavailable',detachment_id:'unselected'}];workbench.selected=e.entryId;`,c);

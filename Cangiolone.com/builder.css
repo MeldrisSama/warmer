@@ -136,8 +136,8 @@ dialog.workbench.wb-detachment-dialog{max-height:calc(100dvh - 24px);overflow-y:
 .workbench .wb-rule-card h4{font-size:18px;color:var(--gold);margin:0 0 10px}
 .workbench .wb-rule-card p,.workbench .wb-rule-card ul{font-size:16px;line-height:1.65}
 .workbench .wb-rule-card p:last-child{margin-bottom:0}
-.workbench .wb-rule-long>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:17px;min-height:44px;color:var(--gold)}
-.wb-rule-long>summary span{font-size:11px;color:var(--muted);flex-shrink:0}
+.workbench .wb-rule-card>summary{display:flex;align-items:center;gap:10px;font-size:18px;min-height:44px;color:var(--gold);list-style:none}.wb-rule-card>summary::-webkit-details-marker{display:none}.wb-rule-card>summary::before{content:'▸';font-size:13px;flex-shrink:0}.wb-rule-card[open]>summary::before{content:'▾'}.wb-rule-card>summary>strong{flex:1;font-weight:600}.wb-rule-card>div{margin-top:10px}
+.wb-rule-long>summary>span{font-size:11px;color:var(--muted);flex-shrink:0}
 .wb-other-rules{border-top:1px solid var(--line);margin-top:16px}.wb-other-rules>summary{font-weight:600}
 @media(max-width:850px){
  .workbench:has(.wb-columns) .wb-columns{display:flex;grid-template-columns:none}
