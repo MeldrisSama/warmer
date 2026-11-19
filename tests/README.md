@@ -23,6 +23,8 @@ The separately acquired full catalog stays outside Git. Check it explicitly with
 
 `builder-datasheets.test.cjs` checks parameterized and qualified weapon keywords, same-unit ability lookup, escaped rendering, catalog-ID dialog lookup and focus return, old catalogs without core rules, and stratagem metadata and operational fields. Workbench checks also verify stratagem deduplication across attached members. Dialog tests use a DOM mock; they do not certify real-browser interaction.
 
+Appearance checks: `node --test tests/theme.test.cjs`. Covers all 20 presets in the dropdown, three custom colors and swatches, browser persistence/reset, malformed or unavailable storage, and contrast on independent light/dark/saturated backgrounds. The Orks check covers explicitly marked menu labels, dynamically rendered menus, restoration on a different preset/custom colors, and unchanged rules/user content. The HTTP suite verifies shared assets and early loading on both entry pages. Preference storage is browser-local and shared by accounts using that browser.
+
 From the repository root, run:
 
 ```sh

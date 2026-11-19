@@ -36,7 +36,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    for (const file of ['app.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js']) {
+    for (const file of ['app.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
       const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
     }
@@ -226,7 +226,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'web.config']) {
+  for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
@@ -334,6 +334,20 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const result = spawnSync(php, ['-r', '$pdo=new PDO("sqlite:".$argv[1]);$pdo->exec($argv[2]);', join(application, 'api.sqlite'), statement], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
   }
+
+  await t.test('Appearance assets load publicly through the local router and both pages include the early theme script', async () => {
+    for (const file of ['theme.js', 'theme.css']) {
+      const response = await fetch(`${base}/${file}`);
+      assert.equal(response.status, 200, file);
+      assert.equal(await response.text(), await readFile(join(application, file), 'utf8'));
+    }
+    for (const file of ['index.php', 'campionato.php']) {
+      const response = await fetch(`${base}/${file}`);
+      const html = await response.text();
+      assert.match(html, /<script src="theme\.js"><\/script>/);
+      assert.match(html, /href="theme\.css"/);
+    }
+  });
 
   await t.test('Guests see setup state but cannot read private data or write', async () => {
     const initial = await guest('state');

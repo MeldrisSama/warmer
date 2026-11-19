@@ -1,0 +1,52 @@
+/* Shared aliases also connect the separate league stylesheet to the same palette. */
+:root {
+  --bg: var(--theme-bg,#111714); --ground: var(--theme-bg,#111714);
+  --surface: var(--theme-surface,#17231d); --input: var(--theme-bg,#111714);
+  --accent-fill: var(--theme-accent,#c2a66b); --on-accent: var(--theme-on-accent,#111714);
+}
+:root, .empty, th:not([scope=row]), .drop, .season-board, #lineup-text,
+input, select, textarea {
+  --text: var(--theme-bg-text,#eeeae0); --ink: var(--theme-bg-text,#eeeae0);
+  --muted: var(--theme-bg-muted,#a7b1ab); --line: var(--theme-bg-line,#53665a); --rule: var(--theme-bg-line,#53665a);
+  --gold: var(--theme-bg-gold,#c2a66b); --gold-light: var(--theme-bg-gold,#c2a66b);
+  --bonus: var(--theme-bg-bonus,#83c6ff); --keyword: var(--theme-bg-keyword,#b9d8d2);
+  --warning: var(--theme-bg-warning,#efc18e); --error: var(--theme-bg-error,#ff9a94); --info: var(--theme-bg-info,#a6cede);
+  --surface-hover: var(--theme-bg-hover,#101612);
+  color: var(--text);
+}
+.panel, .builder-panel, .builder-total,
+.email-banner, .league-banner, .hero, #classifica, .round-head, details.fixture > summary, .fixture-block, #lineup-reader {
+  --text: var(--theme-surface-text,#eeeae0); --ink: var(--theme-surface-text,#eeeae0);
+  --muted: var(--theme-surface-muted,#a7b1ab); --line: var(--theme-surface-line,#53665a); --rule: var(--theme-surface-line,#53665a);
+  --gold: var(--theme-surface-gold,#c2a66b); --gold-light: var(--theme-surface-gold,#c2a66b);
+  --bonus: var(--theme-surface-bonus,#83c6ff); --keyword: var(--theme-surface-keyword,#b9d8d2);
+  --warning: var(--theme-surface-warning,#efc18e); --error: var(--theme-surface-error,#ff9a94); --info: var(--theme-surface-info,#a6cede);
+  --medal-1: var(--theme-surface-medal-1,#efd18c); --medal-2: var(--theme-surface-medal-2,#cbd8dc); --medal-3: var(--theme-surface-medal-3,#e1a882);
+  --surface-hover: var(--theme-surface-hover,#15201a);
+  color: var(--text);
+}
+body { background: var(--bg); }
+th:not([scope=row]) { background: var(--bg); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+button.primary, .button.primary, a.primary, .builder-shell button.primary { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+button.primary:hover, .button.primary:hover, a.primary:hover { background: var(--accent-fill); color: var(--on-accent); border-color: var(--gold); }
+/* Adapt the original builder without editing its stylesheet or behavior. */
+.builder-shell input:not([type=checkbox]):not([type=file]), .builder-shell select {
+  background: var(--input); color: var(--text); border-color: var(--line);
+}
+.builder-panel, .builder-total { background: var(--surface); border-color: var(--line); }
+.builder-shell button, .builder-entry, .builder-heading { border-color: var(--line); }
+.builder-warning, .builder-alert { color: var(--warning); }
+.theme-presets, .theme-colors { border: 0; padding: 0; margin: 24px 0 0; min-width: 0; }
+.theme-intro { color: var(--text); }
+.theme-presets legend, .theme-colors legend { padding: 0; margin-bottom: 12px; font-size: 14px; }
+.theme-preset { display: grid; gap: 8px; font-size: 14px; }
+.theme-swatches { display: flex; height: 32px; margin-top: 12px; border: 1px solid var(--line); overflow: hidden; border-radius: 2px; }
+.theme-swatches span { flex: 1; }
+.theme-colors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.theme-color { display: grid; gap: 8px; font-size: 14px; min-width: 0; }
+.theme-color input { width: 100%; height: 48px; padding: 4px; cursor: pointer; }
+.theme-color output { font: 12px/1.5 Consolas, monospace; color: var(--muted); }
+.theme-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; }
+.theme-actions button { min-height: 44px; }
+.theme-status { margin: 0; color: var(--muted); font-size: 13px; }
