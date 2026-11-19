@@ -195,7 +195,7 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
     $total=0;$unknown=false;$counts=[];
     foreach($army['entries'] as $entry){
         $u=$units[$entry['unitId']]??[];$ordinal=($counts[$entry['unitId']]??0)+1;$counts[$entry['unitId']]=$ordinal;$points=$entry['manualPoints']??null;
-        if($points===null)foreach($u['points']??[] as $tier)if($tier['models']===($entry['models']??0)&&$ordinal>=($tier['first']??1)&&$ordinal<=($tier['last']??200))$points=$tier['points'];
+        if($points===null)$points=builderEntryBasePrice($u,$entry,$ordinal);
         $quantity=$entry['quantity']??1;
         if($points===null)$unknown=true;else $total+=$points*$quantity;
         foreach($u['equipment']??[] as $gear)if(in_array($gear['id'],$entry['equipmentIds']??[],true))$total+=$gear['points']*$quantity;
@@ -267,6 +267,9 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): arr
     }
     if ($action==='builderImport') {
         if (!$me['admin']) builderInvalid('Solo un amministratore può importare cataloghi.');
+        // Normalisation holds the incoming and generated catalogs plus the JSON payload.
+        $memory=trim((string)ini_get('memory_limit'));$factor=match(strtolower(substr($memory,-1))){'k'=>1024,'m'=>1048576,'g'=>1073741824,default=>1};
+        if($memory!=='-1'&&(int)$memory*$factor<268435456&&ini_set('memory_limit','256M')===false)builderInvalid('Memoria del server insufficiente per importare il catalogo.');
         $raw=$data['catalog']??null;
         if (!is_array($raw) || strlen(json_encode($raw,JSON_THROW_ON_ERROR))>28000000) builderInvalid('Catalogo JSON non valido o superiore a 28 MB.');
         $catalog=builderNormalizeCatalog($raw);

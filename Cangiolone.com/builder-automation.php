@@ -29,10 +29,14 @@ function builderWeaponKey(string $name): string {
 }
 function builderCompileLoadout(array $unit, callable $description): array {
     $unit=builderApplySourceFixes($unit);
-    $sourceOptions=$unit['options'];$sourceRows=[];$expanded=[];$additionalLimits=[];$choiceFamilies=[];
+    $sourceOptions=$unit['options'];$sourceRows=[];$expanded=[];$additionalLimits=[];$choiceFamilies=[];$choiceLinks=[];$familyWeapons=[];
     foreach($sourceOptions as $i=>$row){
         $text=trim($description($row));
-        if(preg_match('/^Up to (\d+) (.+?) can each have their (.+?) replaced with (.+?), or can be equipped with (.+)$/is',$text,$m)){
+        if(preg_match('/^You can select one of the following options:\s*• Up to one (.+?) can replace their (.+?) with (.+?)\.\s*• Up to two (.+?) each equipped with (.+?) can form a weapons team\. If they do, one model[’\']s (.+?) is replaced with (.+?), and one model[’\']s (.+?) is replaced with (.+?)\.\s*$/isu',$text,$m)){
+            $family=['id'=>'family_'.$i,'max'=>2,'name'=>$text];$start=count($expanded);
+            foreach([[$m[2],$m[3]],[$m[6],$m[7]],[$m[8],$m[9]]] as [$from,$to]){$choiceFamilies[count($expanded)]=$family;$expanded[]=['description'=>'1 '.$m[1].' can have their '.$from.' replaced with '.$to];$sourceRows[]=$i;}
+            $choiceLinks[]=['a'=>'option_'.($start+1),'b'=>'option_'.($start+2)];$familyWeapons[$family['id']]=$m[3];
+        }elseif(preg_match('/^Up to (\d+) (.+?) can each have their (.+?) replaced with (.+?), or can be equipped with (.+)$/is',$text,$m)){
             $family=['id'=>'family_'.$i,'max'=>(int)$m[1],'name'=>$text];
             $choiceFamilies[count($expanded)]=$family;$expanded[]=['description'=>'Up to '.$m[1].' '.$m[2].' can each have their '.$m[3].' replaced with '.$m[4]];$sourceRows[]=$i;
             $choiceFamilies[count($expanded)]=$family;$expanded[]=['description'=>'Up to '.$m[1].' '.$m[2].' can each be equipped with '.$m[5]];$sourceRows[]=$i;
@@ -49,7 +53,7 @@ function builderCompileLoadout(array $unit, callable $description): array {
         if (!empty($weapon['enhancement_id'])||empty($weapon['name'])) continue;
         $name=preg_split('/\s+[-–—]\s+/u',$weapon['name'])[0];$key=builderWeaponKey($name);
         if (!isset($weapons[$key])) $weapons[$key]=['id'=>'w_'.$weapon['line'],'name'=>$name,'lines'=>[],'cost'=>0];
-        $weapons[$key]['lines'][]=$weapon['line'];$byName[$key]=$weapons[$key]['id'];$byName[builderWeaponKey($weapon['name'])]=$weapons[$key]['id'];
+        if(!in_array($weapon['line'],$weapons[$key]['lines'],true))$weapons[$key]['lines'][]=$weapon['line'];$byName[$key]=$weapons[$key]['id'];$byName[builderWeaponKey($weapon['name'])]=$weapons[$key]['id'];
     }
     $optionNames=builderWeaponKey($unit['loadout']."\n".implode("\n",array_map($description,$unit['options'])));
     foreach ($unit['abilities'] as $ability) if (($ability['type']??'')==='Wargear'||(($ability['type']??'')==='Datasheet'&&str_contains($optionNames,builderWeaponKey(preg_replace('/\s*\([^)]*\)\s*$/i','',$ability['name']))))) {
@@ -81,7 +85,7 @@ function builderCompileLoadout(array $unit, callable $description): array {
         }
         return null;
     };
-    $models=[];$variable=0;$compositions=[];$variants=[[]];$flexible=false;$compositionRules=[];
+    $models=[];$variable=0;$compositions=[];$variants=[[]];$flexible=false;$compositionRules=[];$layouts=$unit['guidedLayouts']??[];
     if(isset($unit['composition'][0])&&preg_match('/^One of the following:/i',trim($description($unit['composition'][0]))))return [];
     foreach($unit['composition'] as $row){
         $text=trim($description($row));
@@ -100,11 +104,11 @@ function builderCompileLoadout(array $unit, callable $description): array {
     }
     if(!$models)return [];
     if(count($variants)>1&&$variable===0){
-        $layouts=[];
+        $variantLayouts=[];
         foreach($variants as $variant){$layout=[];foreach($variant as $line)if(preg_match('/^(\d+) (.+?)\.?$/',$line,$m))$layout[builderLoadoutName($m[2])]=(int)$m[1];
-            if(count($layout)!==count($models))return [];$layouts[array_sum($layout)]=$layout;
+            if(count($layout)!==count($models))return [];$variantLayouts[array_sum($layout)]=$layout;
         }
-        foreach($models as &$model){$model['variable']=true;$model['countsBySize']=[];foreach($layouts as $size=>$layout){if(!isset($layout[builderLoadoutName($model['name'])]))return [];$model['countsBySize'][$size]=$layout[builderLoadoutName($model['name'])];}}unset($model);
+        foreach($models as &$model){$model['variable']=true;$model['countsBySize']=[];foreach($variantLayouts as $size=>$layout){if(!isset($layout[builderLoadoutName($model['name'])]))return [];$model['countsBySize'][$size]=$layout[builderLoadoutName($model['name'])];}}unset($model);
     }elseif($variable>1){
         $minimum=array_sum(array_column($models,'min'));$maximum=array_sum(array_column($models,'max'));$ratio=$maximum/$minimum;
         foreach($models as $model)if(!$model['min']||$model['max']/$model['min']!=$ratio)$flexible=true;
@@ -117,6 +121,7 @@ function builderCompileLoadout(array $unit, callable $description): array {
             if($a!==null&&$b!==null)$compositionRules[]=['model'=>$a,'count'=>(int)$match[1],'requires'=>$b,'minimum'=>(int)$match[3]];
         }
     }
+    if($layouts)$flexible=true;
     $groups=[];$defaultIssues=[];
     $loadoutText=preg_replace_callback('/^(One|Two|Three|Four) /mi',static fn($m)=>['one'=>1,'two'=>2,'three'=>3,'four'=>4][strtolower($m[1])].' ',$unit['loadout']);
     if (preg_match_all('/(?:^|\n)((?:(?:Every|Each|This|The|A|An) )?[^:.\n]{1,240}?) (?:is(?: additionally)?|are(?: both)?) equipped with:\s*(.+?)(?=\n\s*\n|$)/is',$loadoutText,$defaults,PREG_SET_ORDER)) {
@@ -276,13 +281,14 @@ function builderCompileLoadout(array $unit, callable $description): array {
             $applied=builderLoadoutApply($groups,$models,$rule,$alternative['weapons'],[$inverse],$tag,array_column($weapons,'name','id'))||$applied;
         }
         if($applied){
-            $compiledRule=['id'=>$tag,'name'=>$text,'per'=>$rule['per'],'max'=>$rule['max'],'all'=>$rule['all'],'minimum'=>$rule['minimum'],'maximum'=>$rule['maximum']];if(isset($rule['perModel']))$compiledRule['perModel']=$rule['perModel'];$rules[]=$compiledRule;
+            $compiledRule=['id'=>$tag,'name'=>'Opzione di equipaggiamento '.($sourceRows[$optionIndex]+1),'per'=>$rule['per'],'max'=>$rule['max'],'all'=>$rule['all'],'minimum'=>$rule['minimum'],'maximum'=>$rule['maximum']];if(isset($rule['perModel']))$compiledRule['perModel']=$rule['perModel'];$rules[]=$compiledRule;
             if($duplicateLimit!==null)foreach($alternatives as $i=>$alternative)$rules[]=['id'=>$tag.'_alternative_'.$i,'name'=>$alternative['name'],'max'=>$duplicateLimit,'maxAt'=>$maxAt,'per'=>$duplicatePer];
             if($complete){$covered[$optionIndex]=true;foreach($rowNotes as $note)$noteUsed[$note['index']]=true;}
         }
     }
     foreach($notes as $note)if(isset($note['modelLimit'])&&isset($noteUsed[$note['index']]))$modelLimits[]=array_merge($note['modelLimit'],['source'=>$note['index']]);
-    foreach(array_column($choiceFamilies,null,'id') as $family)$rules[]=$family;
+    foreach(array_column($choiceFamilies,null,'id') as $family){$family['name']='Opzioni alternative';$rules[]=$family;}
+    foreach($familyWeapons as $family=>$equipment){$bundle=$parse($equipment);if(!$bundle)continue;foreach($bundle as $id=>$n){$rules[]=['id'=>$family.'_weapon_'.$id,'weapon'=>$id,'name'=>$equipment,'max'=>1];foreach($groups as &$group)foreach($group['choices'] as &$choice)if(!empty($choice['weapons'][$id]))$choice['rules']=array_values(array_unique(array_merge($choice['rules']??[],[$family])));unset($choice,$group);}}
     foreach($notes as $note)if(isset($note['modelLimits'])&&isset($noteUsed[$note['index']]))foreach($note['modelLimits'] as $limit)$modelLimits[]=array_merge($limit,['source'=>$note['index']]);
     foreach($additionalLimits as $source=>$equipment){$need=$parse($equipment);if($need)$modelLimits[]=['weights'=>array_fill_keys(array_keys($need),1),'max'=>1,'source'=>array_search($source,$sourceRows,true)];}
     foreach($optionalMax as $wid=>$maximum)$modelLimits[]=['weights'=>[$wid=>1],'max'=>$maximum,'source'=>-1];
@@ -292,7 +298,11 @@ function builderCompileLoadout(array $unit, callable $description): array {
     $uncovered=[];foreach($unit['options'] as $i=>$row)if(!isset($covered[$i])&&!preg_match('/^None\.?$/i',trim($description($row))))$uncovered[]=$sourceRows[$i];
     $uncovered=array_values(array_unique($uncovered));$optionTotal=count(array_filter($sourceOptions,static fn($row)=>!preg_match('/^None\.?$/i',trim($description($row)))));
     foreach($models as $model)if(!array_filter($groups,static fn($g)=>$g['model']===$model['id']))$defaultIssues[]=$model['name'].' · dotazione iniziale non riconosciuta';
-    return ['version'=>2,'models'=>$models,'weapons'=>array_values($weapons),'groups'=>$groups,'rules'=>$rules,'flexibleModels'=>$flexible,'compositionRules'=>$compositionRules,'defaultIssues'=>array_values(array_unique($defaultIssues)),'uncoveredOptions'=>$uncovered,'optionsCovered'=>$optionTotal-count($uncovered),'optionsTotal'=>$optionTotal];
+    $rules=array_values(array_filter($rules,static fn($r)=>in_array($r['id'],$activeTags,true)));
+    $keptTags=array_unique(array_merge($activeTags,array_column($choiceLinks,'a'),array_column($choiceLinks,'b')));
+    foreach($groups as &$group)foreach($group['choices'] as &$choice)if(isset($choice['rules']))$choice['rules']=array_values(array_intersect($choice['rules'],$keptTags));unset($choice,$group);
+    if(!$flexible)foreach($models as &$model)unset($model['min'],$model['max']);unset($model);
+    return array_filter(['version'=>2,'models'=>$models,'weapons'=>array_values($weapons),'groups'=>$groups,'rules'=>$rules,'links'=>$choiceLinks,'layouts'=>$layouts,'flexibleModels'=>$flexible,'compositionRules'=>$compositionRules,'defaultIssues'=>array_values(array_unique($defaultIssues)),'uncoveredOptions'=>$uncovered,'optionsCovered'=>$optionTotal-count($uncovered),'optionsTotal'=>$optionTotal],static fn($v,$k)=>in_array($k,['models','weapons','groups'],true)||($v!==[]&&$v!==false),ARRAY_FILTER_USE_BOTH);
 }
 function builderLoadoutCapacity(array $recipe,array $group,int $models,array $modelCounts=[]): int {
     if(!empty($group['unitGear'])){$population=isset($group['perModel'])?builderLoadoutCapacity($recipe,['model'=>$group['perModel'],'per'=>0],$models,$modelCounts):$models;return !empty($group['per'])?(int)floor($population/$group['per']):1;}
@@ -344,7 +354,8 @@ function builderGearLimit(array $unit,string $line,int $models,array $modelCount
         $amount=0;$alternative=false;
         foreach ($group['choices'] as $choice) if (isset($choice['weapons'][$weapon['id']])) {$amount=max($amount,$choice['weapons'][$weapon['id']]);$alternative=$alternative||$choice['id']!==$group['default'];}
         if (!$amount) continue;$found=true;
-        if (!empty($group['sharedPer'])&&$alternative) {if (isset($seen[$group['sharedKey']]))continue;$seen[$group['sharedKey']]=true;$max+=(int)floor($models/$group['sharedPer'])*$amount;}
+        $base=array_column($group['choices'],'weapons','id')[$group['default']][$weapon['id']]??0;
+        if (!empty($group['sharedPer'])&&$alternative&&!$base) {if (isset($seen[$group['sharedKey']]))continue;$seen[$group['sharedKey']]=true;$max+=(int)floor($models/$group['sharedPer'])*$amount;}
         else $max+=builderLoadoutCapacity($recipe,$group,$models,$modelCounts)*$amount;
     }
     return $found?$max:$models;
@@ -362,6 +373,8 @@ function builderCompileEffects(array $rows,callable $description): array {
             $scope=stripos($m[1],'unit')!==false?'unit':'bearer';$effects[]=['field'=>'inv_sv','operation'=>'min','value'=>(int)$m[2]];
         } elseif (preg_match('/^The bearer has a Save characteristic of (\d)\+\.(?:\s|$)/iu',$body,$m)) {
             $scope='bearer';$effects[]=['field'=>'Sv','operation'=>'set','value'=>(int)$m[1]];
+        } elseif (preg_match('/^(?:The bearer|This model) has a Move characteristic of (\d+)["”](?:\.| and\b)/iu',$body,$m)) {
+            $scope='bearer';$effects[]=['field'=>'M','operation'=>'set','value'=>(int)$m[1]];
         } elseif (preg_match('/^Add (\d+) to the (Attacks|Strength|Damage) characteristic of (?:the bearer[’\']s|this model[’\']s) (melee|ranged) weapons\.?$/iu',$body,$m)) {
             $scope='bearer';$weaponType=strtolower($m[3]);$effects[]=['field'=>['attacks'=>'A','strength'=>'S','damage'=>'D'][strtolower($m[2])],'operation'=>'add','value'=>(int)$m[1]];
         } elseif (preg_match('/^Add (\d+) to the Strength and add (\d+) to the Attacks characteristics of the bearer[’\']s (melee|ranged) weapons\.?$/iu',$body,$m)) {

@@ -5,7 +5,7 @@ if(!process.argv[2])throw Error('Specify the local catalog JSON.');
 const root=path.resolve(__dirname,'..'),catalog=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const c=vm.createContext({catalog,crypto:require('node:crypto').webcrypto,notify(){},esc:v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))});
 for(const f of ['builder.js','builder-engine.js','builder-workbench.js'])vm.runInContext(fs.readFileSync(path.join(root,'Cangiolone.com',f),'utf8'),c);
-vm.runInContext(`builderUi.catalog=catalog;builderUi.army=builderWorkbenchNewArmy();builderUi.army.factionId='sm_dark_angels';builderWorkbenchRender=()=>{};const add=name=>{const u=catalog.units.find(u=>u.name===name);wbAdd(u.id);return builderUi.army.entries.at(-1);};
+vm.runInContext(`builderUi.catalog=catalog;builderUi.army=builderWorkbenchNewArmy();builderUi.army.factionId='sm_dark_angels';builderWorkbenchRender=()=>{};const add=name=>{const u=catalog.units.find(u=>u.name===name);if(!u)throw Error('Missing fixture '+name);builderUi.army.factionId=catalog.factions.find(f=>f.unitIds.includes(u.id)).id;const before=builderUi.army.entries.length;wbAdd(u.id);if(builderUi.army.entries.length!==before+1)throw Error('Fixture not added '+name);return builderUi.army.entries.at(-1);};
 const body=add('Inner Circle Companions'),azrael=add('Azrael');azrael.attachedTo=body.entryId;
 const base=wbUnits().get(body.unitId),derived=beEffects(base,body).unit;
 `,c);
@@ -26,4 +26,25 @@ assert.equal(catalog.stratagems.some(s=>/boarding|combat patrol/i.test(s.type)),
 vm.runInContext(`const lion=add(catalog.units.find(u=>/^Lion El/i.test(u.name)).name),lu=wbUnits().get(lion.unitId);`,c);
 assert.equal(vm.runInContext('lion.warlord',c),true,'Lion not selected as mandatory Warlord');
 assert.doesNotMatch(vm.runInContext('wbUnitControls(lu,lion)',c),/Costi e composizione|Opzioni di equipaggiamento|Opzioni avanzate/,'Fixed Lion sheet has unnecessary drawers');
-console.log(JSON.stringify({version:catalog.version,azrael:true,ravenwing:true,imperiumSword:true,stormShield:true,modeFilter:true,lionWarlord:true}));
+if(/\bb6-/.test(catalog.version)){
+  vm.runInContext(`const shadow=add('Shadow Spectres'),su=wbUnits().get(shadow.unitId);beResize(shadow,6,su.loadoutRecipe.layouts.find(l=>l.counts.m0===1&&l.counts.m1===5).counts);`,c);
+  assert.equal(vm.runInContext('wbPrice(shadow)',c),145,'Exarch surcharge missing');
+  vm.runInContext(`const wolf=add('Wolf Guard Headtakers'),wu=wbUnits().get(wolf.unitId);beResize(wolf,6,wu.loadoutRecipe.layouts[1].counts);`,c);
+  assert.equal(vm.runInContext('wbPrice(wolf)',c),115,'Mixed Headtakers formation price incorrect');
+  vm.runInContext('beResize(wolf,6,wu.loadoutRecipe.layouts[2].counts);',c);
+  assert.equal(vm.runInContext('wbPrice(wolf)',c),170,'Bare Headtakers formation confused with mixed unit');
+  assert.equal(vm.runInContext('beEntryBasePrice(wu,wolf,3)',c),180,'Third-copy formation price incorrect');
+  vm.runInContext(`const aquila=add('Aquila Kill Team'),au=wbUnits().get(aquila.unitId),xeno=au.weapons.find(w=>/Xenophase/i.test(w.name));`,c);
+  assert.equal(vm.runInContext('aquila.weaponCounts[xeno.line]||0',c),0,'Xenophase bearer present in five-model team');
+  vm.runInContext('beResize(aquila,10);',c);
+  assert.equal(vm.runInContext('aquila.weaponCounts[xeno.line]',c),1,'Xenophase bearer absent in ten-model team');
+  vm.runInContext(`const cassius=add('Kill Team Cassius'),cu=wbUnits().get(cassius.unitId),cp=beEffects(cu,cassius).unit.models;`,c);
+  assert.equal(vm.runInContext('cp.length',c),11,'Cassius named models missing');
+  assert.equal(vm.runInContext(`cp.filter(m=>['Antor Delassio','Edryc Setorax'].includes(m.name)).every(m=>m.M==='12"')`,c),true,'Jump packs did not affect their bearers');
+  assert.equal(vm.runInContext(`beWeaponOwners(cu,cassius,cu.weapons.find(w=>/Frag cannon/i.test(w.name)))[0].name`,c),'Rodricus Grytt','Cassius weapon owner missing');
+  vm.runInContext(`const captain=add('Death Company Captain with Jump Pack'),du=wbUnits().get(captain.unitId),hammer=du.loadoutRecipe.weapons.find(w=>/^Thunder Hammer$/i.test(w.name)),dg=du.loadoutRecipe.groups.find(g=>g.choices.some(c=>c.weapons[hammer.id])),dc=dg.choices.find(c=>c.weapons[hammer.id]);`,c);
+  assert.equal(vm.runInContext('beEffects(du,captain).unit.models[0].W',c),'5','Unequipped relic shield modifies wounds');
+  assert.equal(vm.runInContext('beChangeChoice(captain,dg.id,dc.id,1)',c),true,'Hammer/shield bundle unavailable');
+  assert.equal(vm.runInContext('beEffects(du,captain).unit.models[0].W',c),'6','Equipped relic shield does not modify wounds');
+}
+console.log(JSON.stringify({version:catalog.version,azrael:true,ravenwing:true,imperiumSword:true,stormShield:true,modeFilter:true,lionWarlord:true,curatedFormations:/\bb6-/.test(catalog.version)}));

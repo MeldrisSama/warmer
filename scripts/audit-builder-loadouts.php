@@ -6,17 +6,18 @@ $catalog=json_decode(file_get_contents($argv[1]??throw new RuntimeException('Spe
 $texts=array_column($catalog['texts'],'description','id');$description=static fn($r)=>($r['description']??'')?:($texts[$r['descriptionRef']??'']??'');
 $missing=[];$without=[];$invalid=[];$defaults=[];$counts=['units'=>0,'guided'=>0,'allOptionRows'=>0,'partial'=>0,'missing'=>0];
 foreach($catalog['units'] as $unit){
+    $unit=builderApplySourceFixes($unit);
     $counts['units']++;$recipe=builderCompileLoadout($unit,$description);
     if(!$recipe){$counts['missing']++;$without[]=['id'=>$unit['id'],'name'=>$unit['name'],'composition'=>array_map($description,$unit['composition']),'loadout'=>$unit['loadout']];continue;}
     foreach(array_unique(array_column($unit['points']??[],'models')) as $models)try{builderLoadoutCounts($recipe,[],$models);}catch(BuilderInputError $e){$invalid[]=['id'=>$unit['id'],'name'=>$unit['name'],'models'=>$models,'error'=>$e->getMessage()];}
-    if($recipe['defaultIssues'])$defaults[]=['id'=>$unit['id'],'name'=>$unit['name'],'issues'=>$recipe['defaultIssues']];
+    if(!empty($recipe['defaultIssues']))$defaults[]=['id'=>$unit['id'],'name'=>$unit['name'],'issues'=>$recipe['defaultIssues']];
     $counts['guided']++;$complete=$recipe['optionsCovered']===$recipe['optionsTotal'];$counts[$complete?'allOptionRows':'partial']++;
     if($complete)continue;
     foreach($unit['options'] as $index=>$option){
-        if(!in_array($index,$recipe['uncoveredOptions'],true))continue;
+        if(!in_array($index,$recipe['uncoveredOptions']??[],true))continue;
         $single=$unit;$single['options']=[$option];foreach($unit['options'] as $other)if(preg_match('/^\*/',trim($description($other))))$single['options'][]=$other;
         $alone=builderCompileLoadout($single,$description);
-        $missing[]=['unit'=>$unit['id'],'name'=>$unit['name'],'index'=>$index,'text'=>$description($option),'canCompileAlone'=>$alone&&!in_array(0,$alone['uncoveredOptions'],true)];
+        $missing[]=['unit'=>$unit['id'],'name'=>$unit['name'],'index'=>$index,'text'=>$description($option),'canCompileAlone'=>$alone&&!in_array(0,$alone['uncoveredOptions']??[],true)];
     }
 }
 $report=['counts'=>$counts,'missingOptions'=>$missing,'withoutRecipes'=>$without,'invalidDefaults'=>$invalid,'unresolvedDefaults'=>$defaults];

@@ -31,6 +31,7 @@ function builderLoadoutAliases(array $unit,array $weapons): array {
         '000000929'=>['Astartes chainsword'=>['Astartes chainblade']],
         '000001526'=>['arc lance'=>['Galvanic caster']],
         '000002780'=>['Astartes Grenade Launcher'=>['Grenade Launcher']],
+        '000004174'=>['Grenade Launcher'=>['Astartes Grenade Launcher'],'Storm Shield'=>['Astartes Shield']],
         '000003833'=>['Astartes Chainsword'=>['Chainsword']],
     ];
     $aliases=[];
@@ -108,6 +109,7 @@ function builderLoadoutSum(array $a,array $b): array {
 function builderLoadoutModelCounts(array $recipe,int $models,?array $requested=null): array {
     if(empty($recipe['flexibleModels']))return [];
     $types=$recipe['models'];$counts=$requested??array_column($types,'min','id');
+    if($requested===null)foreach($recipe['layouts']??[] as $layout)if(array_sum($layout['counts'])===$models){$counts=$layout['counts'];break;}
     if($requested===null){
         $left=$models-array_sum($counts);
         usort($types,static fn($a,$b)=>($b['max']-$b['min'])<=>($a['max']-$a['min']));
@@ -116,8 +118,20 @@ function builderLoadoutModelCounts(array $recipe,int $models,?array $requested=n
     if(count($counts)!==count($types)||array_diff(array_keys($counts),array_column($types,'id')))builderInvalid('Tipi di modello non validi.');
     foreach($types as $type)$counts[$type['id']]=builderInt($counts[$type['id']]??null,'quantità '.$type['name'],$type['min'],$type['max']);
     if(array_sum($counts)!==$models)builderInvalid('La composizione non corrisponde al totale dei modelli.');
+    if(!empty($recipe['layouts'])&&!array_filter($recipe['layouts'],static fn($l)=>$l['counts']==$counts))builderInvalid('Questa formazione non è prevista dalla scheda.');
     foreach($recipe['compositionRules']??[] as $rule)if($counts[$rule['model']]>=$rule['count']&&$counts[$rule['requires']]<$rule['minimum'])builderInvalid('Composizione non consentita dalla scheda.');
     return $counts;
+}
+function builderEntryBasePrice(array $unit,array $entry,int $ordinal): ?int {
+    $models=$entry['models']??0;$price=null;
+    $layouts=$unit['loadoutRecipe']['layouts']??[];
+    if(array_filter($layouts,static fn($l)=>isset($l['prices']))){
+        $counts=$entry['loadoutSelections']['_models']??null;if(!is_array($counts))return null;
+        foreach($layouts as $layout)if($layout['counts']==$counts)foreach($layout['prices']??[] as $p)if($ordinal>=$p['first']&&$ordinal<=$p['last'])$price=$p['points'];
+        return $price;
+    }
+    foreach($unit['points']??[] as $p)if($p['models']===$models&&$ordinal>=($p['first']??1)&&$ordinal<=($p['last']??200))$price=$p['points'];
+    return $price;
 }
 
 function builderLoadoutApply(array &$groups,array $models,array $rule,array $original,array $alternatives,string $tag,array $weaponNames=[]): bool {
@@ -251,9 +265,11 @@ function builderLoadoutRuleErrors(array $recipe,array $selections,int $models): 
             $capacity+=builderLoadoutCapacity($recipe,$group,$models,$selections['_models']??[]);
             foreach($group['choices'] as $choice)if(in_array($rule['id'],$choice['rules']??[],true))$used+=$selections[$group['id']][$choice['id']]??0;
         }
+        if(isset($rule['weapon'])){$used=0;foreach($recipe['groups'] as $group)foreach($group['choices'] as $choice)$used+=($selections[$group['id']][$choice['id']]??0)*($choice['weapons'][$rule['weapon']]??0);}
         $population=isset($rule['perModel'])?builderLoadoutCapacity($recipe,['model'=>$rule['perModel'],'per'=>0],$models,$selections['_models']??[]):null;
         if($used>builderLoadoutRuleLimit($rule,$models,$population))$errors[]='Limite condiviso della dotazione superato: '.$rule['name'];
         if(!empty($rule['all'])&&$used!==0&&$used!==$capacity)$errors[]='La sostituzione deve riguardare tutti i modelli: '.$rule['name'];
     }
+    foreach($recipe['links']??[] as $link){$a=0;$b=0;foreach($recipe['groups'] as $g)foreach($g['choices'] as $c){$n=$selections[$g['id']][$c['id']]??0;if(in_array($link['a'],$c['rules']??[],true))$a+=$n;if(in_array($link['b'],$c['rules']??[],true))$b+=$n;}if($a!==$b)$errors[]='Il team armi deve comprendere entrambi i modelli.';}
     return $errors;
 }

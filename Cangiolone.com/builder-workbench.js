@@ -121,7 +121,9 @@ function wbDetachmentSections(d){
 function wbCosts(unit){
   const seen=new Set(),rows=[];
   const add=(label,cost)=>{const key=label+'|'+cost;if(!seen.has(key)){seen.add(key);rows.push([label,cost]);}};
-  for(const p of unit.points){const first=p.first??1,last=p.last??200;add(`${p.models} models${first>1||last<200?' · copies '+first+'–'+last:''}`,p.points);}
+  const layouts=unit.loadoutRecipe?.layouts||[];
+  if(layouts.some(l=>l.prices))for(const l of layouts)for(const p of l.prices||[])add(`${l.name} · copie ${p.first}–${p.last}`,p.points);
+  else for(const p of unit.points){const first=p.first??1,last=p.last??200;add(`${p.models} models${first>1||last<200?' · copies '+first+'–'+last:''}`,p.points);}
   for(const row of unit.costs)if(row.cost!==undefined&&row.cost!==''&&(!unit.points.length||/^per /i.test(row.description)))add(row.description,row.cost);
   return wbTable(['Composizione / fascia','Punti'],rows)+[...new Set(unit.composition.map(wbDescription))].map(text=>`<p>${wbText(text)}</p>`).join('');
 }
@@ -166,9 +168,9 @@ function builderWorkbenchNewArmy(){
 }
 function wbPrice(entry,entries=builderUi.army.entries){
   const u=wbUnits().get(entry.unitId), ordinal=entries.slice(0,entries.indexOf(entry)+1).filter(e=>e.unitId===entry.unitId).length;
-  const p=u?.points.find(p=>p.models===entry.models && ordinal>=p.first && ordinal<=p.last);
+  const price=beEntryBasePrice(u,entry,ordinal);
   if(entry.manualPoints!==null&&entry.manualPoints!==undefined)return entry.manualPoints;
-  return p?p.points+(entry.loadoutSelections?beSync(u,entry):0):null;
+  return price===null?null:price+(entry.loadoutSelections?beSync(u,entry):0);
 }
 function builderWorkbenchTotals(){
   const a=builderUi.army, units=wbUnits(), issues=[]; let total=0, enhancements=0;
@@ -437,7 +439,9 @@ function wbBind(){
   on('#wb-export','click',beExport);
   on('[data-wb-filter]','change',el=>{workbench.filters[el.dataset.wbFilter]=el.checked;wbSearch(workbench.search);});
   on('[data-wb-choice]','click',el=>{const e=wbEntry(workbench.selected);if(beChangeChoice(e,el.dataset.wbChoice,el.dataset.wbOption,Number(el.dataset.wbDelta)))wbChanged();});
+  on('[data-wb-loadout-picker]','change',el=>{const e=wbEntry(workbench.selected);if(el.value&&beChangeChoice(e,el.dataset.wbLoadoutPicker,el.value,1))wbChanged();});
   on('[data-wb-model-step]','click',el=>{const e=wbEntry(workbench.selected),u=wbUnits().get(e.unitId),next=beModelChange(u,e,el.dataset.wbModel,Number(el.dataset.wbModelStep));if(next){e.loadoutSelections=next;beSync(u,e);wbChanged();}});
+  on('[data-wb-formation]','change',el=>{const e=wbEntry(workbench.selected),u=wbUnits().get(e.unitId),layout=u.loadoutRecipe.layouts[Number(el.value)];if(layout&&beResize(e,Object.values(layout.counts).reduce((a,b)=>a+b,0),layout.counts))wbChanged();});
   on('#wb-manual','click',()=>{const e=wbEntry(workbench.selected);delete e.loadoutSelections;wbChanged();});
   on('#wb-standard','click',()=>{const e=wbEntry(workbench.selected);if(beStandard(e))wbChanged();});
   on('#wb-default-save','click',beSaveDefault);on('#wb-default-delete','click',beDeleteDefault);

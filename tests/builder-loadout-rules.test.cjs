@@ -23,3 +23,16 @@ test('Optional model controls transfer a body model, preserve ownership and use 
   assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,extra,'choice0',1)",c),false);
   assert.equal(vm.runInContext('beResize(entry,6);entry.loadoutSelections._models.m1',c),1);
 });
+test('Weapon teams add/remove both bearers atomically and exclude the sniper alternative',()=>{
+  const c=context('team');
+  assert.equal(vm.runInContext("const gunner=g.choices.find(c=>c.weapons.w_5),crew=g.choices.find(c=>c.weapons.w_4&&!c.weapons.w_5),sniper=g.choices.find(c=>c.weapons.w_3);beChangeChoice(entry,g.id,gunner.id,1)",c),true);
+  assert.equal(vm.runInContext("entry.weaponCounts['4']",c),2);assert.equal(vm.runInContext("entry.weaponCounts['5']",c),1);assert.equal(vm.runInContext("entry.weaponCounts['1']",c),1);
+  assert.equal(vm.runInContext("beChoiceAllowed(unit,entry,g,sniper.id,1)",c),false);
+  assert.equal(vm.runInContext("beChangeChoice(entry,g.id,crew.id,-1)",c),true);assert.equal(vm.runInContext("entry.loadoutSelections[g.id].base",c),3);
+});
+test('Same-size formations retain their own point price and the chosen model allocation',()=>{
+  const c=context('priced');assert.equal(vm.runInContext("beResize(entry,6);beEntryBasePrice(unit,entry,1)",c),110);
+  assert.equal(vm.runInContext("beResize(entry,6,{m0:5,m1:1});beEntryBasePrice(unit,entry,1)",c),130);
+  assert.equal(vm.runInContext("beEntryBasePrice(unit,entry,3)",c),140);
+  assert.equal(vm.runInContext("beResize(entry,6);entry.loadoutSelections._models.m1",c),1);
+});

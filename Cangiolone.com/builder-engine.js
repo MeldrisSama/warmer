@@ -3,9 +3,11 @@
 function beModelCounts(recipe,models,requested=null){
   if(!recipe.flexibleModels)return {};
   const counts=requested?builderClone(requested):Object.fromEntries(recipe.models.map(m=>[m.id,m.min]));
+  if(!requested)for(const layout of recipe.layouts||[])if(Object.values(layout.counts).reduce((a,b)=>a+b,0)===models){Object.assign(counts,layout.counts);break;}
   if(!requested){let left=models-Object.values(counts).reduce((a,b)=>a+b,0);for(const m of [...recipe.models].sort((a,b)=>(b.max-b.min)-(a.max-a.min))){const n=Math.min(Math.max(0,left),m.max-counts[m.id]);counts[m.id]+=n;left-=n;}}
   if(Object.keys(counts).length!==recipe.models.length||recipe.models.some(m=>!Number.isInteger(counts[m.id])||counts[m.id]<m.min||counts[m.id]>m.max)||Object.values(counts).reduce((a,b)=>a+b,0)!==models)return null;
   if((recipe.compositionRules||[]).some(r=>counts[r.model]>=r.count&&counts[r.requires]<r.minimum))return null;
+  if(recipe.layouts?.length&&!recipe.layouts.some(l=>recipe.models.every(m=>l.counts[m.id]===counts[m.id])))return null;
   return counts;
 }
 function beCapacity(recipe,group,models,modelCounts=null){
@@ -63,10 +65,12 @@ function beRuleErrors(recipe,selections,models){
       capacity+=beCapacity(recipe,g,models,selections?._models);
       for(const c of g.choices)if(c.rules?.includes(rule.id))used+=selections?.[g.id]?.[c.id]||0;
     }
+    if(rule.weapon){used=0;for(const g of recipe.groups)for(const c of g.choices)used+=(selections?.[g.id]?.[c.id]||0)*(c.weapons[rule.weapon]||0);}
     const population=rule.perModel?beCapacity(recipe,{model:rule.perModel,per:0},models,selections?._models):null;
     if(used>beRuleLimit(rule,models,population))errors.push('Limite condiviso della dotazione superato.');
     if(rule.all&&used!==0&&used!==capacity)errors.push('La sostituzione deve riguardare tutti i modelli.');
   }
+  for(const link of recipe.links||[]){let a=0,b=0;for(const g of recipe.groups)for(const c of g.choices){const n=selections?.[g.id]?.[c.id]||0;if(c.rules?.includes(link.a))a+=n;if(c.rules?.includes(link.b))b+=n;}if(a!==b)errors.push('Il team armi deve comprendere entrambi i modelli.');}
   return errors;
 }
 function beNextChoices(unit,entry,group,choiceId,delta){
@@ -85,6 +89,17 @@ function beNextChoices(unit,entry,group,choiceId,delta){
     if(choiceId===group.default||!current[choiceId])return null;
     current[choiceId]--;current[group.default]=(current[group.default]||0)+1;
   }
+  for(const link of recipe.links||[]){
+    const partner=choice.rules?.includes(link.a)?link.b:choice.rules?.includes(link.b)?link.a:null;if(!partner)continue;
+    let paired=false;
+    for(const g of recipe.groups){for(const c of g.choices){
+      if(!c.rules?.includes(partner))continue;const selected=next[g.id];
+      if(delta>0){if((selected[g.default]||0)<1)continue;selected[g.default]--;selected[c.id]=(selected[c.id]||0)+1;}
+      else{if((selected[c.id]||0)<1)continue;selected[c.id]--;selected[g.default]=(selected[g.default]||0)+1;}
+      paired=true;break;
+    }if(paired)break;}
+    if(!paired)return null;
+  }
   return beRuleErrors(recipe,next,entry.models).length?null:next;
 }
 function beWeaponLimit(unit,entry,line){
@@ -94,7 +109,7 @@ function beWeaponLimit(unit,entry,line){
   const groups=recipe.groups.filter(g=>g.choices.some(c=>c.weapons[w.id]));
   if(!groups.length)return entry.models;
   const shared=new Set();let max=0;
-  for(const g of groups){if(g.sharedPer&&g.choices.some(c=>c.id!==g.default&&c.weapons[w.id])){if(shared.has(g.sharedKey))continue;shared.add(g.sharedKey);max+=Math.floor(entry.models/g.sharedPer);}else max+=beCapacity(recipe,g,entry.models,entry.loadoutSelections?._models)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}
+  for(const g of groups){if(g.sharedPer&&!g.choices.find(c=>c.id===g.default)?.weapons[w.id]&&g.choices.some(c=>c.id!==g.default&&c.weapons[w.id])){if(shared.has(g.sharedKey))continue;shared.add(g.sharedKey);max+=Math.floor(entry.models/g.sharedPer)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}else max+=beCapacity(recipe,g,entry.models,entry.loadoutSelections?._models)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}
   return max;
 }
 function beSyncEnhancements(unit,entry){
@@ -133,13 +148,13 @@ function beChangeChoice(entry,groupId,choiceId,delta){
   if(group.choicePer&&replaced>Math.floor(entry.models/group.choicePer)){notify('Limite delle sostituzioni raggiunto.',true);return false;}
   entry.loadoutSelections=selections;beSync(unit,entry);return true;
 }
-function beResize(entry,models){
+function beResize(entry,models,requestedCounts=null){
   const unit=wbUnits().get(entry.unitId),recipe=unit.loadoutRecipe;
   if(!entry.loadoutSelections||!recipe?.groups){entry.models=models;return true;}
   if(recipe.models.filter(m=>!m.variable).reduce((sum,m)=>sum+m.fixed,0)>models){notify('La taglia è inferiore ai modelli obbligatori.',true);return false;}
   const next=builderClone(entry.loadoutSelections);
   if(recipe.flexibleModels){
-    const counts=builderClone(next._models||beModelCounts(recipe,entry.models));let left=models-entry.models;
+    const counts=requestedCounts?beModelCounts(recipe,models,requestedCounts):recipe.layouts?.length?(models===entry.models?beModelCounts(recipe,models,next._models):beModelCounts(recipe,models)):builderClone(next._models||beModelCounts(recipe,entry.models));if(!counts)return false;let left=recipe.layouts?.length||requestedCounts?0:models-entry.models;
     for(const m of [...recipe.models].sort((a,b)=>(b.max-b.min)-(a.max-a.min))){const n=left>0?Math.min(left,m.max-counts[m.id]):-Math.min(-left,counts[m.id]-m.min);counts[m.id]+=n;left-=n;}
     if(!beModelCounts(recipe,models,counts)){notify('Taglia non consentita dalla composizione.',true);return false;}next._models=counts;
   }
@@ -170,7 +185,25 @@ function beCompositionHtml(unit,entry){
   const recipe=unit.loadoutRecipe;if(!recipe?.flexibleModels||!entry.loadoutSelections)return '';
   const counts=entry.loadoutSelections._models||beModelCounts(recipe,entry.models),body=[...recipe.models].filter(m=>m.variable).sort((a,b)=>(b.max-b.min)-(a.max-a.min))[0];
   if(!counts)return '<p class="wb-warning">Composizione da verificare.</p>';
+  if(recipe.layouts?.length){const selected=recipe.layouts.findIndex(l=>recipe.models.every(m=>l.counts[m.id]===counts[m.id]));return `<label>Composizione<select data-wb-formation>${recipe.layouts.map((l,i)=>`<option value="${i}" ${i===selected?'selected':''}>${esc(l.name)}</option>`).join('')}</select></label>`;}
   return `<details><summary>Modelli della squadra</summary>${recipe.models.map(m=>`<div class="wb-loadout-choice"><span>${esc(m.name)}</span><div class="wb-quantity">${m.variable&&m.id!==body?.id?`<button type="button" data-wb-model="${m.id}" data-wb-model-step="-1" aria-label="Diminuisci ${esc(m.name)}" ${beModelChange(unit,entry,m.id,-1)?'':'disabled'}>−</button><output>${counts[m.id]}</output><button type="button" data-wb-model="${m.id}" data-wb-model-step="1" aria-label="Aumenta ${esc(m.name)}" ${beModelChange(unit,entry,m.id,1)?'':'disabled'}>+</button>`:`<output>${counts[m.id]}</output>`}</div></div>`).join('')}</details>`;
+}
+function beEntryBasePrice(unit,entry,ordinal){
+  if(!unit)return null;let price=null;
+  const layouts=unit.loadoutRecipe?.layouts||[];
+  if(layouts.some(l=>l.prices)){
+    const counts=entry.loadoutSelections?._models;if(!counts)return null;
+    for(const l of layouts)if(Object.keys(l.counts).every(id=>l.counts[id]===counts[id]))for(const p of l.prices||[])if(ordinal>=p.first&&ordinal<=p.last)price=p.points;
+    return price;
+  }
+  for(const p of unit.points||[])if(p.models===entry.models&&ordinal>=(p.first??1)&&ordinal<=(p.last??200))price=p.points;
+  return price;
+}
+function beLoadoutGroupHtml(unit,entry,g){
+  const compact=g.choices.length>12,shown=compact?g.choices.filter(c=>c.id===g.default||(entry.loadoutSelections[g.id]?.[c.id]||0)>0):g.choices;
+  const choiceRow=c=>{const n=entry.loadoutSelections[g.id]?.[c.id]||0;return `<div class="wb-loadout-choice"><span>${esc(c.name)}</span><div class="wb-quantity"><button id="choice-${g.id}-${c.id}-minus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="-1" aria-label="Diminuisci ${esc(g.name+' '+c.name)}" ${!beChoiceAllowed(unit,entry,g,c.id,-1)?'disabled':''}>−</button><output>${n}</output><button id="choice-${g.id}-${c.id}-plus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="1" aria-label="Aumenta ${esc(g.name+' '+c.name)}" ${!beChoiceAllowed(unit,entry,g,c.id,1)?'disabled':''}>+</button></div></div>`;};
+  const picker=compact?`<label>Altra configurazione<select data-wb-loadout-picker="${g.id}"><option value="">Scegli equipaggiamento</option>${g.choices.filter(c=>!shown.includes(c)).map(c=>`<option value="${c.id}" ${beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}>${esc(c.name)}</option>`).join('')}</select></label>`:'';
+  return `<fieldset class="wb-loadout-group"><legend>${esc(compact?(unit.loadoutRecipe.models.find(m=>m.id===g.model)?.name||unit.name)+' · Equipaggiamento':g.name)}${g.sharedPer?' · massimo '+Math.floor(entry.models/g.sharedPer)+' nella squadra':''}</legend>${shown.map(choiceRow).join('')}${picker}</fieldset>`;
 }
 function beLoadoutHtml(unit,entry){
   const recipe=unit.loadoutRecipe;
@@ -178,7 +211,7 @@ function beLoadoutHtml(unit,entry){
   const buttons='<div class="builder-actions"><button id="wb-default-save">Salva come mio default</button><button id="wb-default-delete">Rimuovi mio default</button></div>';
   if(!recipe?.groups)return '<p class="wb-warning">Dotazione da verificare manualmente: la fonte non è strutturata per questa scheda.</p>'+buttons;
   if(!entry.loadoutSelections)return '<button id="wb-standard" type="button">Applica dotazione standard</button><p class="wb-muted">Questa istanza conserva la dotazione manuale salvata.</p>'+buttons;
-  return `${recipe.groups.filter(g=>g.choices.length>1).map(g=>`<fieldset class="wb-loadout-group"><legend>${esc(g.name)}${g.sharedPer?' · massimo '+Math.floor(entry.models/g.sharedPer)+' nella squadra':''}</legend>${g.choices.map(c=>{const n=entry.loadoutSelections[g.id]?.[c.id]||0;return `<div class="wb-loadout-choice"><span>${esc(c.name)}</span><div class="wb-quantity"><button id="choice-${g.id}-${c.id}-minus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="-1" aria-label="Diminuisci ${esc(g.name+' '+c.name)}" ${!beChoiceAllowed(unit,entry,g,c.id,-1)?'disabled':''}>−</button><output>${n}</output><button id="choice-${g.id}-${c.id}-plus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="1" aria-label="Aumenta ${esc(g.name+' '+c.name)}" ${!beChoiceAllowed(unit,entry,g,c.id,1)?'disabled':''}>+</button></div></div>`;}).join('')}</fieldset>`).join('')}${recipe.optionsCovered<recipe.optionsTotal?'<p class="wb-warning">Alcune restrizioni richiedono verifica nel testo delle opzioni.</p>':''}<div class="builder-actions"><button id="wb-default-save">Salva come mio default</button><button id="wb-standard">Dotazione standard</button><button id="wb-manual">Configurazione manuale</button>${builderUi.defaults.some(d=>d.unitId===unit.id)?'<button id="wb-default-delete">Rimuovi mio default</button>':''}</div>`;
+  return `${recipe.links?.length?'<p class="wb-muted">Il team armi aggiunge e rimuove insieme tiratore e servente.</p>':''}${recipe.groups.filter(g=>g.choices.length>1).map(g=>beLoadoutGroupHtml(unit,entry,g)).join('')}${recipe.optionsCovered<recipe.optionsTotal?'<p class="wb-warning">Alcune restrizioni richiedono verifica nel testo delle opzioni.</p>':''}<div class="builder-actions"><button id="wb-default-save">Salva come mio default</button><button id="wb-standard">Dotazione standard</button><button id="wb-manual">Configurazione manuale</button>${builderUi.defaults.some(d=>d.unitId===unit.id)?'<button id="wb-default-delete">Rimuovi mio default</button>':''}</div>`;
 }
 function beEnhancementsHtml(unit,entry){
   const allowed=unit.enhancements.filter(x=>!x.detachment_id||builderUi.army.detachmentIds.includes(x.detachment_id)||entry.enhancementIds.includes(x.id));

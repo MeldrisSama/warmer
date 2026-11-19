@@ -52,6 +52,8 @@ function builderNormalizeV2(array $raw): array {
             $texts=array_column($out['texts'],'description','id');
             $description=static fn($r)=>$r['description']??($texts[$r['descriptionRef']??'']??'');
             $clean['loadoutRecipe']=builderCompileLoadout($clean,$description);
+            $gearNames=array_column(array_filter($clean['loadoutRecipe']['weapons']??[],static fn($w)=>isset($w['ability'])),'ability');
+            foreach($clean['abilities'] as &$ability)if(($ability['type']??'')==='Datasheet'&&in_array($ability['name'],$gearNames,true))$ability['type']='Wargear';unset($ability);
             $clean['effects']=builderCompileEffects($clean['abilities'],$description);
             foreach ($clean['enhancements'] as &$enhancement) $enhancement['effectsJson']=json_encode(builderCompileEffects([$enhancement],$description),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
             unset($enhancement);
@@ -116,8 +118,7 @@ function builderValidateV2(array $catalog, array $in): array {
         if (!empty($u['loadoutRecipe']['models'])&&!array_filter($u['loadoutRecipe']['models'],static fn($m)=>$m['variable'])&&$models!==array_sum(array_column($u['loadoutRecipe']['models'],'fixed')))builderInvalid('Il numero di modelli è fisso per '.$u['name']);
         $manual=$entry['manualPoints']??null;
         if ($manual!==null) $manual=builderInt($manual,'punti manuali',0,20000);
-        $price=null;
-        foreach ($u['points'] as $p) if ($p['models']===$models && $ordinal>=$p['first'] && $ordinal<=$p['last']) $price=$p['points'];
+        $price=builderEntryBasePrice($u,$entry,$ordinal);
         if ($manual!==null) $price=$manual;
         if ($price===null) $issues[]=$u['name'].': costo da inserire manualmente.';
         $total+=$price??0;$entryPrice=$price??0;
