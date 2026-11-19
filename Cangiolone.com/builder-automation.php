@@ -481,7 +481,11 @@ function builderBuildAllies(array $catalog): array {
         if ($fid==='ae') $faction['unitIds']=array_values(array_filter($faction['unitIds'],static fn($id)=>!$has(array_column($units,null,'id')[$id],'Ynnari')||$has(array_column($units,null,'id')[$id],'Asuryani')||$has(array_column($units,null,'id')[$id],'Harlequins')));
         $add=static function(string $id,string $name,array $ids,array $extra=[]) use (&$grants) {if ($ids) $grants[]=$extra+['id'=>$id,'name'=>$name,'unitIds'=>$ids,'detachmentIds'=>[],'excludedDetachmentIds'=>[],'points'=>[],'warlord'=>false,'enhancements'=>false,'kind'=>'points'];};
         $dids=static fn(string $name)=>array_column(array_filter($faction['detachments'],static fn($d)=>strcasecmp(str_replace('’',"'",$d['name']),str_replace('’',"'",$name))===0),'id');
-        if ($imperial&&$fid!=='aoi') $add('assigned_agents','Assigned Agents',$select(static fn($u)=>($u['factionId']??'')==='aoi'),['kind'=>'agents','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-agents/#Assigned-Agents']);
+        if ($imperial&&$fid!=='aoi') {
+            $requirements=[];
+            if($marine&&$fid!=='sm_deathwatch')foreach($units as $unit)if(($unit['factionId']??'')==='aoi'&&($has($unit,'Deathwatch')||$has($unit,'Kill Team')||preg_match('/Deathwatch|\bWatch Master\b|\bWatch Captain Artemis\b/i',$unit['name'])))$requirements[$unit['id']]=$dids('Deathwatch Support');
+            $add('assigned_agents','Assigned Agents',$select(static fn($u)=>($u['factionId']??'')==='aoi'),['kind'=>'agents','unitDetachmentIds'=>$requirements,'source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-agents/#Assigned-Agents']);
+        }
         if ($imperial&&$fid!=='qi') $add('freeblades','Freeblades',$select(static fn($u)=>($u['factionId']??'')==='qi'&&!$has($u,'Adeptus Mechanicus')),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/imperial-knights/#Freeblades']);
         if ($imperial&&$fid!=='tl') $add('titanic_support','Titanic Support',$select(static fn($u)=>($u['factionId']??'')==='tl'),['kind'=>'titan','source'=>'https://wahapedia.ru/wh40k11ed/factions/adeptus-titanicus/']);
         if (in_array($fid,$chaos,true)&&$fid!=='qt') $add('dreadblades','Dreadblades',$select(static fn($u)=>($u['factionId']??'')==='qt'&&!$has($u,'Damned')&&!$has($u,'Heretic Astartes')),['kind'=>'knights','source'=>'https://wahapedia.ru/wh40k11ed/factions/chaos-knights/#Dreadblades']);
@@ -518,7 +522,9 @@ function builderBuildAllies(array $catalog): array {
     return $factions;
 }
 function builderActiveAllyRules(array $faction,array $detachments): array {
-    return array_values(array_filter($faction['allies']??[],static fn($r)=>(!$r['detachmentIds']||array_intersect($detachments,$r['detachmentIds']))&&!array_intersect($detachments,$r['excludedDetachmentIds'])));
+    $rules=array_values(array_filter($faction['allies']??[],static fn($r)=>(!$r['detachmentIds']||array_intersect($detachments,$r['detachmentIds']))&&!array_intersect($detachments,$r['excludedDetachmentIds'])));
+    foreach($rules as &$rule)$rule['unitIds']=array_values(array_filter($rule['unitIds'],static fn($id)=>!isset($rule['unitDetachmentIds'][$id])||array_intersect($detachments,$rule['unitDetachmentIds'][$id])));
+    unset($rule);return array_values(array_filter($rules,static fn($r)=>$r['unitIds']));
 }
 function builderAllyIssues(array $catalog,array $army,array $prices): array {
     if (($catalog['featuresVersion']??0)<3) return [];
