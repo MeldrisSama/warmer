@@ -1,5 +1,7 @@
 # Army Builder 11ª: Build e Play
 
+**Interfaccia più recente:** vedere [Armata, catalogo e schede](builder-interfaccia.md). Il nuovo flusso centrato sull'armata vale su PC e telefono e supera la disposizione permanente a tre colonne descritta nelle sezioni storiche sotto. Stato delle ricette v6 in [Dotazioni guidate](builder-dotazioni.md).
+
 ## Catalogo compatto e controlli contestuali
 
 Categorie del catalogo inizialmente chiuse, ricerca più compatta e risultati aperti quando si cerca; le aperture manuali vengono conservate durante gli aggiornamenti. Rimosso il pannello «Armate salvate e catalogo» dal fondo dell'editor: archivio, import e ripristino sono raggiungibili da «Torna alle armate».

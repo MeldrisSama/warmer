@@ -8,6 +8,37 @@ function context(){
   vm.runInContext(`builderUi.catalog=fixture;builderUi.army=builderWorkbenchNewArmy();builderWorkbenchRender=()=>{};wbAdd('signal');`,c);return c;
 }
 test('PHP enforces shared model limits, fixed enhancement weapons, Warlord eligibility and snapshot ownership',()=>{context();});
+
+test('Adding a unit keeps the army visible; opening its row explicitly shows the sheet',()=>{
+  const c=context();assert.equal(vm.runInContext('workbench.pane',c),'roster');
+  vm.runInContext('wbSelect(builderUi.army.entries[0].entryId)',c);assert.equal(vm.runInContext('workbench.pane',c),'detail');
+  assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Character, Mounted',category:'Other'})`,c),'Character');
+  assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Infantry',category:'Battleline'})`,c),'Infantry');
+});
+
+test('Identical named-model weapons combine quantities; different stats and alternative modes stay distinct',()=>{
+  const c=context();c.rows=['Ancient','Apothecary','Champion'].map(model=>({unitId:'signal',model,count:1,weapon:{name:'Plasma Talon',range:'18',A:'2',BS_WS:'3',S:'7',AP:'-2',D:'1',description:''}}));
+  let html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/class="wb-weapon-name"/g)||[]).length,1);assert.match(html,/<td class="">3<\/td>/);assert.match(html,/Ancient, Apothecary, Champion/);
+  c.rows[2].weapon={...c.rows[2].weapon,S:'8',_changed:['S']};html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/class="wb-weapon-name"/g)||[]).length,2);
+  c.rows=[{unitId:'signal',count:1,weapon:{name:'Cyclone Missile Launcher - Frag',A:'D6',description:''}},{unitId:'signal',count:1,weapon:{name:'Cyclone Missile Launcher - Krak',A:'2',description:''}}];
+  html=vm.runInContext('wbWeaponTable(rows)',c);assert.equal((html.match(/wb-weapon-family/g)||[]).length,1);assert.equal((html.match(/wb-mode-marker/g)||[]).length,2);assert.match(html,/1× Cyclone Missile Launcher/);
+});
+
+test('Ravenwing enhancement bearer is only the Champion; unit Upgrades have no bearer selection',()=>{
+  const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');u.name='Ravenwing Command Squad';u.models.forEach((m,i)=>{m.name=['Ravenwing Ancient','Ravenwing Apothecary','Ravenwing Champion'][i];m.keywords='Mounted, Character';});e.enhancementIds=['gift'];beSyncEnhancements(u,e);`,c);
+  assert.equal(vm.runInContext(`e.enhancementModels.gift`,c),'3');let html=vm.runInContext('beEnhancementsHtml(u,e)',c);assert.match(html,/>Ravenwing Champion<\/option>/);assert.doesNotMatch(html,/>Ravenwing Ancient<\/option>|>Ravenwing Apothecary<\/option>/);
+  vm.runInContext(`u.enhancements[0].upgrade='true';beSyncEnhancements(u,e);`,c);html=vm.runInContext('beEnhancementsHtml(u,e)',c);assert.doesNotMatch(html,/Modello portatore/);assert.equal(vm.runInContext('Object.keys(e.enhancementModels).length',c),0);assert.equal(vm.runInContext(`beGearErrors(e).some(s=>s.includes('portatore'))`,c),false);
+});
+
+test('Paid wargear is labelled per bearer, including choices in the compact picker',()=>{
+  const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal'),g=u.loadoutRecipe.groups.find(g=>g.choices.length>1);u.loadoutRecipe.weapons.find(w=>g.choices[1].weapons[w.id]).cost=5;`,c);
+  assert.match(vm.runInContext('beLoadoutGroupHtml(u,e,g)',c),/\+5 pt per modello/);
+});
+
+test('Datasheet rules are prominent cards, generic rules are in Other rules, long prose starts folded',()=>{
+  const c=context();vm.runInContext(`const u=wbUnits().get('signal');u.abilities=[{name:'Own rule',type:'Datasheet',description:'Local rule'},{name:'Deep Strike',type:'Core',description:'Generic rule'},{name:'Long wargear',type:'Wargear',description:'Long rule '.repeat(70)}];`,c);
+  const html=vm.runInContext('wbSheetRules(u)',c);assert.ok(html.indexOf('Own rule')<html.indexOf('Altre regole'));assert.ok(html.indexOf('Deep Strike')>html.indexOf('Altre regole'));assert.match(html,/<details class="wb-rule wb-rule-card wb-rule-long">/);assert.doesNotMatch(html,/<details class="wb-rule wb-rule-card wb-rule-long" open/);
+});
 test('Unified sheet puts controls after defence and before weapons, omits unavailable upgrades and deduplicates prices',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');u.points.push({...u.points[0]});u.enhancements=[{id:'hidden',name:'Unavailable',detachment_id:'unselected'}];workbench.selected=e.entryId;`,c);
   const html=vm.runInContext('wbDetail()',c);assert.ok(html.indexOf('wb-defence-table')<html.indexOf('wb-unit-controls'));assert.ok(html.indexOf('wb-unit-controls')<html.indexOf('wb-weapon-table'));assert.doesNotMatch(html,/wb-detail-tabs|Potenziamenti|class="wb-upgrades"|Unavailable/);assert.equal((vm.runInContext('wbCosts(u)',c).match(/<th scope="row">3 models/g)||[]).length,1);

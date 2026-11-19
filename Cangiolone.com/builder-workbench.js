@@ -9,6 +9,47 @@ const wbId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toStri
 const wbDescription=row=>row.description||(builderUi.catalog.texts||[]).find(t=>t.id===row.descriptionRef)?.description||'';
 const wbPlus=value=>/^\d+$/.test(String(value))?value+'+':value;
 const wbCategories=['Epic Hero','Character','Battleline','Infantry','Mounted/Beast','Vehicle','Other'];
+const wbMobileCategories=['Character','Infantry','Vehicle','Mounted','Other'];
+function wbMobileCategory(unit){
+  const keys=unit?.keywords||'';
+  if(/\bCharacter\b/i.test(keys)||wbCategory(unit)==='Epic Hero')return 'Character';
+  if(/\bVehicle\b/i.test(keys)||wbCategory(unit)==='Vehicle')return 'Vehicle';
+  if(/\b(Mounted|Beast)\b/i.test(keys))return 'Mounted';
+  if(/\bInfantry\b/i.test(keys)||wbCategory(unit)==='Battleline')return 'Infantry';
+  return 'Other';
+}
+function wbMobileHeader(totals){
+  const a=builderUi.army,detail=workbench.pane==='detail';
+  return `<div class="wb-mobile-header">${detail?'<button data-wb-return-roster type="button" aria-label="Torna all’armata">←</button>':''}<div class="wb-mobile-title"><strong>${esc(a.name)}</strong><small>${totals.total} / ${a.limit} pt · ${workbench.mode==='play'?'Play':esc(wbFaction().name)}</small></div><button data-wb-mobile-save class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvo…':'Salva'}</button><button data-wb-mobile-menu aria-label="Menu lista" aria-haspopup="dialog">☰</button></div>`;
+}
+function wbMobileCatalogList(category='',search=''){
+  const units=wbUnits(),native=new Set(wbFaction().unitIds),term=search.trim().toLocaleLowerCase();
+  const rows=beCatalogIds().map(id=>units.get(id)).filter(u=>u&&(workbench.filters.legends||!u.legends)&&(workbench.filters.allies||native.has(u.id))&&(workbench.filters.titanic||!/(?:^|,\s*)Titanic(?:,|$)/i.test(u.keywords))&&(!category||wbMobileCategory(u)===category)&&(u.name+' '+u.keywords).toLocaleLowerCase().includes(term));
+  return wbMobileCategories.filter(c=>rows.some(u=>wbMobileCategory(u)===c)).map(c=>`<details class="wb-category" ${category||term?'open':''}><summary>${esc(c)} <small>${rows.filter(u=>wbMobileCategory(u)===c).length}</small></summary>${rows.filter(u=>wbMobileCategory(u)===c).map(u=>`<div class="wb-catalog-row"><div class="wb-unit-name">${esc(u.name)}<small>${u.points[0]?.points??'?'} pt${!native.has(u.id)?' · Alleato':''}${u.legends?' · Legends':''} · ${builderUi.army.entries.filter(e=>e.unitId===u.id).length} in lista</small></div><button type="button" data-wb-mobile-add="${esc(u.id)}" aria-label="Aggiungi ${esc(u.name)}">+</button></div>`).join('')}</details>`).join('')||'<p>Nessuna unità trovata.</p>';
+}
+function wbOpenMobileCatalog(category='',trigger){
+  const dialog=wbModal(category||'Catalogo unità',`<div class="wb-popup-search-toolbar"><label class="wb-popup-search">Cerca unità<span class="wb-search-field"><input type="search" data-wb-popup-search placeholder="Nome o keyword" autocomplete="off"><button type="button" data-wb-clear-search aria-label="Cancella ricerca" hidden>×</button></span></label><button type="button" data-wb-popup-filters aria-haspopup="dialog">Filtri</button></div><div class="wb-popup-catalog">${wbMobileCatalogList(category)}</div><p data-wb-added role="status" aria-live="polite"></p>`,trigger);
+  dialog.classList.add('wb-mobile-catalog-dialog');
+  const list=dialog.querySelector('.wb-popup-catalog'),search=dialog.querySelector('[data-wb-popup-search]');
+  const clear=dialog.querySelector('[data-wb-clear-search]');
+  search.addEventListener('input',()=>{list.innerHTML=wbMobileCatalogList(category,search.value);clear.hidden=!search.value;});
+  clear.addEventListener('click',()=>{search.value='';list.innerHTML=wbMobileCatalogList(category);clear.hidden=true;search.focus();});
+  dialog.querySelector('[data-wb-popup-filters]').addEventListener('click',event=>{const filters=wbOpenFilters(event.currentTarget);filters.addEventListener('close',()=>{list.innerHTML=wbMobileCatalogList(category,search.value);},{once:true});});
+  list.addEventListener('click',event=>{const button=event.target.closest('[data-wb-mobile-add]');if(!button)return;const before=builderUi.army.entries.length,top=dialog.scrollTop;wbAdd(button.dataset.wbMobileAdd);if(builderUi.army.entries.length===before)return;dialog.querySelector('[data-wb-added]').textContent=wbUnits().get(button.dataset.wbMobileAdd).name+' aggiunta';list.innerHTML=wbMobileCatalogList(category,search.value);dialog.scrollTop=top;list.querySelector(`[data-wb-mobile-add="${button.dataset.wbMobileAdd}"]`)?.focus({preventScroll:true});});
+}
+function wbOpenMobileSettings(trigger){
+  const dialog=wbModal('Configura armata',wbArmySettings(true),trigger);dialog.classList.add('wb-mobile-settings-dialog');
+  wbBind(dialog);
+  const refresh=()=>{const top=dialog.scrollTop,body=dialog.querySelector('.wb-army-settings');body.outerHTML=wbArmySettings(true);wbBind(dialog);dialog.scrollTop=top;};
+  dialog.addEventListener('change',refresh);
+  dialog.addEventListener('click',event=>{if(event.target.closest('[data-wb-adjust]'))refresh();if(event.target.closest('#wb-detachments'))document.querySelector('dialog[aria-labelledby="wb-detachment-title"]')?.addEventListener('close',refresh,{once:true});});
+}
+function wbOpenMobileMenu(trigger){
+  const a=builderUi.army;
+  const dialog=wbModal('Menu lista',`<label>Nome lista<input data-wb-mobile-name maxlength="100" value="${esc(a.name)}"></label><div class="wb-mobile-actions"><button data-wb-menu-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button data-wb-menu-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button>${workbench.mode==='build'?'<button data-wb-menu-action="settings">Configura armata e distaccamenti</button>':'<button data-wb-menu-action="stratagems">Stratagemmi</button>'}<button data-wb-menu-action="export">Esporta lista</button><button data-wb-menu-action="backup">Backup JSON</button>${builderUi.active&&a.catalogId!==builderUi.active.catalogId?'<button data-wb-menu-action="copy">Crea copia col catalogo attivo</button>':''}<button data-wb-menu-action="archive">Torna alle armate</button></div>`,trigger);
+  dialog.querySelector('[data-wb-mobile-name]').addEventListener('change',event=>{const value=event.target.value.trim();if(!value){event.target.value=a.name;return;}a.name=value;wbChanged();});
+  dialog.addEventListener('click',event=>{const button=event.target.closest('[data-wb-menu-mode],[data-wb-menu-action]');if(!button)return;dialog.close();if(button.dataset.wbMenuMode){wbSetMode(button.dataset.wbMenuMode);return;}switch(button.dataset.wbMenuAction){case 'settings':wbOpenMobileSettings(main.querySelector('[data-wb-mobile-menu]'));break;case 'export':beExport();break;case 'backup':wbDownload('armata-11.json',JSON.stringify(a,null,2),'application/json');break;case 'stratagems':wbModal('Stratagemmi · Core e distaccamenti',wbStratagems(wbAllStratagems()),main.querySelector('[data-wb-mobile-menu]'));break;case 'copy':beCopyActive();break;case 'archive':builderArchive();break;}});
+}
 function wbCategory(unit){
   const keys=(unit.category+' '+unit.keywords).toLowerCase();
   if(/\bepic hero\b/.test(keys))return 'Epic Hero';
@@ -96,8 +137,8 @@ function wbRefreshDetachmentDialog(dialog){
   }
   dialog.querySelector('[data-wb-dialog-disposition]').innerHTML=wbDispositionOptions();
 }
-function wbOpenDetachments(){
-  if(document.querySelector('.wb-detachment-dialog'))return;
+function wbOpenDetachments(trigger){
+  if(document.querySelector('dialog[open][aria-labelledby="wb-detachment-title"]'))return;
   const dialog=document.createElement('dialog');dialog.className='workbench wb-detachment-dialog';
   dialog.setAttribute('aria-labelledby','wb-detachment-title');dialog.innerHTML=wbDetachmentDialogContent();
   dialog.querySelector('[data-wb-close]').onclick=()=>dialog.close();
@@ -107,7 +148,7 @@ function wbOpenDetachments(){
   });
   dialog.addEventListener('click',event=>{const button=event.target.closest('[data-wb-rule]');if(button)wbOpenRule(button);});
   wbCloseOnBackdrop(dialog);
-  dialog.addEventListener('close',()=>{dialog.remove();main.querySelector('#wb-detachments')?.focus({preventScroll:true});});
+  dialog.addEventListener('close',()=>{dialog.remove();(trigger?.isConnected?trigger:main.querySelector('#wb-detachments'))?.focus({preventScroll:true});});
   document.body.appendChild(dialog);dialog.showModal();
 }
 function wbArmyRules(){return wbDetachments().map(d=>`<details class="wb-detachment-resources"><summary>${esc(d.name)} · ${esc(d.dp)} DP</summary>${wbDetachmentSections(d)}</details>`).join('');}
@@ -131,8 +172,8 @@ function wbCloseOnBackdrop(dialog){
   dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();});
 }
 function wbModal(title,body,trigger){
-  const dialog=document.createElement('dialog');dialog.className='workbench wb-detachment-dialog wb-reference-dialog';dialog.setAttribute('aria-labelledby','wb-reference-title');
-  dialog.innerHTML=`<div class="wb-dialog-head"><h2 id="wb-reference-title">${esc(title)}</h2><button data-wb-modal-close type="button" autofocus>Chiudi</button></div>${body}`;
+  const dialog=document.createElement('dialog'),titleId='wb-reference-title-'+wbId();dialog.className='workbench wb-detachment-dialog wb-reference-dialog';dialog.setAttribute('aria-labelledby',titleId);
+  dialog.innerHTML=`<div class="wb-dialog-head"><h2 id="${titleId}">${esc(title)}</h2><button data-wb-modal-close type="button" autofocus>Chiudi</button></div>${body}`;
   dialog.querySelector('[data-wb-modal-close]').onclick=()=>dialog.close();
   dialog.addEventListener('click',event=>{const button=event.target.closest('[data-wb-rule]');if(button)wbOpenRule(button);});
   wbCloseOnBackdrop(dialog);
@@ -149,19 +190,21 @@ function wbArmySettings(open=false){
 function wbOpenFilters(trigger){
   const dialog=wbModal('Filtri del catalogo',`<fieldset class="wb-filters"><legend>Mostra unità</legend>${[['legends','Legends'],['allies','Alleati'],['titanic','Titanic']].map(([key,label])=>`<label class="wb-check"><input type="checkbox" data-wb-filter="${key}" ${workbench.filters[key]?'checked':''}>${label}</label>`).join('')}</fieldset>`,trigger);
   dialog.addEventListener('change',event=>{const key=event.target.dataset.wbFilter;if(!Object.hasOwn(workbench.filters,key))return;workbench.filters[key]=event.target.checked;wbSearch(workbench.search);});
+  return dialog;
 }
 function wbProfileWeapons(unit,entry,type,origin=''){
   return unit.weapons.flatMap(w=>w._variants||[w]).filter(w=>w.name&&w.type===type&&(!entry||Number(entry.weaponCounts[w.line]||0)>0||w.enhancement_id&&entry.enhancementIds.includes(w.enhancement_id))).filter(w=>!w.enhancement_id||entry?.enhancementIds.includes(w.enhancement_id)).flatMap(weapon=>beWeaponOwners(unit,entry,weapon).map(owner=>({weapon,count:owner.count,origin,model:owner.name,unitId:unit.id})));
 }
-function wbRosterRows(){
-  const units=wbUnits(),a=builderUi.army,totals=builderWorkbenchTotals();
-  return a.entries.filter(e=>!e.attachedTo||!wbEntry(e.attachedTo)||wbEntry(e.attachedTo).attachedTo).map(root=>{
+function wbRosterRows(category=null,totals=builderWorkbenchTotals()){
+  const units=wbUnits(),a=builderUi.army;
+  if(category===null)return wbMobileCategories.filter(c=>c!=='Other'||a.entries.some(e=>wbMobileCategory(units.get(e.unitId))===c)||beCatalogIds().some(id=>wbMobileCategory(units.get(id))===c)).map(c=>`<section class="wb-roster-category"><div class="wb-roster-category-head"><h3>${esc(c)}</h3>${workbench.mode==='build'?`<button data-wb-open-catalog="${esc(c)}" aria-label="Aggiungi ${esc(c)}" aria-haspopup="dialog">+</button>`:''}</div>${wbRosterRows(c,totals)||'<p class="wb-muted">Nessuna unità</p>'}</section>`).join('');
+  return a.entries.filter(e=>(!e.attachedTo||!wbEntry(e.attachedTo)||wbEntry(e.attachedTo).attachedTo)&&(!category||wbMobileCategory(units.get(e.unitId))===category)).map(root=>{
     const group=wbGroup(root),groupSelected=group.some(e=>e.entryId===workbench.selected);
     return `<div class="wb-roster-group ${group.length>1?'is-attached':''} ${groupSelected?'is-selected':''}">${group.length>1?'<p class="wb-group-label">Unità attached</p>':''}${group.map(e=>{
       const selected=workbench.mode==='play'?groupSelected:e.entryId===workbench.selected,u=units.get(e.unitId),messages=totals.issues.filter(message=>message.includes(u.name)),errors=beGearErrors(e),cost=(wbPrice(e)??0)+e.enhancementIds.reduce((sum,id)=>sum+Number(u.enhancements.find(x=>x.id===id)?.cost||0),0);
       return `<article class="wb-roster-row ${selected?'is-selected':''}"><button data-wb-select="${e.entryId}" class="wb-unit-name" aria-pressed="${selected}"><span>${messages.length||errors.length?`<span class="wb-invalid" role="img" aria-label="${esc([...new Set([...messages,...errors])].join(' '))}" title="${esc([...new Set([...messages,...errors])].join(' '))}">!</span>`:''}${wbText(wbInstanceName(e))}${e.warlord?' · Warlord':''}</span><small>${e===root?e.models+' modelli':u.support?'Support':'Leader'}</small><strong>${cost} pt</strong></button>${workbench.mode==='build'?`<div class="wb-row-actions"><button data-wb-duplicate="${e.entryId}" aria-label="Duplica ${esc(u.name)}">Duplica</button><button data-wb-remove="${e.entryId}" aria-label="Rimuovi ${esc(u.name)}">Rimuovi</button></div>`:''}</article>`;
     }).join('')}</div>`;
-  }).join('')||'<div class="wb-empty"><h3>La tua armata inizia qui</h3><p>Aggiungi le unità dal catalogo.</p></div>';
+  }).join('')||(category?'':'<div class="wb-empty"><h3>La tua armata inizia qui</h3><p>Aggiungi le unità dal catalogo.</p></div>');
 }
 function builderWorkbenchNewArmy(){
   return {id:null,schemaVersion:2,name:'Nuova armata',edition:'11',catalogId:builderUi.catalog.catalogId,factionId:builderPlayableFactions()[0]?.id||'',detachmentIds:[],disposition:'',limit:2000,dpLimit:3,entries:[]};
@@ -208,7 +251,7 @@ function wbAdd(id){
     e.models=preset.entry.models;e.weaponCounts=builderClone(preset.entry.weaponCounts);if(preset.entry.loadoutSelections)e.loadoutSelections=builderClone(preset.entry.loadoutSelections);else delete e.loadoutSelections;beSync(u,e);
   }else notify('Il default personale appartiene a un catalogo o una taglia diversi: applicata la dotazione standard.');}
   if(wbMustWarlord(u)){builderUi.army.entries.forEach(entry=>entry.warlord=false);e.warlord=true;}
-  builderUi.army.entries.push(e);workbench.selected=e.entryId;workbench.preview=null;workbench.pane='detail';workbench.detailTab='config';wbChanged();wbResetDetailScroll();
+  builderUi.army.entries.push(e);workbench.selected=e.entryId;workbench.preview=null;workbench.pane='roster';workbench.detailTab='config';wbChanged();wbResetDetailScroll();
 }
 function wbMustWarlord(unit){return [...unit.abilities,...unit.composition].some(rule=>/If this (?:model|unit) is in your army,?\s+it must be your Warlord\b/i.test(wbDescription(rule)));}
 function wbApplyRequiredWarlord(){
@@ -262,7 +305,13 @@ function wbOpenRule(button){
   dialog.addEventListener('close',()=>{dialog.remove();if(button.isConnected)button.focus();},{once:true});dialog.showModal();
 }
 function wbWeaponTable(rows){
-  return `<div class="wb-table wb-weapon-table" tabindex="0" role="region" aria-label="Profili delle armi, tabella scorrevole"><table><thead><tr>${['Arma','N.','Gittata','A','BS/WS','S','AP','D'].map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(({weapon:w,count,origin,model,unitId})=>`<tr><th scope="row">${origin||model?`<small class="wb-weapon-origin">${[origin,model].filter(Boolean).map(wbText).join(' · ')}</small>`:''}<span class="wb-weapon-name">${wbText(w.name)}</span><div class="wb-weapon-keywords">${wbWeaponKeywords(wbDescription(w),unitId,w._addedKeywords||[])}</div></th>${[count,/^\d+$/.test(w.range)?w.range+'"':w.range,w.A,wbPlus(w.BS_WS),w.S,w.AP,w.D].map((v,i)=>`<td class="${w._changed?.includes(['','range','A','BS_WS','S','AP','D'][i])?'wb-bonus':''}">${wbText(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const grouped=new Map();
+  for(const row of rows){const w=row.weapon,key=JSON.stringify([row.unitId,row.origin,w.name,w.type,w.range,w.A,w.BS_WS,w.S,w.AP,w.D,wbDescription(w),w._addedKeywords||[],w._changed||[],w.enhancement_id||'']);const existing=grouped.get(key);if(existing){existing.count+=row.count;if(row.model&&!existing.models.includes(row.model))existing.models.push(row.model);}else grouped.set(key,{...row,models:row.model?[row.model]:[]});}
+  rows=[...grouped.values()].map(row=>({...row,model:row.models.join(', ')}));
+  const families=new Map();
+  for(const row of rows){const parts=row.weapon.name.split(/\s+[–—-]\s+/),base=parts.length>1?parts[0]:row.weapon.name,key=JSON.stringify([row.unitId,row.origin,row.model,row.count,row.weapon.type,base,row.weapon.enhancement_id||'']);if(!families.has(key))families.set(key,[]);families.get(key).push({...row,base,mode:parts.slice(1).join(' – ')});}
+  const renderRow=({weapon:w,count,origin,model,unitId,mode},multi)=>`<tr class="${multi?'wb-weapon-mode':''}"><th scope="row">${origin||model?`<small class="wb-weapon-origin">${[origin,model].filter(Boolean).map(wbText).join(' · ')}</small>`:''}<span class="wb-weapon-name">${multi?`<span class="wb-mode-marker" aria-label="Profilo alternativo">↳</span> ${wbText(mode||w.name)}`:wbText(w.name)}</span><div class="wb-weapon-keywords">${wbWeaponKeywords(wbDescription(w),unitId,w._addedKeywords||[])}</div></th>${[count,/^\d+$/.test(w.range)?w.range+'"':w.range,w.A,wbPlus(w.BS_WS),w.S,w.AP,w.D].map((v,i)=>`<td class="${w._changed?.includes(['','range','A','BS_WS','S','AP','D'][i])?'wb-bonus':''}">${wbText(v)}</td>`).join('')}</tr>`;
+  return `<div class="wb-table wb-weapon-table" tabindex="0" role="region" aria-label="Profili delle armi, tabella scorrevole"><table><thead><tr>${['Arma','N.','Gittata','A','BS/WS','S','AP','D'].map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${[...families.values()].map(family=>{const multi=family.length>1&&family.some(row=>row.mode);return (multi?`<tr class="wb-weapon-family"><th colspan="8" scope="rowgroup">${family[0].count}× ${wbText(family[0].base)} <small>· profili alternativi</small></th></tr>`:'')+family.map(row=>renderRow(row,multi)).join('');}).join('')}</tbody></table></div>`;
 }
 function wbModelCards(rows){
   return `<div class="wb-table wb-defence-table" tabindex="0" role="region" aria-label="Profili difensivi, tabella scorrevole"><table><thead><tr>${['Modello','M','T','Sv','Inv','W','Ld','OC','Base'].map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr><th scope="row">${wbText(row[0])}</th>${row.slice(1,9).map((v,i)=>`<td class="${row[9]?.includes(['M','T','Sv','inv_sv','W','Ld','OC','base_size'][i])?'wb-bonus':''}">${wbText(v)||'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -285,8 +334,13 @@ function wbRules(rows,unitId=''){return rows.map(r=>{
   let description=wbDescription(r);const core=wbCoreRule(r.name);
   // Some old exports contain only a repeated title/reference in place of the rule.
   if(core&&(!description.trim()||description.replace(/\s|24\.\d{2}/g,'').toUpperCase()===String(r.name).replace(/\s/g,'').toUpperCase()))description=wbDescription(core);
-  return `<article class="wb-rule"><h4>${wbText(r.name||description)}${r.upgrade==='true'?' · Upgrade':''}</h4>${r.name?beRich(description,unitId):''}</article>`;
+  const title=wbText(r.name||description)+(r.upgrade==='true'?' · Upgrade':''),body=r.name?beRich(description,unitId):'';
+  return description.length>450?`<details class="wb-rule wb-rule-card wb-rule-long"><summary><strong>${title}</strong><span>Leggi regola</span></summary><div>${body}</div></details>`:`<article class="wb-rule wb-rule-card"><h4>${title}</h4>${body}</article>`;
 }).join('');}
+function wbSheetRules(unit,enhancements=[]){
+  const generic=r=>/^(Core|Faction|Army)$/i.test(r.type||''),own=unit.abilities.filter(r=>!generic(r)),other=unit.abilities.filter(generic);
+  return `<div class="wb-own-rules">${wbRules(own,unit.id)}${wbRules(enhancements,unit.id)}</div>${other.length?`<details class="wb-other-rules"><summary>Altre regole <small>${other.length}</small></summary>${wbRules(other,unit.id)}</details>`:''}`;
+}
 function wbProfiles(u,e,play,controls=''){
   const effective=beEffects(u,e);u=effective.unit;
   const weapons=u.weapons.filter(w=>w.name&&(!e || Number(e.weaponCounts[w.line]||0)>0)&&(!w.enhancement_id||e?.enhancementIds.includes(w.enhancement_id)));
@@ -298,7 +352,7 @@ function wbProfiles(u,e,play,controls=''){
   return `<section class="wb-profiles"><h3>${wbText(u.name)}${e?.warlord?' · Warlord':''}</h3>${models}${controls}${stratagems.length?`<details class="wb-unit-stratagems"><summary>Stratagemmi (${stratagems.filter(wbPlayableStratagem).length})</summary>${wbStratagems(stratagems)}</details>`:''}
     ${unconfigured?'<p class="wb-warning">Dotazione da configurare in Build: i profili delle armi non sono ancora selezionati.</p>':''}
     ${weaponTable('Ranged')?`<h4>Armi a distanza</h4>${weaponTable('Ranged')}`:''}${weaponTable('Melee')?`<h4>Armi da mischia</h4>${weaponTable('Melee')}`:''}
-    ${effective.sources.length?`<details class="wb-effects"><summary>Bonus evidenziati in blu</summary><p>Il blu indica una differenza rispetto al profilo base. Fonti:</p>${effective.sources.map(s=>`<p>${esc(s)}</p>`).join('')}</details>`:''}<h4>Abilità e regole</h4>${wbRules(u.abilities,u.id)}${wbRules(enhancements,u.id)}
+    ${effective.sources.length?`<details class="wb-effects"><summary>Bonus evidenziati in blu</summary><p>Il blu indica una differenza rispetto al profilo base. Fonti:</p>${effective.sources.map(s=>`<p>${esc(s)}</p>`).join('')}</details>`:''}<h4>Abilità e regole</h4>${wbSheetRules(u,enhancements)}
     ${u.leaderText.trim()?`<h4>Leader / support</h4><p class="wb-rule-text">${wbRuleInline(u.leaderText,u.id)}</p>`:''}
     <p class="wb-keywords">${wbRuleInline(u.keywords,u.id)}</p>
     </section>`;
@@ -322,7 +376,7 @@ function wbAttachedProfiles(group,controls=''){
     <h3>Armi da mischia</h3>${melee.length?wbWeaponTable(melee):'<p class="wb-muted">Nessun profilo selezionato.</p>'}
     ${members.some(m=>m.sources.length)?`<details class="wb-effects"><summary>Bonus evidenziati in blu · fonti</summary>${[...new Set(members.flatMap(m=>m.sources))].map(s=>`<p>${esc(s)}</p>`).join('')}</details>`:''}<h3>Abilità e regole del gruppo</h3>${members.map(({entry,unit})=>{
       const enhancements=unit.enhancements.filter(x=>entry.enhancementIds.includes(x.id));
-      return `<section class="wb-member-rules"><h4>${wbText(unit.name)}${entry.warlord?' · Warlord':''}</h4>${wbRules(unit.abilities,unit.id)}${wbRules(enhancements,unit.id)}${unit.leaderText.trim()?`<p class="wb-rule-text">${wbRuleInline(unit.leaderText,unit.id)}</p>`:''}<p class="wb-keywords">${wbRuleInline(unit.keywords,unit.id)}</p></section>`;
+      return `<section class="wb-member-rules"><h4>${wbText(unit.name)}${entry.warlord?' · Warlord':''}</h4>${wbSheetRules(unit,enhancements)}${unit.leaderText.trim()?`<p class="wb-rule-text">${wbRuleInline(unit.leaderText,unit.id)}</p>`:''}<p class="wb-keywords">${wbRuleInline(unit.keywords,unit.id)}</p></section>`;
     }).join('')}</section>`;
 }
 function wbDetail(){
@@ -370,6 +424,7 @@ function builderWorkbenchRender(){
   const focusedDetachment=focused?.getAttribute('data-wb-detachment');
   const roots=workbench.mode==='play'?a.entries.filter(e=>!e.attachedTo):a.entries;
   main.innerHTML=`<section class="workbench" data-mode="${workbench.mode}" data-pane="${workbench.pane}" aria-label="Army Builder 11ª edizione">
+    ${wbMobileHeader(totals)}
     <div class="wb-heading"><button id="wb-archive">Torna alle armate</button><div><p class="wb-muted">Warhammer 40.000 · 11ª edizione</p><h1>Army Builder</h1></div><div class="wb-mode" role="group" aria-label="Modalità"><button data-wb-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button data-wb-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button></div></div>
     <div class="wb-toolbar"><label class="wb-name">Nome armata<input id="wb-name" maxlength="100" value="${esc(a.name)}"></label><div class="wb-score" role="status"><strong>${totals.total}<small> / ${a.limit} pt</small></strong><span>${esc(wbDpSummary())}${totals.issues.length?` · ${totals.issues.length} avvisi`:''}</span></div><div class="wb-toolbar-actions"><span id="wb-save-state" role="status">${workbench.dirty?'Modifiche non salvate':'Bozza'}</span><button id="wb-save" class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvataggio…':'Salva armata'}</button>${workbench.mode==='play'?'<button id="wb-stratagems">Stratagemmi</button>':''}<button id="wb-export">Esporta lista</button><button id="wb-backup">Backup JSON</button></div></div>
     ${workbench.mode==='build'?wbArmySettings(configurationOpen??false):''}
@@ -381,7 +436,8 @@ function builderWorkbenchRender(){
     <section class="wb-panel wb-roster" data-wb-scroll="roster"><h2>${workbench.mode==='play'?'Unità in campo':'La tua armata'}</h2>
     <div class="wb-roster-list">${wbRosterRows()}</div>
     <details class="wb-validation"><summary>Verifiche · ${totals.issues.length} avvisi</summary><p>Equipaggiamenti, eccezioni e combinazioni richiedono verifica manuale.</p>${totals.issues.map(i=>`<p class="wb-warning">${esc(i)}</p>`).join('')}</details></section>
-    <aside class="wb-panel wb-detail" data-wb-scroll="detail" aria-label="Profili e regole">${wbDetail()}</aside></div>
+    <aside class="wb-panel wb-detail" data-wb-scroll="detail" aria-label="Profili e regole">${workbench.pane!=='detail'?'':wbDetail()}</aside></div>
+    ${workbench.mode==='build'&&workbench.pane!=='detail'?'<button class="wb-mobile-add" data-wb-open-catalog="" aria-label="Aggiungi unità dal catalogo" aria-haspopup="dialog">+</button>':''}
   </section>`;
   wbBind();
   for(const [key,top] of positions){const el=main.querySelector(`[data-wb-scroll="${key}"]`);if(el)el.scrollTop=top;}
@@ -396,9 +452,13 @@ async function wbSave(){
   try{const r=await api('builderSave',snapshot);if(workbench.revision===revision){builderUi.army=r.army;workbench.dirty=false;}else builderUi.army.id=r.army.id;builderUi.armies=(await api('builderArmies')).armies;notify(r.validation?.errors?.length?'Bozza salvata. Correggi gli errori prima di giocare.':'Armata salvata. Restano i controlli manuali sulle regole.');}
   catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderWorkbenchRender();}
 }
-function wbBind(){
-  const root=main.querySelector('.workbench'),a=builderUi.army;
+function wbBind(container=null){
+  const root=container||main.querySelector('.workbench'),a=builderUi.army;
   const on=(selector,event,handler)=>root.querySelectorAll(selector).forEach(el=>el.addEventListener(event,()=>handler(el)));
+  on('[data-wb-mobile-save]','click',wbSave);
+  on('[data-wb-mobile-menu]','click',wbOpenMobileMenu);
+  on('[data-wb-open-catalog]','click',el=>wbOpenMobileCatalog(el.dataset.wbOpenCatalog,el));
+  on('[data-wb-return-roster]','click',()=>{workbench.pane='roster';workbench.selected=null;workbench.preview=null;builderWorkbenchRender();});
   on('[data-wb-mode]','click',el=>wbSetMode(el.dataset.wbMode));
   on('[data-wb-rule]','click',wbOpenRule);
   on('[data-wb-unit-options]','click',el=>wbOpenUnitOptions(el.dataset.wbUnitOptions,el));
@@ -447,6 +507,7 @@ function wbBind(){
   on('#wb-default-save','click',beSaveDefault);on('#wb-default-delete','click',beDeleteDefault);
 }
 if(typeof window!=='undefined'){
+  if(typeof matchMedia==='function')matchMedia('(max-width:850px)').addEventListener('change',()=>{if(builderUi.view==='editor'&&page()==='builder')builderWorkbenchRender();});
   window.addEventListener('beforeunload',event=>{if(builderHasUnsaved()){event.preventDefault();event.returnValue='';}});
   window.addEventListener('hashchange',()=>document.querySelectorAll('dialog.workbench[open]').forEach(dialog=>dialog.close()));
 }
