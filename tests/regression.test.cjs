@@ -36,7 +36,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    for (const file of ['app.js', 'standings.js', 'campionato.js', 'builder.js', 'theme.js']) {
+    for (const file of ['app.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
       const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
     }
@@ -229,6 +229,10 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   for (const file of ['index.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
+  await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
+  await copyFile(join(root, 'Cangiolone.com/builder-automation.php'), join(application, 'builder-automation.php'));
+  await copyFile(join(root, 'Cangiolone.com/builder-loadout-rules.php'), join(application, 'builder-loadout-rules.php'));
+  await copyFile(join(root, 'Cangiolone.com/builder-source-fixes.php'), join(application, 'builder-source-fixes.php'));
   const setupCode = 'isolated-test-setup';
   const hash = createHash('sha256').update(setupCode).digest('hex');
   // Never copy the deployed configuration or existing uploads into the test app.
@@ -389,6 +393,45 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('invite', {}, 403);
   });
 
+  await t.test('Builder archive persists dates, historical catalogs and owner isolation over HTTP', async () => {
+    await guest('builderArmies', undefined, 401);
+    const catalog=JSON.parse(await readFile(join(__dirname,'workbench-fixture.json'),'utf8'));
+    const first=await admin('builderImport',{catalog});
+    const data={schemaVersion:2,edition:'11',catalogId:first.catalogId,name:'Archive test',factionId:'test',limit:2000,dpLimit:3,detachmentIds:[],disposition:'',entries:[]};
+    const saved=(await alice('builderSave',data)).army;
+    assert.ok(saved.created);
+    const presetEntry={entryId:'default_squad',unitId:'squad',models:5,weaponCounts:{'1':5},enhancementIds:[],attachedTo:null};
+    await guest('builderDefaults',undefined,401);
+    await alice('builderDefaultSave',{unitId:'squad',catalogId:first.catalogId,factionId:'test',entry:presetEntry});
+    assert.equal((await alice('builderDefaults')).defaults.length,1);
+    assert.deepEqual((await bob('builderDefaults')).defaults,[]);
+    await bob('builderDefaultDelete',{unitId:'squad'});
+    assert.equal((await alice('builderDefaults')).defaults.length,1);
+    await alice('builderDefaultDelete',{unitId:'squad'});
+    const changed=(await alice('builderSave',{...saved,name:'Renamed',created:'1900-01-01'})).army;
+    assert.equal(changed.created,saved.created);
+    assert.ok(changed.updated);
+    const supportDraft=await alice('builderSave',{...changed,entries:[{entryId:'support_one',unitId:'support',models:1,weaponCounts:{},enhancementIds:[],attachedTo:null}]});
+    assert.equal(supportDraft.validation.errors.length,1);
+    assert.match(supportDraft.validation.errors[0],/Support/);
+    const active=await admin('builderImport',{catalog:{...catalog,version:'second version'}});
+    const armies=(await alice('builderArmies')).armies;
+    assert.equal(armies.length,1);
+    assert.equal(armies[0].factionName,catalog.factions[0].name);
+    assert.equal(armies[0].catalogId,first.catalogId);
+    assert.equal((await alice('builderCatalog&edition=11')).catalog.catalogId,active.catalogId);
+    assert.equal((await alice('builderCatalog&edition=11&catalogId='+first.catalogId)).catalog.version,catalog.version);
+    assert.deepEqual((await bob('builderArmies')).armies,[]);
+    await bob('builderSave',saved,422);
+    await bob('builderDelete',{id:saved.id},422);
+    // Simulate a stored list from before creation dates existed.
+    sql(`UPDATE w40k_builder_armies SET payload=json_remove(payload,'$.created') WHERE id='${saved.id}'`);
+    assert.equal((await alice('builderArmies')).armies[0].created,null);
+    assert.equal((await alice('builderSave',changed)).army.created,null);
+    await alice('builderDelete',{id:saved.id});
+    assert.deepEqual((await alice('builderArmies')).armies,[]);
+  });
+
   await t.test('Login rejects unknown accounts and wrong passwords as form errors; logout removes access', async () => {
     const user = client();
     await user('state');
@@ -543,7 +586,16 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueLineup', { fixture: id, text: '\u0000Not valid' }, 422);
     await alice('leagueLineup', { fixture: id, text: '  \n  ' }, 422);
     await alice('leagueLineup', list('Army A draft'));
-    await alice('leagueLineup', { fixture: id, text: 'Army A final' });
+    const builderCatalog=(await alice('builderCatalog&edition=11')).catalog;
+    const savedBuilderArmy=(await alice('builderSave',{edition:'11',catalogId:builderCatalog.catalogId,name:'Army A final',factionId:'test',limit:2000,detachmentIds:[],disposition:'',entries:[{entryId:'league_squad',unitId:'squad',models:5,weaponCounts:{'1':5},enhancementIds:[],attachedTo:null}]})).army;
+    const frozenBuilderText=(await alice('builderArmyText&id='+savedBuilderArmy.id)).text;
+    assert.match(frozenBuilderText,/Squadra test/);
+    await bob('builderArmyText&id='+savedBuilderArmy.id,undefined,422);
+    await guest('builderArmyText&id='+savedBuilderArmy.id,undefined,401);
+    await bob('leagueLineup',{fixture:id,builderArmyId:savedBuilderArmy.id,text:''},422);
+    await alice('leagueLineup',{fixture:id,builderArmyId:savedBuilderArmy.id,text:'Mixed sources'},422);
+    await alice('leagueLineup',{fixture:id,builderArmyId:savedBuilderArmy.id,text:''});
+    await alice('builderSave',{...savedBuilderArmy,name:'Changed after submission'});
     assert.deepEqual((await bob('league')).fixtures.find(fixture => fixture.id === id).lineups, { mine: false, opponent: true });
     assert.equal((await fixtureFor(spectator)).lineups, null);
     assert.ok(!JSON.stringify(await bob('league')).includes('Army A final'));
@@ -551,7 +603,9 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await bob(download(aliceId), undefined, 403);
     await alice(download(aliceId), undefined, 403);
     await bob('leagueLineup', list('Army B'));
-    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
+    await alice('builderDelete',{id:savedBuilderArmy.id});
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
     assert.equal(await alice(download(bobId)), 'Army B');
     await spectator(download(aliceId), undefined, 403);
     await guest(download(aliceId), undefined, 401);
@@ -627,7 +681,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal((await pendingFixture()).pending.token, proposal);
     await admin('leagueConfirm', { fixture: unfinished.id, league: firstLeague, proposal }, 409);
     await admin('void', { id: saved.id, void: true }, 409);
-    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
     await admin('leagueResume', { league: firstLeague });
     assert.equal((await alice('league&id=' + firstLeague)).league.paused, null);
     assert.equal((await pendingFixture()).pending.token, proposal);
@@ -638,7 +692,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(archived.fixtures.length, 6);
     assert.equal(archived.fixtures.find(fixture => fixture.id === unfinished.id).awaiting, false);
     assert.equal((await fixtureFor(spectator)).result.scoreA, 67);
-    assert.equal(await bob(download(aliceId)), 'Army A final');
+    assert.equal(await bob(download(aliceId)), frozenBuilderText);
     await alice('leagueLineup', list('Archived'), 409);
     await alice('leaguePropose', { ...score, fixture: unfinished.id, league: firstLeague }, 409);
     await admin('void', { id: saved.id, void: true }, 409);

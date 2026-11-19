@@ -314,7 +314,7 @@ if($action==='download') {
 
 }
 
-if(in_array($action,['builderCatalog','builderArmies'],true)) {
+if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
     try {
@@ -327,7 +327,7 @@ if($_SERVER['REQUEST_METHOD']!=='POST') fail('Metodo non consentito.',405);
 
 if(!hash_equals($_SESSION['csrf'],$_SERVER['HTTP_X_CSRF_TOKEN']??'')) fail('Sessione scaduta: ricarica la pagina.',403);
 
-if((int)($_SERVER['CONTENT_LENGTH']??0)>8000000) {
+if((int)($_SERVER['CONTENT_LENGTH']??0)>($action==='builderImport'?32000000:8000000)) {
 
     fail('Richiesta troppo grande.',413);
 
@@ -429,13 +429,18 @@ try {
     }
     if(!$me) fail('Accedi per continuare.',401);
 
-    if(in_array($action,['builderImport','builderSave','builderDelete'],true)) {
+    if(in_array($action,['builderImport','builderSave','builderDelete','builderDefaultSave','builderDefaultDelete'],true)) {
         try {
             builderSchema($storage->builderConnection(),$storage->builderDriver());
             result(builderHandle($storage->builderConnection(),$action,$me,$in));
         } catch(BuilderInputError $e) { fail($e->getMessage()); }
     }
     if($leagueWrite) {
+        if ($action==='leagueLineup'&&!empty($in['builderArmyId'])) {
+            if (!empty($in['filename'])||!is_string($in['text']??'')||trim($in['text']??'')!=='') fail('Scegli una sola fonte per la lista.');
+            try {$in['text']=builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));}
+            catch(BuilderInputError $e){fail($e->getMessage());}
+        }
         $leagueId=updateLeague($action,$in,$me,$db,$mail);
         save();
         result($leagueId===null ? ['ok'=>true] : ['ok'=>true,'id'=>$leagueId]);

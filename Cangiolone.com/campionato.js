@@ -19,6 +19,9 @@ let openFixture;
 let lineupRequest;
 let openingToken;
 let announcementToken;
+let builderArmies=[];
+let builderListsLoaded=false;
+function builderListOptions(){return '<option value="">Incolla testo o carica un file</option>'+builderArmies.map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} · ${escapeHtml(a.factionName||a.edition+'ª ed.')}</option>`).join('');}
 
 async function request(name, data) {
   const id = leagueQuery.get('id');
@@ -160,6 +163,9 @@ function listPanel(fixture) {
       ? 'L’avversario ha consegnato. Carica la tua lista per sbloccare entrambe.'
       : 'Le liste saranno visibili ai due giocatori dopo entrambe le consegne.'}</p>
     <form class="lineup-form">
+      <label>Lista dal tuo List Builder<select name="builderArmyId" ${builderListsLoaded?'':'disabled'}>${builderListOptions()}</select></label>
+      <p class="fine-print">Puoi consegnare una lista salvata nel tuo profilo. Al momento della consegna ne viene conservata una copia: le successive modifiche nel builder non cambiano la lista consegnata.</p>
+      <pre data-builder-preview hidden aria-live="polite"></pre>
       <label>Incolla la lista esercito<textarea name="text" rows="5" spellcheck="false"></textarea></label>
       <label>Oppure carica un file .txt<input type="file" name="file" accept=".txt,text/plain"></label>
       ${action('leagueLineup', submitted ? 'Sostituisci la lista' : 'Consegna la lista', 'secondary')}
@@ -340,10 +346,11 @@ document.addEventListener('submit', async event => {
   try {
     if (name === 'leagueLineup') {
       const { file } = data;
-      const pasted = data.text.trim() !== '';
-      if (file.name && pasted) throw new Error('Scegli se incollare la lista o caricare un file.');
-      if (!file.name && !pasted) throw new Error('Incolla la lista o carica un file .txt.');
-      if (file.name) {
+      const pasted = (data.text||'').trim() !== '';
+      if (data.builderArmyId) {if(pasted||file?.name)throw new Error('Scegli una sola fonte per la lista.');data.text='';}
+      else if (file?.name && pasted) throw new Error('Scegli se incollare la lista o caricare un file.');
+      else if (!file?.name && !pasted) throw new Error('Scegli una lista dal builder, incolla il testo o carica un file .txt.');
+      if (file?.name) {
         if (file.size > 1048576) throw new Error('Il file deve pesare al massimo 1 MB.');
         data.filename = file.name;
         try {
@@ -471,6 +478,18 @@ $('lineup-reader').addEventListener('close', event => {
   if (!event.currentTarget.open) lineupRequest?.abort();
 });
 
+document.addEventListener('change',async event=>{
+  const select=event.target;if(!select.matches('.lineup-form [name=builderArmyId]'))return;
+  const form=select.closest('form'),preview=form.querySelector('[data-builder-preview]'),id=select.value;
+  form.querySelector('[name=text]').disabled=Boolean(id);form.querySelector('[name=file]').disabled=Boolean(id);preview.hidden=!id;
+  if(!id){preview.textContent='';return;}preview.textContent='Caricamento della lista salvata…';
+  try{const data=await request('builderArmyText&id='+encodeURIComponent(id));if(select.value===id)preview.textContent=data.text;}
+  catch(error){if(select.value===id)preview.textContent=error.message;}
+});
+request('builderArmies').then(data=>{
+  builderArmies=data?.armies||[];builderListsLoaded=true;
+  for(const select of document.querySelectorAll('.lineup-form [name=builderArmyId]')){select.innerHTML=builderListOptions();select.disabled=false;}
+}).catch(()=>{builderListsLoaded=true;});
 request('league').then(data => {
   state = data;
   render();

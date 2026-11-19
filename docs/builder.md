@@ -1,0 +1,122 @@
+# Army Builder 11ª: Build e Play
+
+## Catalogo compatto e controlli contestuali
+
+Categorie del catalogo inizialmente chiuse, ricerca più compatta e risultati aperti quando si cerca; le aperture manuali vengono conservate durante gli aggiornamenti. Rimosso il pannello «Armate salvate e catalogo» dal fondo dell'editor: archivio, import e ripristino sono raggiungibili da «Torna alle armate».
+
+Build mostra la sola scheda del membro attached selezionato, con i bonus del gruppo pertinenti. Play mostra insieme tutti i membri. Gli errori sono notifiche sovrapposte richiudibili: chiuderle non modifica gli errori della lista, i simboli rossi o il blocco di Play. Se il problema viene risolto e poi ricreato, l'avviso torna.
+
+Le unità con regola esplicita «If this model/unit is in your army, it must be your Warlord» vengono scelte come Warlord quando aggiunte. Aprendo una lista con un unico Warlord obbligatorio, la scelta viene corretta come modifica non salvata, senza scrivere automaticamente la lista. Se l'obbligo non è rispettato, il server lo segnala anche nel salvataggio della bozza. Nessuna scelta arbitraria all'apertura con più candidati obbligatori.
+
+Nei modelli senza opzioni, come Lion El'Jonson, non compaiono i cassetti superflui di equipaggiamento/costi. «Opzioni di equipaggiamento» sostituisce la vecchia etichetta «Dotazione di fonte e restrizioni» dove ci sono alternative. Correzione temporanea dei punti e note sono nel pulsante «⋯» della scheda. Tutti i popup del builder si chiudono cliccando sullo sfondo esterno, oltre a Chiudi/Escape.
+
+«Unità · punti e quantità» include titolo, totale/limite, distaccamenti e Enhancement/Upgrade sotto la relativa unità, mantenendo fuori i dettagli delle armi. «Solo nomi» resta strettamente un elenco di nomi. Per stato e lavoro residuo sulle ricette leggere [Completare le dotazioni guidate](builder-dotazioni.md).
+
+## Archivio raggruppato e scheda unica
+
+L'archivio raggruppa sempre per esercito/edizione: l'ordinamento scelto si applica alle liste di ogni gruppo e determina l'ordine dei gruppi dalla prima lista. Titoli grandi, gruppi richiudibili e icone locali per i 35 eserciti giocabili. Le icone SVG provengono da [wh40k-icon](https://github.com/Certseeds/wh40k-icon), revisione fissata nel manifest, CC-BY-NC-SA-4.0; autori, licenza e file originali sono inclusi in `assets/factions`. Nessun codice dell'app upstream importato e nessuna dipendenza remota per mostrare i loghi.
+
+La creazione mostra i quattro raggruppamenti principali: clic apre il popup degli eserciti, la scelta ritorna al form senza perdere formato/DP. La configurazione globale è in alto, fuori dalle colonne: distaccamenti, disposizione immediatamente sotto e riepilogo dei distaccamenti dopo la disposizione. Le colonne contengono catalogo, istanze dell'armata e schede. Filtri Legends/Alleati/Titanic in popup. Il cambio Build/Play azzera lo scroll dei pannelli.
+
+La scheda Build non ha più tab Profili/Configura: difesa e statistiche, associazione/Warlord/taglia, scelte d'armi e Upgrade/Enhancement disponibili, poi profili d'arma e regole. Costi e composizione deduplicano solo fasce identiche; prezzi e intervalli di copie diversi restano distinti. I controlli avanzati e la dotazione di fonte rimangono richiudibili. Nessuna intestazione dei potenziamenti se nessuna scelta è disponibile. I gruppi attached hanno banda oro; il blu continua a indicare i bonus ai profili, come richiesto precedentemente.
+
+Le regole dei distaccamenti hanno intestazione e corpo in una scheda dedicata, sia nel popup diretto sia nella selezione. Il primo titolo della regola è separato dal testo operativo. Parole ambigue come «assault» dentro «assault doctrine» non aprono erroneamente la keyword d'arma; il riferimento esplicito `[ASSAULT]` resta cliccabile.
+
+Export: GW app · testo, WTC, **Unità · punti e quantità** e **Solo nomi**. Il formato unità omette armi, note e attachment, mantenendo titolo, totale, distaccamenti e potenziamenti; Solo nomi omette anche questi metadati. Short resta solo un alias interno del formato essenziale. I formati completi usano nomi leggibili delle istanze senza ID e non includono validation/manual review o codici di catalogo. Gli avvisi restano nell'interfaccia; JSON conserva i dati completi.
+
+Stato delle dotazioni guidate sul catalogo v5: 1.407/1.487 voci con ricetta; 834 riconoscono tutte le righe delle opzioni, incluse quelle senza opzioni. 573 ricette sono parziali e 80 schede senza ricetta. Non considerare quindi risolte tutte le schede manuali né certificata la legalità di ogni restrizione in prosa.
+
+## Schede, keyword e stratagemmi
+
+Aggiornamento dopo il feedback: il catalogo corrente è `wahapedia-11-builder-v5.json`. Stratagemmi singolarmente collassati con nome e CP su barra colorata; esclusi Boarding Actions/Combat Patrol. In Play «Stratagemmi» apre Core e distaccamenti anche senza selezionare un'unità. Nelle schede la sezione è all'inizio. I distaccamenti espongono regole, stratagemmi e potenziamenti anche prima della selezione. La disposizione si sceglie sotto «Distaccamenti»; i nomi selezionati aprono direttamente la regola.
+
+Le sostituzioni «For every N models, 1 model» condividono il limite fra sottogruppi. La Ravenwing Command Squad consente un grenade launcher, scegliendo Ancient, Apothecary o Champion; limiti controllati anche dal server e per conteggi manuali. Le armi riportano il modello. Gli oggetti Wargear senza profilo d'arma partecipano alle scelte: lo Storm Shield è abbinato al Thunder Hammer e modifica W solo sui modelli equipaggiati, con varianti nei profili difensivi compatti.
+
+Numeri e keyword modificati rispetto alla fonte sono blu; keyword già presente con valore uguale/superiore resta normale. L'associazione al gruppo determina i destinatari del bonus Leader. Gli effetti con condizioni di gioco (carica, dottrina, fase ecc.) non sono applicati ai profili e non hanno interruttori. Rimosso «Effetti e valori di fonte»; un riepilogo collassato spiega le fonti dei bonus effettivi. Le mappature non riconosciute restano nel testo delle regole.
+
+Solo i Character hanno Warlord. Taglie fisse senza campo Miniature; taglie variabili e quantità usano −/+. Punti personalizzati e note nel menu «⋯». Le schede senza opzioni di wargear omettono azioni per default, ripristino o modalità manuale. Armi dei potenziamenti fissate a una, con scelta e salvataggio del portatore nelle unità con più modelli quando necessario. Unità attached in schede distinte collegate da banda laterale: Build apre il membro selezionato, Play mostra i profili del gruppo. Simbolo rosso per problemi della scheda. «Squadra 1/2» distingue soltanto istanze dello stesso tipo, sostituendo l'indice generico «copia 2».
+
+Editor fisso nell'altezza della finestra, pannelli con scorrimento indipendente anche su mobile; archivio e creazione mantengono lo scorrimento normale. «Esporta lista» apre preview inizialmente GW app · testo, scelta formato, copia (fallback selezione) e download opzionale. Keyword cliccabili anche nel testo delle regole.
+
+Nel campionato si può scegliere e visualizzare una lista salvata nel proprio builder. Il server verifica il proprietario e genera il testo dal catalogo originale; alla consegna viene salvato un testo indipendente. Modifiche/cancellazione successive della lista non lo cambiano. Restano il blocco dopo rivelazione e l'accesso solo dopo entrambe le consegne. La selezione non certifica la legalità completa di una bozza.
+
+I profili dei modelli sono raccolti in una tabella compatta con caratteristiche allineate. Le armi mantengono la tabella comparabile, con origine del membro attached e keyword sotto il nome. Le keyword risolte aprono un dialogo nativo accessibile da mouse, tocco e tastiera, chiudibile con Escape/Chiudi e con ripristino del focus. Il testo inglese proviene dalla libreria Core Rules del catalogo oppure dall'abilità della stessa scheda; i parametri e le qualifiche rimangono nel titolo, anche per keyword aggiunte dagli effetti. Le keyword prive di testo restano visibili senza pulsante.
+
+La prima versione con libreria opzionale `coreRules` (35 regole) era `wahapedia-11-builder-v4.json`, schema 2 / featuresVersion 3 conservati anche in v5. Il quarto argomento del convertitore è la pagina HTML Core Rules dell'11ª, acquisita separatamente: viene estratto il testo operativo, escludendo lore e numeri concatenati ai titoli. I vecchi cataloghi restano leggibili senza quella libreria; per usare nuovi riferimenti e ricette su una lista storica, creare esplicitamente una copia con il catalogo attivo. La vecchia dotazione manuale non assegna arbitrariamente il nuovo wargear a un modello: applicare la dotazione standard nella copia e scegliere le alternative.
+
+Gli stratagemmi mostrano nome, CP, tipo, turno, fase e campi WHEN / TARGET / EFFECT / RESTRICTIONS. Le eventuali opzioni +1CP e il testo non strutturato sono conservati. Nei gruppi attached ogni stratagemma compare una volta, con le unità di provenienza. La legenda verificata a pagina 55 dei [Core Rules ufficiali dell'11ª](https://assets.warhammer-community.com/eng_01-06_warhammer40k_new40k_core_rules-was6fbu1ix-hfewhmxyiy.pdf) è blu per Your turn, rosso per Opponent’s turn e verde per Either player’s turn; le etichette testuali accompagnano sempre il colore. Metadati sconosciuti hanno un colore neutro.
+
+Riferimento identificato: [Warmind](https://warmind.online/), sezione Datasheets, con profili compatti, armi effettivamente selezionate e unità attached sulla stessa pagina. La rifinitura mantiene colori e tipografia Cangiolone. Non è stata attestata una prova interattiva dell'app Warmind. I banner restano da integrare: l'export non fornisce URL di immagini e non è stata verificata una fonte remota con corrispondenza e incorporamento adatti; nessuna apertura della CSP o immagine AI.
+
+## Catalogo builder 3 e automazioni
+
+Il convertitore produce ancora schema 2, con `featuresVersion: 3`: testo operativo strutturato, provenienza/Legends, distinzione Upgrade, gruppi di dotazione, effetti riconosciuti e contingenti alleati. Il nuovo file locale è `wahapedia-11-builder-v3.json`. L’import crea un nuovo catalogo immutabile; le liste esistenti non vengono migrate. «Crea copia col catalogo attivo» apre una bozza separata, rimappando le armi per nome e conservando l’originale. Si ferma se manca una scheda, un’arma selezionata, un potenziamento o un distaccamento; non scarta dati in silenzio.
+
+Dotazione standard e gruppi di sostituzione sono disponibili sulle schede riconosciute. Il catalogo verificato contiene 1.483 schede originali e quattro rappresentazioni Titanicus Traitoris ottenute sostituendo i keyword come previsto dalla fonte. Sono riconosciute dotazioni per **1.407 / 1.487** voci; **797** hanno anche tutte le righe di opzioni riconosciute (incluse quelle senza opzioni). Gli altri casi restano manuali, con avviso e passaggio esplicito alla configurazione manuale. La presenza di una ricetta non certifica tutte le restrizioni della scheda.
+
+I gruppi distinguono sergente e altri modelli. Aumentare un’alternativa sottrae la dotazione di base nello stesso gruppo; diminuirla restituisce la base. Se più scelte del giocatore potrebbero essere sacrificate, l’operazione viene fermata finché il giocatore non riduce una scelta. Le modalità della stessa arma hanno quantità sincronizzate. Cambio taglia e armi a costo aggiuntivo vengono ricalcolati; i punti base manuali restano un override comprensivo della dotazione.
+
+«Salva come mio default» registra una configurazione per tipo di unità, proprietario e versione del catalogo. Si applica solo alle nuove istanze, senza modificare quelle esistenti. Associazioni, Warlord, note, punti manuali ed Enhancement/Upgrade sono esclusi dal default. Al cambio di catalogo/taglia non compatibili, il default non viene applicato automaticamente. «Dotazione standard» e «Rimuovi mio default» sono azioni distinte.
+
+Gli effetti sono derivati da regole esatte riconosciute, senza modificare il catalogo. Supportati keyword d’arma, modificatori numerici mappati, Save e invulnerabile, con distinzione portatore/unità/gruppo attached, provenienza e valori base consultabili. I bonus al solo portatore non sono estesi arbitrariamente a un’unità con più modelli. Gli effetti condizionati riconosciuti richiedono attivazione esplicita e vanno disattivati al termine della condizione; non sono salvati come bonus permanenti. Molte condizioni, aure, abilità a scelta e regole in prosa restano non automatizzate e devono essere verificate: **nessun parser universale o certificazione di legalità completa**.
+
+Enhancement e Upgrade sono distinti nell’interfaccia e conservano costi e armi dedicate. La validazione segnala duplicazioni, più di un potenziamento per unità/gruppo e oltre tre copie dello stesso Upgrade; due/tre copie dello stesso Upgrade consumano un solo slot complessivo, mantenendo tutti i costi.
+
+Legends, Titanic e alleati hanno filtri indipendenti. Gli alleati sono concessi per ID dalle regole della fazione e dai distaccamenti selezionati: vedere [matrice e limiti](builder-alleati.md). Rimuovere un’autorizzazione conserva le unità e segnala l’errore. Quote Agents, Knights/Titans, punti, Battleline dei Daemons e divieti Warlord/potenziamenti sono verificati anche sul server. Restano manuali, fra gli altri, l’imbarco iniziale dei trasporti Agents e i casi in prosa non strutturati.
+
+Esportazione TXT in quattro impaginazioni: **GW app · testo**, **WTC**, **Unità · punti e quantità**, **Solo nomi**, con download oppure copia dalla preview. Il fallback offre testo selezionato se gli appunti non sono disponibili. Le etichette indicano convenzioni testuali, non un’importazione garantita nell’app GW né approvazione automatica da parte di un organizzatore WTC. Backup/ripristino JSON resta il formato completo per l’applicazione.
+
+Il nuovo editor usa il catalogo `schemaVersion: 2`. I cataloghi e le armate precedenti restano nel database e si aprono con l'editor storico. Nessuna migrazione distruttiva o aggiornamento automatico dei cataloghi delle liste.
+
+## Catalogo locale Wahapedia
+
+Acquisire i CSV dalla specifica dell'[export 11ª](https://wahapedia.ru/wh40k11ed/the-rules/data-export/) e le pagine HTML delle fazioni indicate in `Factions.csv`. Conservare le pagine come `<faction_id>.html` (per esempio `SM.html`) in una cartella separata: contengono i tag Unique non presenti nei CSV. L'importatore non esegue script né effettua richieste di rete.
+
+```powershell
+php -d memory_limit=512M scripts/import-wahapedia.php C:/dati/csv C:/dati/catalogo-11.json C:/dati/faction-pages C:/dati/core-rules.html
+```
+
+Lo script gestisce UTF-8/BOM, il delimitatore `|` e le descrizioni multilinea dell'export. Conserva schede e costi condizionati; interpreta automaticamente le fasce standard per numero di copie e i costi per taglia. Le tariffe non strutturabili e i costi di equipaggiamento richiedono un prezzo base manuale comprensivo della dotazione, a cui vengono aggiunti i potenziamenti selezionati. Il dettaglio mostra sempre le righe originali dei costi. Il convertitore fallisce se manca una pagina di fazione o cambia il formato riconosciuto dei tag Unique.
+
+Importare il JSON come amministratore dalla sezione «Armate salvate e catalogo». Anche la schermata iniziale senza catalogo accetta il nuovo JSON. Ogni import crea uno snapshot immutabile. Il browser mostra la fonte/versione nel dettaglio del catalogo. Il file generato e i dati di gioco rimangono fuori Git.
+
+Limite applicativo: 28 MB di catalogo, 32 MB di richiesta import. Il catalogo builder 3 verificato occupa circa 10,1 MB: usare `post_max_size=32M` per importarlo. Gli script delle anteprime impostano questo limite e 256 MB di memoria solo per il loro server isolato. La normalizzazione completa è stata verificata anche con limite 128 MB (picco 108 MiB); questo non attesta un import IIS/MySQL in produzione. Il convertitore richiede DOM e usa 512 MB per gli intermedi. Nessuna modifica automatica alla configurazione del sito pubblicato.
+
+## Utilizzo
+
+- L’ingresso mostra l’archivio personale delle armate salvate sul server. Sono disponibili apertura, eliminazione e ordinamento per fazione, creazione o ultima modifica (predefinito, più recenti prima). Le date di creazione mancanti nelle liste storiche sono indicate come non disponibili, senza ricavarle dall’ultima modifica.
+- «Crea nuova lista» apre la scelta dell’esercito nei gruppi Xenos, Chaos, Imperium e Adeptus Astartes. Poi scegliere Incursion 1000, Strike Force 2000 oppure Onslaught 3000, prima di aprire il builder. Unbound Adversaries è esclusa. Le liste storiche si aprono con il proprio catalogo e l’editor corrispondente. «Torna alle armate» chiede conferma se ci sono modifiche non salvate. Il catalogo unità segue la fazione della lista.
+- Build: «Distaccamenti» apre un popup; le checkbox selezionano, il nome espande le regole. La scelta rimane aperta durante le modifiche e il popup conserva il focus. Escape, «Chiudi» o clic sullo sfondo lo chiudono. Le scelte sono applicate alla bozza; «Salva armata» le conserva sul server. Nel popup si sceglie anche la disposizione fra quelle offerte dai distaccamenti selezionati. Unique e DP disabilitano le combinazioni incompatibili.
+- Incursion 1000 e Strike Force 2000 impostano rispettivamente 2 e 3 DP. Incursion consente anche un unico distaccamento da 3 DP, secondo l’eccezione delle regole. La tabella 11ª consultata non definisce Onslaught: la voce 3000 richiesta dal gruppo conserva DP espliciti, modificabili dalla creazione e dalla configurazione. Fonti: [GW](https://www.warhammer-community.com/en-gb/articles/95fucn12/building-an-army-in-the-new-edition-of-warhammer-40000/) e [Wahapedia, Muster Armies](https://wahapedia.ru/wh40k11ed/the-rules/core-rules/#Muster-Armies), consultate il 18 novembre 2026.
+- Il clic sul nome nel catalogo consulta la scheda; `+` aggiunge un'istanza. Il clic su una voce dell'armata apre la scheda unica con profili, dotazione, regole e attachment. In Play i controlli di modifica non sono presenti.
+- La dotazione guidata usa gruppi di modelli e sostituzioni −/+. Le modalità della stessa arma condividono la quantità. Per i casi non riconosciuti resta la configurazione manuale, senza cancellare i dati salvati. I profili non selezionati non compaiono nella scheda della lista.
+- Il catalogo raggruppa nell’ordine Epic Hero, Character, Battleline, Infantry, Mounted/Beast, Vehicle, Other, con precedenza fra ruoli/keyword. La ricerca aggiorna soltanto il catalogo, senza ricreare la schermata. Rimossa l’animazione d’ingresso che si ripeteva a ogni aggiornamento.
+- Le associazioni sono proposte ai Leader/Support pertinenti, solo verso istanze compatibili secondo `leads` del catalogo. Le copie sono distinte e i posti già occupati da un membro dello stesso ruolo sono esclusi; la scelta resta del giocatore. Le associazioni storiche da verificare restano visibili e rimovibili. Eccezioni in prosa non modellate restano manuali. I cicli e i riferimenti orfani sono rifiutati. La rimozione di un bodyguard libera i suoi membri.
+- Un Support senza associazione produce un errore esplicito nel client e nella validazione API. Può essere salvato come bozza; l’interfaccia blocca il passaggio a Play finché non è associato.
+- Play raggruppa bodyguard, leader e support senza duplicare punti. Il dettaglio mostra prima tutti i profili dei modelli, poi tutte le armi ranged, tutte le melee e infine tutte le regole, con provenienza per ciascun membro. I profili derivano dai valori di fonte e dagli effetti strutturati pertinenti; gli altri effetti richiedono verifica manuale.
+- Salva armata conserva la bozza anche con avvisi. Nessuna lista è certificata come pienamente legale: le regole non automatizzate richiedono verifica manuale.
+- TXT comprende configurazione e riferimenti degli attachment. Backup JSON conserva tutti i dati della lista; il ripristino crea una nuova armata e richiede che lo snapshot del catalogo sia ancora disponibile sullo stesso server.
+
+Le modifiche restano in memoria quando si cambia pagina interna; nuova lista, apertura di una lista diversa e import chiedono di abbandonare modifiche non salvate. Il browser avvisa alla chiusura/ricarica. Salvare prima di logout o chiusura del browser.
+
+## Anteprima e verifiche
+
+```powershell
+$env:PHP_BINARY='C:/path/to/php.exe'
+node --test tests/builder-engine.test.cjs tests/builder-archive.test.cjs tests/builder.test.cjs tests/workbench.test.cjs tests/regression.test.cjs
+node scripts/preview-builder.cjs C:/dati/catalogo-11.json C:/path/to/NEW-preview-folder
+```
+
+Il secondo comando copia solo i file applicativi, crea una configurazione SQLite nuova, avvia `127.0.0.1:8798` e verifica import, salvataggio e lettura via API. Non legge né copia `config.php`, database o upload esistenti. La cartella deve essere nuova. Credenziali solo locali e usa e getta: `preview` / `BuilderPreview!2026`. Il processo rimane attivo; Ctrl+C ferma il server.
+
+Per aggiornare e avviare **l’anteprima già esistente su questa postazione**, conservando account e liste:
+
+```powershell
+Set-Location 'C:\Users\manue\projects\warmer'
+$env:PHP_BINARY='C:\Users\manue\AppData\Local\Temp\warmer-php84\php.exe'
+node scripts/start-builder-preview.cjs
+```
+
+Aprire `http://127.0.0.1:8799/#builder` e accedere con l’account locale di prova. Lo script verifica che il database configurato sia esattamente `preview.sqlite` nella cartella `warmer-builder-play-preview-4`, aggiorna soltanto i file applicativi tracciati di primo livello, esclude `config.php` e lascia intatti database e upload. Se la porta è occupata si ferma senza arrestare processi. È possibile indicare cartella e porta: `node scripts/start-builder-preview.cjs C:/Users/manue/projects/warmer-builder-play-preview-4 8800`. Non crea una nuova anteprima. Lasciare aperto il terminale; Ctrl+C arresta il server.
+
+`node scripts/render-builder-preview.cjs C:/dati/catalogo-11.json` genera snapshot HTML delle vere template in `.taste-skill/qa` per gli strumenti della skill frontend. Sono snapshot statici di verifica visiva, non sostituiscono l'applicazione e le prove delle API. Stile, layout e gerarchie seguono Cangiolone; le ricette marketing della skill (hero, sezioni a schermo intero, effetti promozionali) non si applicano a questo editor operativo.

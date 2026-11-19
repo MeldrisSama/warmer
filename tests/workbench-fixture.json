@@ -1,0 +1,13 @@
+{
+  "schemaVersion":2,"edition":"11","version":"test-1","source":"Synthetic fixture","catalogId":"catalog_test",
+  "factions":[{"id":"test","name":"Fazione test","unitIds":["squad","leader","support"],"detachments":[
+    {"id":"first","name":"Primo distaccamento","dp":"1","force_disposition":"Take and Hold","unique":"UNIQUE: TEST","description":"Regola del primo distaccamento"},
+    {"id":"second","name":"Secondo distaccamento","dp":"1","force_disposition":"Priority Assets","unique":"UNIQUE: TEST"},
+    {"id":"third","name":"Terzo distaccamento","dp":"2","force_disposition":"Purge the Foe","unique":""}
+  ]}],
+  "units":[
+    {"id":"squad","name":"Squadra test","category":"Battleline","maxCopies":6,"support":false,"keywords":"Battleline","loadout":"5 rifles","leaderText":"","leads":[],"points":[{"models":5,"points":80,"first":1,"last":2},{"models":5,"points":100,"first":3,"last":200}],"models":[{"name":"Soldato","M":"6","T":"4","Sv":"3+","W":"2","Ld":"6+","OC":"2"}],"weapons":[{"line":"1","name":"Rifle","type":"Ranged","range":"24","A":"2","BS_WS":"3+","S":"4","AP":"0","D":"1","description":"Rapid Fire"}],"abilities":[{"name":"Regola squadra","description":"Testo della regola"}],"options":[],"composition":[],"costs":[],"enhancements":[],"stratagems":[]},
+    {"id":"leader","name":"Leader test","category":"Character","maxCopies":3,"support":false,"keywords":"Character","loadout":"","leaderText":"","leads":["squad"],"points":[{"models":1,"points":50,"first":1,"last":200}],"models":[],"weapons":[],"abilities":[],"options":[],"composition":[],"costs":[],"enhancements":[],"stratagems":[]},
+    {"id":"support","name":"Support test","category":"Character","maxCopies":3,"support":true,"keywords":"Character","loadout":"","leaderText":"","leads":["squad"],"points":[{"models":1,"points":30,"first":1,"last":200}],"models":[],"weapons":[],"abilities":[],"options":[],"composition":[],"costs":[],"enhancements":[],"stratagems":[]}
+  ]
+}
