@@ -39,6 +39,7 @@ function builderCreationRender(){
   const factions=builderPlayableFactions(),groups=['Xenos','Chaos','Imperium','Adeptus Astartes','Altri eserciti'];
   main.innerHTML=`<section class="workbench builder-archive"><div class="wb-heading"><div><p class="wb-muted">Warhammer 40.000 · 11ª edizione</p><h1>Crea nuova lista</h1></div><button id="builder-create-back" type="button">Torna alle armate</button></div>
     <form id="builder-create" class="wb-library builder-creation">
+      <label>Nome lista<input name="armyName" maxlength="100" required value="${esc(builderUi.creationName||'Nuova armata')}" autocomplete="off"></label>
       <fieldset><legend>Scegli il tuo esercito</legend><input type="hidden" name="faction" value="${esc(builderUi.creationFaction||'')}"><div class="builder-faction-groups">${groups.map(group=>{const rows=factions.filter(f=>builderFactionGroup(f)===group);return rows.length?`<button type="button" data-create-group="${esc(group)}" aria-haspopup="dialog">${esc(group)} <small>${rows.length} eserciti</small></button>`:'';}).join('')}</div><p id="builder-chosen-faction" class="builder-chosen-faction" aria-live="polite">${builderUi.creationFaction?builderFactionIcon(builderUi.creationFaction)+esc(factions.find(f=>f.id===builderUi.creationFaction)?.name||''):'Nessun esercito selezionato'}</p></fieldset>
       <fieldset><legend>Formato della partita</legend><div class="builder-battle-sizes">${[[1000,'Incursion'],[2000,'Strike Force'],[3000,'Onslaught']].map(([points,name])=>`<label class="builder-battle-size"><input type="radio" name="battleSize" value="${points}" ${points===2000?'checked':''}><span><strong>${name}</strong><small>${points} punti</small></span></label>`).join('')}</div>
       <div id="builder-custom-dp" hidden><p class="wb-muted">Onslaught: formato da 3000 punti del gruppo. Concordate i DP prima della partita.</p><label>Detachment Points (DP)<input id="builder-create-dp" type="text" inputmode="numeric" pattern="[0-9]+" value="3"></label></div></fieldset>
@@ -55,15 +56,17 @@ function builderCreationBind(){
     event.preventDefault();
     const faction=form.querySelector('[name=faction]'),size=Number(form.querySelector('[name=battleSize]:checked')?.value);
     if(!faction?.value){notify('Scegli un esercito.',true);form.querySelector('[data-create-group]')?.focus();return;}
-    builderStart(faction.value,size,Number(main.querySelector('#builder-create-dp').value));
+    const name=form.querySelector('[name=armyName]').value.trim();
+    if(!name){notify('Scrivi il nome della lista.',true);return;}
+    builderStart(faction.value,size,Number(main.querySelector('#builder-create-dp').value),name);
   });
 }
-function builderStart(factionId,limit=2000,dpLimit=3){
+function builderStart(factionId,limit=2000,dpLimit=3,name='Nuova armata'){
   if(!builderDiscard())return;
   if(![1000,2000,3000].includes(limit)||!Number.isInteger(dpLimit)||dpLimit<0||dpLimit>20){notify('Formato o DP non validi.',true);return;}
   builderUi.catalog=builderUi.active;
   if(builderUi.catalog?.schemaVersion!==2||!builderPlayableFactions().some(f=>f.id===factionId)){notify('Seleziona una fazione giocabile del catalogo 11ª.',true);return;}
-  builderUi.army=builderNewArmy();Object.assign(builderUi.army,{factionId,limit,dpLimit:limit===1000?2:limit===2000?3:dpLimit});builderUi.view='editor';
+  builderUi.army=builderNewArmy();Object.assign(builderUi.army,{name:String(name).trim().slice(0,100)||'Nuova armata',factionId,limit,dpLimit:limit===1000?2:limit===2000?3:dpLimit});builderUi.view='editor';
   Object.assign(workbench,{dirty:true,revision:workbench.revision+1,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{}});
   builderRender();
 }

@@ -27,6 +27,11 @@ vm.runInContext(`const lion=add(catalog.units.find(u=>/^Lion El/i.test(u.name)).
 assert.equal(vm.runInContext('lion.warlord',c),true,'Lion not selected as mandatory Warlord');
 assert.doesNotMatch(vm.runInContext('wbUnitControls(lu,lion)',c),/Costi e composizione|Opzioni di equipaggiamento|Opzioni avanzate/,'Fixed Lion sheet has unnecessary drawers');
 if(/\bb6-/.test(catalog.version)){
+  vm.runInContext(`const boyz=add('Boyz'),bu=wbUnits().get(boyz.unitId);beResize(boyz,20);const klaw=bu.loadoutRecipe.weapons.find(w=>w.name==='Power Klaw'),rokkit=bu.loadoutRecipe.weapons.find(w=>w.name==='Kombi-rokkit'),nob=bu.loadoutRecipe.groups.find(g=>g.choices.some(c=>c.weapons[klaw.id]&&c.weapons[rokkit.id])),combo=nob.choices.find(c=>c.weapons[klaw.id]&&c.weapons[rokkit.id]);`,c);
+  assert.match(vm.runInContext('beChoiceLabel(bu.loadoutRecipe,combo)',c),/Power Klaw.*Kombi-rokkit/,'Nob combination label hides the Klaw');
+  assert.equal(vm.runInContext('beChangeChoice(boyz,nob.id,combo.id,1)&&beChangeChoice(boyz,nob.id,combo.id,1)',c),true,'Two Nob models cannot combine Klaw and Rokkit');
+  assert.equal(vm.runInContext('boyz.weaponCounts[klaw.lines[0]]',c),2);
+  assert.equal(vm.runInContext('rokkit.lines.every(line=>boyz.weaponCounts[line]===2)',c),true,'Nob gun modes do not share the equipped count');
   vm.runInContext(`const shadow=add('Shadow Spectres'),su=wbUnits().get(shadow.unitId);beResize(shadow,6,su.loadoutRecipe.layouts.find(l=>l.counts.m0===1&&l.counts.m1===5).counts);`,c);
   assert.equal(vm.runInContext('wbPrice(shadow)',c),145,'Exarch surcharge missing');
   vm.runInContext(`const wolf=add('Wolf Guard Headtakers'),wu=wbUnits().get(wolf.unitId);beResize(wolf,6,wu.loadoutRecipe.layouts[1].counts);`,c);

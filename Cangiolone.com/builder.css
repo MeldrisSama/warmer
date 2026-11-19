@@ -53,3 +53,106 @@ body:has(.wb-columns){height:100dvh;min-height:0;overflow:hidden}.shell:has(.wb-
 .workbench:has(.wb-columns) .wb-heading h1{font-size:26px}.workbench:has(.wb-columns) .wb-panel>h2{font-size:21px}.workbench:has(.wb-columns) .wb-score strong{font-size:22px}.workbench:has(.wb-columns) .wb-toolbar input{min-height:44px}
 .workbench .wb-catalog{padding:12px}.workbench .wb-catalog>h2{font-size:19px;margin:0 0 10px;padding-bottom:8px}.wb-catalog .wb-catalog-tools{gap:6px;margin-bottom:4px}.wb-catalog .wb-catalog-tools label{font-size:12px;gap:4px}.wb-catalog .wb-catalog-tools input{font-size:13px;padding:8px 10px}.wb-catalog .wb-catalog-tools button{font-size:12px;padding:8px 12px}.wb-catalog .wb-category{margin-top:4px}.wb-catalog summary{font-size:13px}.wb-catalog>details>summary{font-size:12px}.wb-unit-control-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.workbench .wb-unit-control-head h4{margin:0;color:var(--gold)}.workbench .wb-unit-control-head>button{width:44px;flex-shrink:0;padding:0;font-size:24px;color:var(--muted)}.workbench>.wb-error-notices{position:fixed;z-index:50;right:16px;bottom:16px;width:min(460px,calc(100vw - 32px));max-height:28dvh;overflow:auto;overscroll-behavior:contain;display:grid;gap:8px}.wb-error-notice{display:flex;align-items:start;gap:8px;padding:10px 8px 10px 12px;border:1px solid #d98d7d;background:#3b251f;color:#ffe4dc;box-shadow:0 6px 24px #0005}.workbench .wb-error-notice p{flex:1;margin:0;font-size:13px;line-height:1.5}.workbench .wb-error-notice button{width:44px;min-height:44px;padding:0;flex-shrink:0;font-size:22px;border-color:#d98d7d80}
 @media(pointer:fine){.wb-catalog summary{min-height:34px}.wb-catalog .wb-catalog-tools input,.wb-catalog .wb-catalog-tools button{min-height:38px}}
+/* Phone: the army is the main screen; tools and configuration open on demand. */
+.wb-mobile-header,.wb-mobile-add{display:none}
+main:has(.wb-columns){flex:1 1 0;overflow:hidden}
+dialog.workbench.wb-detachment-dialog{max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;min-height:0}
+.wb-mobile-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wb-mobile-actions [data-wb-menu-action]{grid-column:1/-1;text-align:left}
+.wb-mobile-actions [aria-pressed=true]{border-color:var(--gold);color:var(--gold)}
+.wb-mobile-settings-dialog .wb-army-settings-grid{grid-template-columns:1fr;border:0;padding:0}
+.wb-mobile-settings-dialog .wb-army-settings>summary{display:none}
+.wb-mobile-catalog-dialog .wb-catalog-row>div{flex:1}
+.wb-mobile-catalog-dialog [data-wb-added]{position:sticky;bottom:-16px;background:var(--bg);font-size:13px;color:var(--gold);margin:0;padding:8px 0}
+@media(max-width:850px){
+ body:has(.wb-columns){height:100dvh;min-height:0;overflow:hidden}
+ .shell:has(.wb-columns){height:100dvh;min-height:0;padding:0 10px;overflow:hidden}
+ .shell:has(.wb-columns)>header{display:none}
+ .shell:has(.wb-columns)>nav{display:flex;flex-wrap:nowrap;justify-content:flex-start;gap:0;margin:0 0 6px;padding:0;min-height:44px;max-height:44px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+ .shell:has(.wb-columns)>nav a{flex-shrink:0;display:flex;align-items:center;padding:8px 10px;font-size:12px;min-height:44px;white-space:nowrap}
+ .shell:has(.wb-columns)>#email-banner:not([hidden]){max-height:60px;overflow:auto;font-size:12px}
+ .workbench:has(.wb-columns){position:relative;gap:8px;padding-bottom:env(safe-area-inset-bottom,0px)}
+ .workbench:has(.wb-columns)>.wb-heading,.workbench:has(.wb-columns)>.wb-toolbar,.workbench:has(.wb-columns)>.wb-army-settings,.workbench:has(.wb-columns)>.wb-mobile-tabs,.workbench:has(.wb-columns)>.wb-catalog-update{display:none}
+ .workbench>.wb-mobile-header{display:grid;grid-template-columns:minmax(0,1fr) auto 44px;gap:8px;align-items:center;flex-shrink:0;min-height:64px;padding:6px 0 10px;border-bottom:1px solid var(--line)}
+ .workbench[data-pane=detail]>.wb-mobile-header{grid-template-columns:44px minmax(0,1fr) auto 44px}
+ .wb-mobile-header button{padding:8px 12px;min-height:44px}
+ .wb-mobile-header [data-wb-mobile-menu],.wb-mobile-header [data-wb-return-roster]{padding:0;font-size:22px}
+ .wb-mobile-title{min-width:0;display:grid;gap:5px}
+ .wb-mobile-title strong{font:18px/1.2 Georgia,serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .wb-mobile-title small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .workbench:has(.wb-columns) .wb-columns{display:flex;flex:1 1 0;min-height:0;overflow:hidden}
+ .workbench:has(.wb-columns) .wb-panel{display:none;flex:1;min-height:0;min-width:0;height:100%;padding:12px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+ .workbench[data-pane=roster] .wb-roster,.workbench[data-pane=detail] .wb-detail{display:block}
+ .workbench[data-pane=roster] .wb-roster{border:0;padding:0 0 90px;background:transparent}
+ .workbench[data-pane=roster] .wb-roster>h2{display:none}
+ .wb-roster-category{padding:8px 0 14px;border-bottom:1px solid var(--line)}
+ .wb-roster-category-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+ .workbench .wb-roster-category-head h3{font:600 14px/1.4 Arial,sans-serif;margin:0;color:var(--gold)}
+ .wb-roster-category-head button{height:44px;width:44px;padding:0;font-size:24px}
+ .wb-roster-category>.wb-muted{margin:0;font-size:12px}
+ .wb-roster-category .wb-roster-row{margin-bottom:8px;background:var(--surface)}
+ .wb-roster-category .wb-unit-name{padding:10px 12px}
+ .wb-roster-category .wb-unit-name strong{margin-top:5px}
+ .workbench>.wb-mobile-add{display:block;position:absolute;right:12px;bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:4;border-radius:50%;width:58px;height:58px;padding:0;background:var(--gold);color:var(--bg);border-color:var(--gold);font-size:34px;box-shadow:0 4px 18px #0006}
+ .workbench>.wb-error-notices{top:108px;bottom:auto;max-height:22dvh;right:10px;width:calc(100vw - 20px);pointer-events:none}
+ .wb-error-notice{pointer-events:auto}
+ dialog.workbench.wb-detachment-dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);padding:16px;margin:auto;overflow-y:auto;touch-action:pan-y}
+ .wb-detachment-dialog .wb-dialog-head{position:sticky;top:-16px;z-index:3;background:var(--bg);padding:12px 0;border-bottom:1px solid var(--line);align-items:center}
+ .workbench.wb-detachment-dialog .wb-dialog-head h2{font-size:21px;margin:0}
+ .wb-mobile-settings-dialog .wb-army-settings-grid{display:block}
+ .wb-mobile-settings-dialog .wb-army-settings{max-height:none;overflow:visible;margin:0;border:0}
+ .wb-mobile-settings-dialog .wb-detachment-summary{margin:12px 0 0}
+ .wb-mobile-settings-dialog .wb-detachment-rule-card{margin-top:12px}
+ .wb-mobile-catalog-dialog .wb-catalog-row .wb-unit-name{font-size:14px;padding-inline:0}
+ .workbench input,.workbench select,.workbench textarea{font-size:16px}
+ .workbench .wb-number output{font-size:16px}
+}
+.wb-gear-cost{display:block;margin-top:4px;color:var(--gold);font-size:12px;font-weight:600}
+.wb-weapon-family th{background:var(--surface);color:var(--gold);font-weight:600;padding-top:16px;white-space:normal}
+.wb-weapon-family small{font-size:11px;font-weight:normal}
+.wb-mode-marker{color:var(--gold);font-size:18px}
+.wb-weapon-mode .wb-weapon-name{padding-left:8px}
+/* Shared army-first flow, also on desktop. */
+.workbench:has(.wb-columns)>.wb-heading,.workbench:has(.wb-columns)>.wb-toolbar,.workbench:has(.wb-columns)>.wb-army-settings,.workbench:has(.wb-columns)>.wb-mobile-tabs,.workbench:has(.wb-columns)>.wb-catalog-update{display:none}
+.workbench:has(.wb-columns){position:relative}
+.workbench>.wb-mobile-header{display:grid;grid-template-columns:minmax(0,1fr) auto 44px;gap:12px;align-items:center;flex-shrink:0;padding:8px 0 12px;border-bottom:1px solid var(--line)}
+.workbench[data-pane=detail]>.wb-mobile-header{grid-template-columns:44px minmax(0,1fr) auto 44px}
+.wb-mobile-header button{min-height:44px}.wb-mobile-header [data-wb-mobile-menu],.wb-mobile-header [data-wb-return-roster]{padding:0;font-size:22px}
+.wb-mobile-title{min-width:0;display:grid;gap:4px}.wb-mobile-title strong{font:22px Georgia,serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-mobile-title small{font-size:12px}
+.workbench:has(.wb-columns) .wb-catalog{display:none}
+.workbench:has(.wb-columns) .wb-columns{display:grid;grid-template-columns:minmax(0,1fr)}
+.workbench[data-pane=detail] .wb-columns{grid-template-columns:minmax(270px,.8fr) minmax(0,1.7fr)}
+.workbench .wb-roster{padding-bottom:90px}.workbench .wb-roster>h2{display:none}
+.workbench:not([data-pane=detail]) .wb-detail{display:none}
+.wb-roster-category{padding:8px 0 14px;border-bottom:1px solid var(--line)}
+.wb-roster-category-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.workbench .wb-roster-category-head h3{font:600 15px Arial,sans-serif;margin:0;color:var(--gold)}
+.wb-roster-category-head button{height:44px;width:44px;padding:0;font-size:24px}
+.wb-roster-category>.wb-muted{font-size:12px;margin:0}
+.workbench>.wb-mobile-add{display:block;position:absolute;right:20px;bottom:20px;z-index:4;width:58px;height:58px;border-radius:50%;padding:0;font-size:34px;background:var(--gold);color:var(--bg);border-color:var(--gold);box-shadow:0 4px 18px #0006}
+.wb-search-field{position:relative;display:block}.wb-search-field input{padding-right:48px}
+.wb-search-field button{position:absolute;right:0;top:0;bottom:0;width:44px;padding:0;border:0;font-size:24px}
+.wb-rule-card{border:1px solid var(--line);border-left:3px solid var(--gold);padding:14px 16px;background:var(--surface);border-radius:3px}
+.workbench .wb-rule-card h4{font-size:18px;color:var(--gold);margin:0 0 10px}
+.workbench .wb-rule-card p,.workbench .wb-rule-card ul{font-size:16px;line-height:1.65}
+.workbench .wb-rule-card p:last-child{margin-bottom:0}
+.workbench .wb-rule-long>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:17px;min-height:44px;color:var(--gold)}
+.wb-rule-long>summary span{font-size:11px;color:var(--muted);flex-shrink:0}
+.wb-other-rules{border-top:1px solid var(--line);margin-top:16px}.wb-other-rules>summary{font-weight:600}
+@media(max-width:850px){
+ .workbench:has(.wb-columns) .wb-columns{display:flex;grid-template-columns:none}
+ .workbench[data-pane=detail] .wb-roster{display:none}
+ .wb-mobile-title strong{font-size:18px}.wb-mobile-title small{font-size:11px}
+ .workbench>.wb-mobile-add{right:12px;bottom:max(16px,env(safe-area-inset-bottom,0px))}
+}
+/* Compact army rows keep actions reachable without a second toolbar. */
+.wb-roster-category .wb-roster-row{display:flex;align-items:center;min-height:78px}
+.wb-roster-category .wb-unit-name{flex:1;min-width:0}
+.wb-roster-category .wb-unit-name strong{margin-top:4px}
+.wb-roster-category .wb-row-actions{padding:8px;gap:4px;flex-shrink:0}
+.wb-roster-category .wb-row-actions button{width:44px;height:44px;padding:0;font-size:0}
+.wb-roster-category [data-wb-duplicate]::before{content:'\29C9';font-size:22px}
+.wb-roster-category [data-wb-remove]::before{content:'\00D7';font-size:24px}
+.wb-roster-category .wb-roster-group{margin-bottom:8px}
+body:has(dialog.workbench[open]) .wb-mobile-add{visibility:hidden}
+.wb-popup-search-toolbar{display:flex;gap:8px;align-items:end;margin-bottom:12px}.workbench .wb-popup-search-toolbar label{flex:1;margin:16px 0 0;min-width:0}.wb-popup-search-toolbar>button{flex-shrink:0}

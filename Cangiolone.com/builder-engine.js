@@ -112,17 +112,22 @@ function beWeaponLimit(unit,entry,line){
   for(const g of groups){if(g.sharedPer&&!g.choices.find(c=>c.id===g.default)?.weapons[w.id]&&g.choices.some(c=>c.id!==g.default&&c.weapons[w.id])){if(shared.has(g.sharedKey))continue;shared.add(g.sharedKey);max+=Math.floor(entry.models/g.sharedPer)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}else max+=beCapacity(recipe,g,entry.models,entry.loadoutSelections?._models)*Math.max(...g.choices.map(c=>c.weapons[w.id]||0));}
   return max;
 }
+function beCharacterModels(unit){
+  if(unit.id==='000002748'||unit.name==='Ravenwing Command Squad')return unit.models.filter(m=>/^Ravenwing Champion$/i.test(m.name));
+  return unit.models.filter(m=>/\bCharacter\b/i.test(m.keywords??unit.keywords??''));
+}
+function beIsUpgrade(unit,id){return unit.enhancements.find(x=>x.id===id)?.upgrade==='true';}
 function beSyncEnhancements(unit,entry){
   entry.enhancementModels??={};
-  for(const id of Object.keys(entry.enhancementModels))if(!entry.enhancementIds.includes(id))delete entry.enhancementModels[id];
-  const eligible=unit.models.filter(m=>/\bCharacter\b/i.test(m.keywords||''));
-  for(const id of entry.enhancementIds)if(entry.models===1||eligible.length===1)entry.enhancementModels[id]=(eligible[0]||unit.models[0])?.line;
+  for(const id of Object.keys(entry.enhancementModels))if(!entry.enhancementIds.includes(id)||beIsUpgrade(unit,id))delete entry.enhancementModels[id];
+  const eligible=beCharacterModels(unit);
+  for(const id of entry.enhancementIds)if(!beIsUpgrade(unit,id)&&(entry.models===1||eligible.length===1))entry.enhancementModels[id]=(eligible[0]||unit.models[0])?.line;
   for(const w of unit.weapons)if(w.enhancement_id){if(entry.enhancementIds.includes(w.enhancement_id))entry.weaponCounts[w.line]=1;else delete entry.weaponCounts[w.line];}
 }
 function beWeaponOwners(unit,entry,weapon){
   if(weapon._forModel!==undefined)return [{name:weapon._forModel,count:weapon._count}];
   if(!entry)return [{name:'',count:'—'}];
-  if(weapon.enhancement_id){const bearer=unit.models.find(m=>m.line===entry.enhancementModels?.[weapon.enhancement_id]);return [{name:bearer?.name||(entry.models===1?unit.models[0]?.name:'Portatore da scegliere'),count:1}];}
+  if(weapon.enhancement_id){if(beIsUpgrade(unit,weapon.enhancement_id))return [{name:unit.name,count:1}];const bearer=unit.models.find(m=>m.line===entry.enhancementModels?.[weapon.enhancement_id]);return [{name:bearer?.name||(entry.models===1?unit.models[0]?.name:'Portatore da scegliere'),count:1}];}
   const recipe=unit.loadoutRecipe,w=recipe?.weapons.find(w=>w.lines.includes(weapon.line)),owners=new Map();
   if(w&&entry.loadoutSelections)for(const g of recipe.groups)for(const c of g.choices){const n=(entry.loadoutSelections[g.id]?.[c.id]||0)*(c.weapons[w.id]||0);if(n){const name=recipe.models.find(m=>m.id===g.model)?.name||'';owners.set(name,(owners.get(name)||0)+n);}}
   return owners.size?[...owners].map(([name,count])=>({name,count})):[{name:unit.models.length===1?unit.models[0].name:'',count:entry.weaponCounts[weapon.line]||0}];
@@ -136,7 +141,7 @@ function beGearErrors(entry){
   if(entry.warlord&&!/\bCharacter\b/i.test(unit.keywords))errors.push(`${unit.name}: solo un Character può essere Warlord.`);
   if(wbMustWarlord(unit)&&!entry.warlord)errors.push(`${unit.name}: questa unità deve essere il Warlord.`);
   if(entry.attachedTo){const target=wbEntry(entry.attachedTo);if(!target||target.attachedTo||!unit.leads.includes(target.unitId))errors.push(`${unit.name}: associazione a un'unità non valida.`);}
-  if(entry.models>1)for(const id of entry.enhancementIds)if(unit.weapons.some(w=>w.enhancement_id===id)&&!entry.enhancementModels?.[id])errors.push(`${unit.name}: scegli il modello portatore del potenziamento.`);
+  if(entry.models>1)for(const id of entry.enhancementIds)if(!beIsUpgrade(unit,id)&&unit.weapons.some(w=>w.enhancement_id===id)&&!entry.enhancementModels?.[id])errors.push(`${unit.name}: scegli il modello portatore del potenziamento.`);
   return errors;
 }
 function beChangeChoice(entry,groupId,choiceId,delta){
@@ -199,10 +204,12 @@ function beEntryBasePrice(unit,entry,ordinal){
   for(const p of unit.points||[])if(p.models===entry.models&&ordinal>=(p.first??1)&&ordinal<=(p.last??200))price=p.points;
   return price;
 }
+function beChoiceCost(recipe,choice){return Object.entries(choice.weapons).reduce((sum,[id,n])=>sum+n*Number(recipe.weapons.find(w=>w.id===id)?.cost||0),0);}
+function beChoiceLabel(recipe,choice){return Object.entries(choice.weapons).map(([id,n])=>n+' '+(recipe.weapons.find(w=>w.id===id)?.name||id)).join(' + ')||choice.name;}
 function beLoadoutGroupHtml(unit,entry,g){
   const compact=g.choices.length>12,shown=compact?g.choices.filter(c=>c.id===g.default||(entry.loadoutSelections[g.id]?.[c.id]||0)>0):g.choices;
-  const choiceRow=c=>{const n=entry.loadoutSelections[g.id]?.[c.id]||0;return `<div class="wb-loadout-choice"><span>${esc(c.name)}</span><div class="wb-quantity"><button id="choice-${g.id}-${c.id}-minus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="-1" aria-label="Diminuisci ${esc(g.name+' '+c.name)}" ${!beChoiceAllowed(unit,entry,g,c.id,-1)?'disabled':''}>−</button><output>${n}</output><button id="choice-${g.id}-${c.id}-plus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="1" aria-label="Aumenta ${esc(g.name+' '+c.name)}" ${!beChoiceAllowed(unit,entry,g,c.id,1)?'disabled':''}>+</button></div></div>`;};
-  const picker=compact?`<label>Altra configurazione<select data-wb-loadout-picker="${g.id}"><option value="">Scegli equipaggiamento</option>${g.choices.filter(c=>!shown.includes(c)).map(c=>`<option value="${c.id}" ${beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}>${esc(c.name)}</option>`).join('')}</select></label>`:'';
+  const choiceRow=c=>{const n=entry.loadoutSelections[g.id]?.[c.id]||0;return `<div class="wb-loadout-choice"><span>${esc(beChoiceLabel(unit.loadoutRecipe,c))}${beChoiceCost(unit.loadoutRecipe,c)?`<small class="wb-gear-cost">+${beChoiceCost(unit.loadoutRecipe,c)} pt ${g.unitGear?"per unità":"per modello"}</small>`:""}</span><div class="wb-quantity"><button id="choice-${g.id}-${c.id}-minus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="-1" aria-label="Diminuisci ${esc(g.name+' '+beChoiceLabel(unit.loadoutRecipe,c))}" ${!beChoiceAllowed(unit,entry,g,c.id,-1)?'disabled':''}>−</button><output>${n}</output><button id="choice-${g.id}-${c.id}-plus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="1" aria-label="Aumenta ${esc(g.name+' '+beChoiceLabel(unit.loadoutRecipe,c))}" ${!beChoiceAllowed(unit,entry,g,c.id,1)?'disabled':''}>+</button></div></div>`;};
+  const picker=compact?`<label>Altra configurazione<select data-wb-loadout-picker="${g.id}"><option value="">Scegli equipaggiamento</option>${g.choices.filter(c=>!shown.includes(c)).map(c=>`<option value="${c.id}" ${beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}>${esc(beChoiceLabel(unit.loadoutRecipe,c))}${beChoiceCost(unit.loadoutRecipe,c)?" (+"+beChoiceCost(unit.loadoutRecipe,c)+" pt "+(g.unitGear?"per unità":"per modello")+")":""}</option>`).join('')}</select></label>`:'';
   return `<fieldset class="wb-loadout-group"><legend>${esc(compact?(unit.loadoutRecipe.models.find(m=>m.id===g.model)?.name||unit.name)+' · Equipaggiamento':g.name)}${g.sharedPer?' · massimo '+Math.floor(entry.models/g.sharedPer)+' nella squadra':''}</legend>${shown.map(choiceRow).join('')}${picker}</fieldset>`;
 }
 function beLoadoutHtml(unit,entry){
@@ -215,7 +222,7 @@ function beLoadoutHtml(unit,entry){
 }
 function beEnhancementsHtml(unit,entry){
   const allowed=unit.enhancements.filter(x=>!x.detachment_id||builderUi.army.detachmentIds.includes(x.detachment_id)||entry.enhancementIds.includes(x.id));
-  return ['Enhancement','Upgrade'].map(kind=>{const rows=allowed.filter(x=>(x.upgrade==='true'?'Upgrade':'Enhancement')===kind);return rows.length?`<h4>${kind}</h4>${rows.map(x=>`<label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${entry.enhancementIds.includes(x.id)?'checked':''} ${entry.enhancementIds.length&&!entry.enhancementIds.includes(x.id)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt</span></label>${entry.enhancementIds.includes(x.id)&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${unit.models.filter(m=>/\bCharacter\b/i.test(m.keywords||unit.keywords)).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`).join('')}`:'';}).join('');
+  return ['Enhancement','Upgrade'].map(kind=>{const rows=allowed.filter(x=>(x.upgrade==='true'?'Upgrade':'Enhancement')===kind);return rows.length?`<h4>${kind}</h4>${rows.map(x=>`<label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${entry.enhancementIds.includes(x.id)?'checked':''} ${entry.enhancementIds.length&&!entry.enhancementIds.includes(x.id)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt</span></label>${x.upgrade!=='true'&&entry.enhancementIds.includes(x.id)&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${beCharacterModels(unit).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`).join('')}`:'';}).join('');
 }
 function beAllyRules(){
   const ids=builderUi.army.detachmentIds;
@@ -235,7 +242,7 @@ function beEffects(unit,entry){
   derived.models=beModelVariants(unit,entry);
   for(const member of members){
     const from=wbUnits().get(member.unitId),enhancements=from.enhancements.filter(x=>member.enhancementIds.includes(x.id));
-    const rules=[...(from.effects||[]),...enhancements.flatMap(x=>{try{return JSON.parse(x.effectsJson||'[]').map(effect=>({...effect,_bearerModel:from.models.find(m=>m.line===member.enhancementModels?.[x.id])?.name}));}catch{return [];}})];
+    const rules=[...(from.effects||[]),...enhancements.flatMap(x=>{try{return JSON.parse(x.effectsJson||'[]').map(effect=>({...effect,...(x.upgrade==='true'&&effect.scope==='bearer'?{scope:'unit'}:{}),_bearerModel:x.upgrade==='true'?undefined:from.models.find(m=>m.line===member.enhancementModels?.[x.id])?.name}));}catch{return [];}})];
     for(const effect of rules){
       if(effect.gear&&!beHasGear(from,member,effect.gear))continue;
       if(effect.gear&&effect.scope==='bearer'&&member.entryId!==entry.entryId)continue;

@@ -31,4 +31,10 @@ $pdo=new PDO('sqlite::memory:');builderSchema($pdo,'sqlite');$me=['id'=>'owner',
 $stored=builderHandle($pdo,'builderSave',$me,$army)['army'];$text=builderSavedArmyText($pdo,'owner',$stored['id']);verifyRefinement(str_contains($text,'Guard'),'Saved snapshot empty');$rejected=false;try{builderSavedArmyText($pdo,'other',$stored['id']);}catch(BuilderInputError){$rejected=true;}verifyRefinement($rejected,'Saved snapshot leaks across owners');
 $preset=['entryId'=>'preset','unitId'=>'signal','models'=>3,'weaponCounts'=>['4'=>1],'enhancementIds'=>['gift'],'enhancementModels'=>['gift'=>'3']];
 builderHandle($pdo,'builderDefaultSave',$me,['catalogId'=>$import['catalogId'],'factionId'=>'sm','unitId'=>'signal','entry'=>$preset]);$default=builderHandle($pdo,'builderDefaults',$me)['defaults'][0]['entry'];verifyRefinement(empty($default['enhancementModels'])&&empty($default['enhancementIds'])&&empty($default['weaponCounts']->{4}),'Personal default retained bearer or enhancement weapon');
+$raven=$catalog;$raven['units'][0]['name']='Ravenwing Command Squad';
+foreach($raven['units'][0]['models'] as $i=>&$model){$model['name']=['Ravenwing Ancient','Ravenwing Apothecary','Ravenwing Champion'][$i];$model['keywords']='Mounted, Character';}unset($model);
+$ravenArmy=['factionId'=>'sm','limit'=>2000,'detachmentIds'=>[],'entries'=>[['entryId'=>'raven','unitId'=>'signal','models'=>3,'weaponCounts'=>[],'enhancementIds'=>['gift']]]];
+$ravenSaved=builderValidateV2($raven,$ravenArmy);verifyRefinement($ravenSaved['entries'][0]['enhancementModels']['gift']==='3','Ravenwing enhancement was not assigned to Champion');
+$ravenArmy['entries'][0]['enhancementModels']=['gift'=>'1'];$rejected=false;try{builderValidateV2($raven,$ravenArmy);}catch(BuilderInputError){$rejected=true;}verifyRefinement($rejected,'Ravenwing Ancient accepted an enhancement');
+$raven['units'][0]['enhancements'][0]['upgrade']='true';$upgradeSaved=builderValidateV2($raven,$ravenArmy);verifyRefinement(empty($upgradeSaved['entries'][0]['enhancementModels']),'Unit upgrade retained an individual bearer');
 echo json_encode($catalog,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);

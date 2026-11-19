@@ -15,6 +15,11 @@ function builderRecords(mixed $rows, int $max=200): array {
     }
     return $rows;
 }
+function builderCharacterModels(array $unit): array {
+    // The source CSV incorrectly spreads Character to every Ravenwing model.
+    if(($unit['id']??'')==='000002748'||($unit['name']??'')==='Ravenwing Command Squad')return array_values(array_filter($unit['models'],static fn($m)=>strcasecmp($m['name'],'Ravenwing Champion')===0));
+    return array_values(array_filter($unit['models'],static fn($m)=>preg_match('/\bCharacter\b/i',$m['keywords']??$unit['keywords']??'')));
+}
 function builderNormalizeV2(array $raw): array {
     if (($raw['edition']??null)!=='11') builderInvalid('Il nuovo catalogo richiede la 11ª edizione.');
     $out=['schemaVersion'=>2,'edition'=>'11','version'=>builderString($raw['version']??null,'versione',60),'source'=>builderString($raw['source']??null,'fonte',100),'license'=>'Uso locale'];
@@ -146,10 +151,13 @@ function builderValidateV2(array $catalog, array $in): array {
         }
         $enhancementModels=$entry['enhancementModels']??[];
         if (!is_array($enhancementModels)||count($enhancementModels)>20)builderInvalid('Portatori dei potenziamenti non validi.');
+        $upgradeIds=array_column(array_filter($u['enhancements'],static fn($e)=>($e['upgrade']??'')==='true'),'id');
+        foreach($upgradeIds as $upgradeId)unset($enhancementModels[$upgradeId]);
         $profiles=array_column($u['models'],null,'line');
-        foreach ($enhancementModels as $id=>$line)if(!in_array($id,$enhancements,true)||!is_string($line)||!isset($profiles[$line])||!preg_match('/\bCharacter\b/i',$profiles[$line]['keywords']??$u['keywords']))builderInvalid('Modello portatore non valido.');
-        $eligible=array_values(array_filter($u['models'],static fn($m)=>preg_match('/\bCharacter\b/i',$m['keywords']??$u['keywords'])));
+        $eligible=builderCharacterModels($u);$eligibleLines=array_column($eligible,'line');
+        foreach ($enhancementModels as $id=>$line)if(!in_array($id,$enhancements,true)||!is_string($line)||!isset($profiles[$line])||!in_array($line,$eligibleLines,true))builderInvalid('Modello portatore non valido.');
         foreach ($enhancements as $id) {
+            if(in_array($id,$upgradeIds,true))continue;
             if ($models===1||count($eligible)===1)$enhancementModels[$id]=($eligible[0]??$u['models'][0])['line'];
             elseif (!isset($enhancementModels[$id])&&array_filter($u['weapons'],static fn($w)=>($w['enhancement_id']??'')===$id)){$message=$u['name'].': scegli il modello portatore del potenziamento.';$issues[]=$message;$errors[]=$message;}
         }
