@@ -354,7 +354,7 @@ function wbProfiles(u,e,play,controls=''){
     ${unconfigured?'<p class="wb-warning">Dotazione da configurare in Build: i profili delle armi non sono ancora selezionati.</p>':''}
     ${weaponTable('Ranged')?`<h4>Armi a distanza</h4>${weaponTable('Ranged')}`:''}${weaponTable('Melee')?`<h4>Armi da mischia</h4>${weaponTable('Melee')}`:''}
     ${effective.sources.length?`<details class="wb-effects"><summary>Bonus evidenziati in blu</summary><p>Il blu indica una differenza rispetto al profilo base. Fonti:</p>${effective.sources.map(s=>`<p>${esc(s)}</p>`).join('')}</details>`:''}<h4>Abilità e regole</h4>${wbSheetRules(u,enhancements)}
-    ${u.leaderText.trim()?`<h4>Leader / support</h4><p class="wb-rule-text">${wbRuleInline(u.leaderText,u.id)}</p>`:''}
+    ${u.leaderText.trim()?wbRules([{name:'Leader / Support',description:u.leaderText}],u.id):''}
     <p class="wb-keywords">${wbRuleInline(u.keywords,u.id)}</p>
     </section>`;
 }
@@ -377,7 +377,7 @@ function wbAttachedProfiles(group,controls=''){
     <h3>Armi da mischia</h3>${melee.length?wbWeaponTable(melee):'<p class="wb-muted">Nessun profilo selezionato.</p>'}
     ${members.some(m=>m.sources.length)?`<details class="wb-effects"><summary>Bonus evidenziati in blu · fonti</summary>${[...new Set(members.flatMap(m=>m.sources))].map(s=>`<p>${esc(s)}</p>`).join('')}</details>`:''}<h3>Abilità e regole del gruppo</h3>${members.map(({entry,unit})=>{
       const enhancements=unit.enhancements.filter(x=>entry.enhancementIds.includes(x.id));
-      return `<section class="wb-member-rules"><h4>${wbText(unit.name)}${entry.warlord?' · Warlord':''}</h4>${wbSheetRules(unit,enhancements)}${unit.leaderText.trim()?`<p class="wb-rule-text">${wbRuleInline(unit.leaderText,unit.id)}</p>`:''}<p class="wb-keywords">${wbRuleInline(unit.keywords,unit.id)}</p></section>`;
+      return `<section class="wb-member-rules"><h4>${wbText(unit.name)}${entry.warlord?' · Warlord':''}</h4>${wbSheetRules(unit,enhancements)}${unit.leaderText.trim()?wbRules([{name:"Leader · unità compatibili",description:unit.leaderText}],unit.id):''}<p class="wb-keywords">${wbRuleInline(unit.keywords,unit.id)}</p></section>`;
     }).join('')}</section>`;
 }
 function wbDetail(){

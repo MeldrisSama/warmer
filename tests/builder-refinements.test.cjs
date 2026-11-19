@@ -52,6 +52,7 @@ test('Datasheet rules are prominent cards, generic rules are in Other rules, lon
   const c=context();vm.runInContext(`const u=wbUnits().get('signal');u.abilities=[{name:'Own rule',type:'Datasheet',description:'Local rule'},{name:'Deep Strike',type:'Core',description:'Generic rule'},{name:'Long wargear',type:'Wargear',description:'Long rule '.repeat(70)}];`,c);
   const html=vm.runInContext('wbSheetRules(u)',c);assert.ok(html.indexOf('Own rule')<html.indexOf('Altre regole'));assert.ok(html.indexOf('Deep Strike')>html.indexOf('Altre regole'));assert.match(html,/<details class="wb-rule wb-rule-card wb-rule-long">/);assert.doesNotMatch(html,/<details class="wb-rule wb-rule-card wb-rule-long" open/);
   assert.match(html,/<details class="wb-rule wb-rule-card" open><summary><strong>Own rule/);assert.match(html,/<details class="wb-rule wb-rule-card" open><summary><strong>Deep Strike/);assert.doesNotMatch(html,/<article class="wb-rule wb-rule-card/);
+  vm.runInContext(`u.leaderText='Compatible bodyguards.';`,c);assert.match(vm.runInContext('wbProfiles(u,builderUi.army.entries[0],false)',c),/<details class="wb-rule wb-rule-card" open><summary><strong>Leader \/ Support/);
 });
 test('Unified sheet puts controls after defence and before weapons, omits unavailable upgrades and deduplicates prices',()=>{
   const c=context();vm.runInContext(`const e=builderUi.army.entries[0],u=wbUnits().get('signal');u.points.push({...u.points[0]});u.enhancements=[{id:'hidden',name:'Unavailable',detachment_id:'unselected'}];workbench.selected=e.entryId;`,c);
