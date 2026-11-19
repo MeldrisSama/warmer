@@ -10,6 +10,7 @@ const wbDescription=row=>row.description||(builderUi.catalog.texts||[]).find(t=>
 const wbPlus=value=>/^\d+$/.test(String(value))?value+'+':value;
 const wbCategories=['Epic Hero','Character','Battleline','Infantry','Mounted/Beast','Vehicle','Other'];
 const wbMobileCategories=['Character','Battleline','Infantry','Mounted','Vehicle','Other'];
+const wbIsPhone=()=>typeof matchMedia==='function'&&matchMedia('(max-width:850px)').matches;
 function wbMobileCategory(unit){
   if(!unit)return 'Other';
   const category=wbCategory(unit);return category==='Epic Hero'?'Character':category==='Mounted/Beast'?'Mounted':category;
@@ -64,6 +65,7 @@ function wbCatalogList(){
 function wbSearch(value){
   workbench.search=value;
   main.querySelector('#wb-catalog-list').innerHTML=wbCatalogList();
+  const clear=main.querySelector('[data-wb-desktop-clear]');if(clear)clear.hidden=!value;
 }
 function wbChangeWeapon(line,delta){
   const entry=wbEntry(workbench.selected),unit=wbUnits().get(entry?.unitId);
@@ -247,7 +249,7 @@ function wbAdd(id){
     e.models=preset.entry.models;e.weaponCounts=builderClone(preset.entry.weaponCounts);if(preset.entry.loadoutSelections)e.loadoutSelections=builderClone(preset.entry.loadoutSelections);else delete e.loadoutSelections;beSync(u,e);
   }else notify('Il default personale appartiene a un catalogo o una taglia diversi: applicata la dotazione standard.');}
   if(wbMustWarlord(u)){builderUi.army.entries.forEach(entry=>entry.warlord=false);e.warlord=true;}
-  builderUi.army.entries.push(e);workbench.selected=e.entryId;workbench.preview=null;workbench.pane='roster';workbench.detailTab='config';wbChanged();wbResetDetailScroll();
+  builderUi.army.entries.push(e);workbench.selected=e.entryId;workbench.preview=null;workbench.pane=wbIsPhone()?'roster':'detail';workbench.detailTab='config';wbChanged();wbResetDetailScroll();
 }
 function wbMustWarlord(unit){return [...unit.abilities,...unit.composition].some(rule=>/If this (?:model|unit) is in your army,?\s+it must be your Warlord\b/i.test(wbDescription(rule)));}
 function wbApplyRequiredWarlord(){
@@ -427,12 +429,12 @@ function builderWorkbenchRender(){
     ${builderUi.active&&a.catalogId!==builderUi.active.catalogId?'<div class="wb-catalog-update"><p>Questa lista conserva i dati originali. Crea una copia per usare le nuove dotazioni e gli alleati.</p><button id="wb-copy-active">Crea copia col catalogo attivo</button></div>':''}
     ${wbErrorNotices(totals.errors)}
     <div class="wb-mobile-tabs" role="group" aria-label="Pannelli">${workbench.mode==='build'?`<button data-wb-pane="catalog" aria-pressed="${workbench.pane==='catalog'}">Catalogo</button>`:''}<button data-wb-pane="roster" aria-pressed="${workbench.pane==='roster'}">Armata</button><button data-wb-pane="detail" aria-pressed="${workbench.pane==='detail'}">Dettaglio</button></div>
-    <div class="wb-columns"><aside class="wb-panel wb-catalog" data-wb-scroll="catalog"><h2>Catalogo unità</h2><div class="wb-catalog-tools"><label>Cerca<input id="wb-search" type="search" value="${esc(workbench.search)}" placeholder="Nome o keyword"></label><button id="wb-filters" aria-haspopup="dialog">Filtri</button></div>
+    <div class="wb-columns"><aside class="wb-panel wb-catalog" data-wb-scroll="catalog"><h2>Catalogo unità</h2><div class="wb-catalog-tools"><label>Cerca<span class="wb-search-field"><input id="wb-search" type="search" value="${esc(workbench.search)}" placeholder="Nome o keyword"><button type="button" data-wb-desktop-clear aria-label="Cancella ricerca" ${workbench.search?'':'hidden'}>×</button></span></label><button id="wb-filters" aria-haspopup="dialog">Filtri</button></div>
     <details><summary>Alleati disponibili · ${beAllyRules().length} contingenti</summary>${beAllyRules().map(r=>`<p class="wb-muted">${esc(r.name)}${r.points[a.limit]!==undefined?" · "+r.points[a.limit]+" pt":""} · ${r.unitIds.length} schede</p>`).join("")||"<p>Nessun contingente esterno per le selezioni attuali.</p>"}</details><div id="wb-catalog-list">${wbCatalogList()}</div></aside>
     <section class="wb-panel wb-roster" data-wb-scroll="roster"><h2>${workbench.mode==='play'?'Unità in campo':'La tua armata'}</h2>
     <div class="wb-roster-list">${wbRosterRows()}</div>
     <details class="wb-validation"><summary>Verifiche · ${totals.issues.length} avvisi</summary><p>Equipaggiamenti, eccezioni e combinazioni richiedono verifica manuale.</p>${totals.issues.map(i=>`<p class="wb-warning">${esc(i)}</p>`).join('')}</details></section>
-    <aside class="wb-panel wb-detail" data-wb-scroll="detail" aria-label="Profili e regole">${workbench.pane!=='detail'?'':wbDetail()}</aside></div>
+    <aside class="wb-panel wb-detail" data-wb-scroll="detail" aria-label="Profili e regole">${wbIsPhone()&&workbench.pane!=='detail'?'':wbDetail()}</aside></div>
     ${workbench.mode==='build'&&workbench.pane!=='detail'?'<button class="wb-mobile-add" data-wb-open-catalog="" aria-label="Aggiungi unità dal catalogo" aria-haspopup="dialog">+</button>':''}
   </section>`;
   wbBind();
@@ -477,6 +479,7 @@ function wbBind(container=null){
   on('[data-wb-duplicate]','click',el=>{if(a.entries.length>=200)return;const e=builderClone(wbEntry(el.dataset.wbDuplicate));e.entryId=wbId();e.attachedTo=null;e.warlord=false;a.entries.push(e);workbench.selected=e.entryId;wbChanged();});
   on('#wb-name','input',el=>{a.name=el.value;wbChanged(false);root.querySelector('#wb-save-state').textContent='Modifiche non salvate';});
   on('#wb-search','input',el=>wbSearch(el.value));
+  on('[data-wb-desktop-clear]','click',()=>{const search=root.querySelector('#wb-search');search.value='';wbSearch('');search.focus();});
   on('#wb-archive','click',builderArchive);
   on('#wb-faction','change',el=>{if(a.entries.length&&!confirm('Cambiare fazione mantenendo le unità attuali come selezioni da verificare?')){el.value=a.factionId;return;}a.factionId=el.value;a.detachmentIds=[];a.disposition='';workbench.catalogFaction=el.value;wbChanged();});
   on('#wb-disposition','change',el=>{a.disposition=el.value;wbChanged();});

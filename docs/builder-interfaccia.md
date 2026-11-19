@@ -1,12 +1,12 @@
 # Armata, catalogo e schede: interfaccia aggiornata
 
-Aggiornamento del 19 novembre 2026 dopo il riscontro su iPhone. Questo flusso vale **su telefono e desktop**, e supera la precedente disposizione permanente a tre colonne.
+Aggiornamento del 19 novembre 2026 dopo il riscontro su iPhone. **Il flusso compatto è riservato al telefono.** Su PC restano la disposizione originale a tre colonne in Build (catalogo, armata, dettagli), le due colonne in Play e i comandi persistenti di nome, salvataggio, export e configurazione. Il raggruppamento dell'armata e le correzioni di schede/equipaggiamenti valgono su entrambe le interfacce.
 
-Il nome della lista viene chiesto durante la creazione, insieme a esercito e formato. Entrando si vede l'armata, con nome, punti e Salva in vista. Il menu apre cambio Build/Play, rinomina, configurazione dell'armata/distaccamenti, esportazioni, backup e ritorno all'archivio. In Play offre anche gli stratagemmi generali. Sul telefono la navigazione generale occupa una sola riga scorrevole e l'intestazione estesa del sito lascia spazio al builder.
+Il nome della lista viene chiesto durante la creazione, insieme a esercito e formato. Sul telefono entrando si vede l'armata, con nome, punti e Salva in vista. Il menu apre cambio Build/Play, rinomina, configurazione dell'armata/distaccamenti, esportazioni, backup e ritorno all'archivio. In Play offre anche gli stratagemmi generali. La navigazione generale occupa una sola riga scorrevole e l'intestazione estesa del sito lascia spazio al builder. Sul desktop si conservano toolbar e selettori precedenti, senza menu compatto o pulsante flottante.
 
 L'armata è raggruppata, nell'ordine, in Character, Battleline, Infantry, Mounted e Vehicle; eventuali schede fuori da questi tipi restano in Other, senza nasconderle o chiamarle Infantry. Gli alleati seguono il loro tipo. I gruppi attached rimangono uniti nella categoria del bodyguard. Ogni categoria ha un pulsante + per aprire il catalogo filtrato. Il pulsante flottante apre tutto il catalogo e scompare nei dettagli, in Play e mentre è aperto un popup. La ricerca ha un pulsante × esplicito per cancellare il testo.
 
-Aggiungere dal catalogo mantiene visibile l'armata, senza aprire automaticamente la configurazione. Toccare una voce dell'armata apre la scheda con profili e controlli. Sul telefono il dettaglio occupa il pannello e ha un pulsante per tornare; sul desktop può affiancare l'elenco. Menu, configurazione e distaccamenti sono dialoghi scorrevoli entro l'altezza disponibile. La selezione di un distaccamento aggiorna anche il riepilogo della configurazione quando si chiude il selettore.
+Aggiungere dal catalogo sul telefono mantiene visibile l'armata, senza aprire automaticamente la configurazione. Toccare una voce dell'armata apre la scheda con profili e controlli, con un pulsante per tornare. Sul desktop il dettaglio resta nella terza colonna e l'aggiunta apre la configurazione come prima. Menu e popup sono scorrevoli entro l'altezza disponibile. La selezione di un distaccamento aggiorna anche il riepilogo della configurazione quando si chiude il selettore.
 
 ## Armi e costi
 

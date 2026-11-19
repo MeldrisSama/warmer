@@ -9,8 +9,9 @@ function context(){
 }
 test('PHP enforces shared model limits, fixed enhancement weapons, Warlord eligibility and snapshot ownership',()=>{context();});
 
-test('Adding a unit keeps the army visible; opening its row explicitly shows the sheet',()=>{
-  const c=context();assert.equal(vm.runInContext('workbench.pane',c),'roster');
+test('Phone additions keep the army visible, while desktop additions open the existing detail column',()=>{
+  const c=context();assert.equal(vm.runInContext('workbench.pane',c),'detail');
+  c.matchMedia=()=>({matches:true});vm.runInContext(`wbAdd('signal')`,c);assert.equal(vm.runInContext('workbench.pane',c),'roster');
   vm.runInContext('wbSelect(builderUi.army.entries[0].entryId)',c);assert.equal(vm.runInContext('workbench.pane',c),'detail');
   assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Character, Mounted',category:'Other'})`,c),'Character');
   assert.equal(vm.runInContext(`wbMobileCategory({keywords:'Infantry',category:'Battleline'})`,c),'Battleline');
