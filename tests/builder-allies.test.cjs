@@ -19,6 +19,15 @@ test('Catalog hides locked allies, reveals the correct contingent and removes it
   assert.ok(!visible(c,'sm_dark_angels').includes('rangers_alias'),'Freeblades leaked Mechanicus');
   assert.ok(!visible(c,'qt').includes('lord_alias'),'Daemonic Pact leaked CSM');
 });
+test('Mobile catalog keeps allies in their own section and role-specific plus buttons only offer native units',()=>{
+ const c=context(catalog());visible(c,'sm_dark_angels');
+ let html=vm.runInContext('wbMobileCatalogList()',c);assert.doesNotMatch(html,/DW Squad/);
+ visible(c,'sm_dark_angels',['support']);html=vm.runInContext('wbMobileCatalogList()',c);assert.match(html,/<summary>Alleati/);assert.match(html,/Deathwatch Allies/);
+ assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Infantry')",c),/DW Squad/);
+ assert.match(vm.runInContext("wbMobileCatalogList('Alleati')",c),/DW Squad/);
+ assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Alleati')",c),/>Marine</);
+ visible(c,'sm_dark_angels');assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Alleati')",c),/DW Squad/);
+});
 test('Real catalog keeps conditional imported datasheets out of the native catalog', {skip:!process.env.BUILDER_CATALOG_PATH},()=>{
   const data=catalog(process.env.BUILDER_CATALOG_PATH),c=context(data),units=new Map(data.units.map(u=>[u.id,u]));
   const has=(u,k)=>u.keywords.split(',').some(s=>s.trim().toLowerCase()===k.toLowerCase());
@@ -29,6 +38,10 @@ test('Real catalog keeps conditional imported datasheets out of the native catal
     const matches=id=>has(units.get(id),key)&&(key!=='Deathwatch'||units.get(id).factionId==='sm');
     assert.equal(visible(c,fid).filter(matches).length,0,fid+' leaked '+key);
     assert.ok(visible(c,fid,[did]).some(matches),fid+' failed to unlock '+key);
+    if(key==='Deathwatch'){
+      visible(c,fid);const agents=vm.runInContext("wbMobileCatalogList('Alleati','Deathwatch')",c);assert.match(agents,/Assigned Agents/);
+      assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Infantry','Deathwatch')",c),/data-wb-mobile-add/);
+    }
   }
   const dru=data.factions.find(f=>f.id==='dru'),reapers=dru.detachments.find(d=>/Reaper/.test(d.name)).id;
   assert.ok(!visible(c,'dru',[reapers]).some(id=>has(units.get(id),'Anhrathe')));
