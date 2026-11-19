@@ -337,3 +337,8 @@ tbody td:last-child { color: var(--gold-light); font-weight: 750; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+.league-profile-link{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex-shrink:0;border:1px solid var(--rule);border-radius:50%;color:var(--gold-light)}
+.league-profile-link:hover{border-color:var(--gold-light);background:var(--surface-hover)}
+.league-profile-link svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.masthead-inner .back{margin-left:auto}
+@media(max-width:650px){.masthead-inner{flex-wrap:wrap;padding-block:8px}.masthead-inner .wordmark{flex:1;font-size:1.15rem}.masthead-inner .back{order:3;width:100%;margin-left:0}.league-profile-link{order:2}}

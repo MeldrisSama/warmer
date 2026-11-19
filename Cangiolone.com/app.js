@@ -238,7 +238,8 @@ function render(){
 
   const account=document.querySelector('#account');
   const emailBanner=document.querySelector('#email-banner');
-  const p=page();
+  let p=page();
+  if(p==='liste'){history.replaceState(history.state,'','#builder');p='builder';}
   emailBanner.hidden=!(state.user && state.mailEnabled && !state.account?.email && !state.needsEmail
     && !['profilo','verify-email','reset-password'].includes(p));
   if(!emailBanner.hidden) {
@@ -266,40 +267,7 @@ function render(){
 
 
 
-  account.innerHTML=`
-
-    ${esc(state.user.name)}
-
-    <a href="#profilo" data-theme-menu="Profilo">Profilo</a>
-    <button id="logout" type="button" data-theme-menu="Esci">Esci</button>
-
-  `;
-
-
-
-  document.querySelector('#logout').onclick=async()=>{
-
-    try{
-
-      await api('logout',{});
-
-
-
-      location.hash='classifica';
-
-
-
-      await refresh();
-
-    }catch(e){
-
-      notify(e.message,true);
-
-    }
-
-  };
-
-
+  account.innerHTML=`<a href="#profilo" class="account-profile-link" aria-label="Apri il tuo profilo" title="Profilo" ${p==='profilo'?'aria-current="page"':''}>${profileIcon()}</a>`;
 
   nav.innerHTML=[
 
@@ -307,7 +275,7 @@ function render(){
     ['campionati','Campionati'],
     ['partita','Nuova partita'],
 
-    ['liste','Liste'],
+
     ['builder','Army Builder']
 
   ].map(
@@ -334,10 +302,6 @@ function render(){
   }else if(p==='partita'){
 
     matchPage();
-
-  }else if(p==='liste'){
-
-    listsPage();
 
   }else if(p==='builder'){
 
@@ -395,56 +359,51 @@ function emailAccountPage(route){
   });
 }
 
+function profileIcon(){return '<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle cx="16" cy="11" r="5"/><path d="M5 28v-3c0-6 5-9 11-9s11 3 11 9v3"/></svg>';}
+
 function profilePage(onboarding=false){
-  const account=state.account||{};
-  main.innerHTML=`<section class="panel narrow">
-    <h1>${onboarding?'Aggiungi la tua email':'Profilo'}</h1>
+  const account=state.account||{},showEmailForm=state.mailEnabled&&(!account.email||Boolean(account.pendingEmail));
+  main.innerHTML=`<section class="panel profile-page">
+    <div class="profile-heading"><span class="profile-symbol" aria-hidden="true">${profileIcon()}</span><div><p class="profile-eyebrow">Il tuo account</p><h1>${onboarding?'Aggiungi la tua email':esc(state.user.name)}</h1><p class="profile-username">${esc(state.user.username||'')}${state.user.admin?' · Amministratore':''}</p></div></div>
     ${onboarding?'<p class="intro">Ti invieremo un link di verifica. Potrai usare l’indirizzo per accedere e recuperare la password.</p>':''}
-    ${state.mailEnabled?`<section class="account-settings">
-      ${onboarding?'':'<h2>Indirizzo email</h2>'}
-      ${account.email?`<p class="intro">Indirizzo verificato: ${esc(account.email)}</p>`:''}
-      ${account.pendingEmail?`<p class="intro">Verifica in attesa per ${esc(account.pendingEmail)}.</p>`:''}
-      <form id="profile-email">
-        <p class="error-inline" role="alert" hidden></p>
-        <label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email" value="${esc(account.pendingEmail||account.email)}"></label>
+    ${account.email?`<div class="profile-identity"><span>${esc(account.email)}</span><span class="profile-verified">Email verificata</span></div>`:''}
+    <div class="profile-grid">
+    ${showEmailForm?`<section class="account-settings profile-card">
+      <h2>${account.pendingEmail?'Verifica la tua email':'Indirizzo email'}</h2>
+      ${account.pendingEmail?`<p class="intro">Link inviato a ${esc(account.pendingEmail)}.</p>`:''}
+      <form id="profile-email"><p class="error-inline" role="alert" hidden></p>
+        <label class="field">Indirizzo email<input type="email" name="email" required maxlength="254" autocomplete="email" value="${esc(account.pendingEmail||'')}"></label>
         ${account.email?'<label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>':''}
         <button class="primary" type="submit">${account.pendingEmail?'Invia di nuovo il link':'Invia il link di verifica'}</button>
       </form>
     </section>`:''}
-    ${onboarding?'':`<section class="account-settings">
-      <h2>Cambia password</h2>
-      <form id="profile-password">
-        <p class="error-inline" role="alert" hidden></p>
-        <label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label>
-        <label class="field">Nuova password<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>
-        <button class="primary" type="submit">Aggiorna la password</button>
-      </form>
-    </section>`}
+    ${onboarding?'':'<section class="account-settings profile-card profile-appearance" id="profile-appearance"></section><section class="account-settings profile-card"><details class="profile-password"><summary>Cambia password</summary><form id="profile-password"><p class="error-inline" role="alert" hidden></p><label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label><label class="field">Nuova password<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label><button class="primary" type="submit">Aggiorna la password</button></form></details></section>'}
+    </div>
+    <div class="profile-footer"><button id="logout" type="button" data-theme-menu="Esci">Esci dall’account</button></div>
   </section>`;
-  if(!onboarding) {
-    const appearance=document.createElement('section');
-    appearance.className='account-settings';
-    main.querySelector('.panel').append(appearance);
-    window.SectorTheme.mount(appearance);
-  }
-  if(state.mailEnabled) bindForm('profile-email',async form=>{
-    const data=Object.fromEntries(new FormData(form));
-    const response=await api('emailSet',data);
-    if(response.mailFailed) history.replaceState(history.state,'','#profilo');
+  if(!onboarding)window.SectorTheme.mount(main.querySelector('#profile-appearance'));
+  if(showEmailForm)bindForm('profile-email',async form=>{
+    const response=await api('emailSet',Object.fromEntries(new FormData(form)));
+    if(response.mailFailed)history.replaceState(history.state,'','#profilo');
     await refresh();
-    if(response.mailFailed) {
-      notify('Invio non riuscito. Puoi richiedere un nuovo link tra un minuto.',true);
-      return;
-    }
-    if(onboarding && openLoginDestination()) return;
+    if(response.mailFailed){notify('Invio non riuscito. Puoi richiedere un nuovo link tra un minuto.',true);return;}
+    if(onboarding&&openLoginDestination())return;
     notify(state.account.pendingEmail?'Link di verifica inviato.':'L’indirizzo è già verificato.');
   });
-  if(!onboarding) bindForm('profile-password',async form=>{
-    await api('passwordChange',Object.fromEntries(new FormData(form)));
-    form.reset();
-    notify('Password aggiornata.');
-  });
+  if(!onboarding)bindForm('profile-password',async form=>{await api('passwordChange',Object.fromEntries(new FormData(form)));form.reset();notify('Password aggiornata.');});
+  main.querySelector('#logout').onclick=async event=>{
+    if(typeof builderDiscard==='function'&&!builderDiscard())return;
+    const button=event.currentTarget;button.disabled=true;
+    try{await api('logout',{});location.hash='classifica';await refresh();}catch(error){notify(error.message,true);button.disabled=false;}
+  };
 }
+
+function recentMatchRow(match){
+  const photo=match.photo?`<button class="small-button" data-photo="${esc(match.photo)}" type="button" aria-label="Vedi foto della partita tra ${esc(name(match.a))} e ${esc(name(match.b))}">Foto</button>`:'<span class="muted" aria-label="Nessuna foto">—</span>';
+  const canChange=!match.leagueLocked&&(state.user.admin||match.by===state.user.id);
+  return `<tr class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${esc(name(match.a))}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${esc(name(match.b))}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
+}
+
 
 function openLoginDestination(){
   const next=new URLSearchParams(location.search).get('next');
@@ -1216,6 +1175,8 @@ function standings(){
 
 
 
+              <th scope="col">Foto</th>
+
               <th>
 
                 <span class="sr-only">
@@ -1250,148 +1211,7 @@ function standings(){
 
                 )
 
-                .map(
-
-                  m=>`
-
-                    <tr class="${m.void?'cancelled':''}">
-
-
-
-                      <td>
-
-                        ${dateLabel(m.date)}
-
-                      </td>
-
-
-
-                      <td>
-
-                        ${esc(name(m.a))}
-
-                      </td>
-
-
-
-                      <td>
-
-                        <strong class="result">
-
-                          ${m.scoreA} – ${m.scoreB}
-
-                        </strong>
-
-
-
-                        ${
-
-                          m.void
-
-                            ? '<br><small>Annullata</small>'
-
-                            : ''
-
-                        }
-
-                      </td>
-
-
-
-                      <td>
-
-                        ${esc(name(m.b))}
-
-                      </td>
-
-
-
-                      <td>
-
-                        ${esc(m.mission||'—')}
-
-                      </td>
-
-
-
-                      <td class="match-actions">
-
-
-
-                        ${
-
-                          m.photo
-
-                            ? `
-
-                              <button
-
-                                class="small-button"
-
-                                data-photo="${esc(m.photo)}"
-
-                                type="button"
-
-                              >
-
-                                Foto
-
-                              </button>
-
-                            `
-
-                            : ''
-
-                        }
-
-
-
-                        ${
-
-                          !m.leagueLocked && (state.user.admin || m.by===state.user.id)
-                            ? `
-
-                              <button
-
-                                class="small-button"
-
-                                data-void="${m.id}"
-
-                                data-value="${!m.void}"
-
-                                type="button"
-
-                              >
-
-                                ${
-
-                                  m.void
-
-                                    ? 'Ripristina'
-
-                                    : 'Annulla'
-
-                                }
-
-                              </button>
-
-                            `
-
-                            : ''
-
-                        }
-
-
-
-                      </td>
-
-
-
-                    </tr>
-
-                  `
-
-                ).join('')
+                .map(recentMatchRow).join('')
 
             }
 
@@ -2050,526 +1870,6 @@ function matchPage(){
       notify(
 
         'Partita registrata. La classifica è aggiornata.'
-
-      );
-
-    }
-
-  );
-
-}
-
-
-
-function listsPage(){
-
-  main.innerHTML=`
-
-    <section class="panel narrow">
-
-
-
-      <h1>
-
-        Carica lista
-
-      </h1>
-
-
-
-      <p class="intro">
-
-        Salva le tue liste per tenerle sempre a disposizione.
-
-      </p>
-
-
-
-      <form id="list-form">
-
-
-
-        <p
-
-          class="error-inline"
-
-          role="alert"
-
-          hidden
-
-        ></p>
-
-
-
-        <label class="field">
-
-          Giocatore
-
-
-
-          <input
-
-            value="${esc(state.user.name)}"
-
-            readonly
-
-          >
-
-        </label>
-
-
-
-        <label class="field">
-
-          Nome lista
-
-
-
-          <input
-
-            name="name"
-
-            required
-
-            maxlength="100"
-
-            placeholder="Es. Astra Militarum – 2000 pt"
-
-          >
-
-        </label>
-
-
-
-        <label class="field">
-
-          Fazione
-
-
-
-          <input
-
-            name="faction"
-
-            required
-
-            maxlength="80"
-
-            placeholder="Es. Astra Militarum"
-
-          >
-
-        </label>
-
-
-
-        <label class="field">
-
-          File della lista (.txt)
-
-
-
-          <span
-
-            class="drop"
-
-            id="drop"
-
-          >
-
-
-
-            <strong>
-
-              Trascina qui il file .txt
-
-            </strong>
-
-
-
-            <input
-
-              type="file"
-
-              name="file"
-
-              accept=".txt,text/plain"
-
-              required
-
-              aria-label="Seleziona file di testo"
-
-            >
-
-
-
-          </span>
-
-
-
-          <small>
-
-            Solo file .txt in UTF-8.
-
-            Dimensione massima 1 MB.
-
-          </small>
-
-        </label>
-
-
-
-        <button
-
-          class="primary wide"
-
-          type="submit"
-
-        >
-
-          Carica lista
-
-        </button>
-
-
-
-      </form>
-
-
-
-    </section>
-
-
-
-    <section class="panel">
-
-
-
-      <h2>
-
-        Liste caricate
-
-      </h2>
-
-
-
-      <div class="table-scroll">
-
-
-
-        <table>
-
-
-
-          <thead>
-
-            <tr>
-
-              <th>Data</th>
-
-              <th>Giocatore</th>
-
-              <th>Nome lista</th>
-
-              <th>Fazione</th>
-
-
-
-              <th>
-
-                <span class="sr-only">
-
-                  Download
-
-                </span>
-
-              </th>
-
-            </tr>
-
-          </thead>
-
-
-
-          <tbody>
-
-
-
-            ${
-
-              [...state.lists]
-
-                .reverse()
-
-                .map(
-
-                  l=>`
-
-                    <tr>
-
-
-
-                      <td>
-
-                        ${dateLabel(l.date)}
-
-                      </td>
-
-
-
-                      <td>
-
-                        ${esc(name(l.owner))}
-
-                      </td>
-
-
-
-                      <td>
-
-                        ${esc(l.name)}
-
-                      </td>
-
-
-
-                      <td>
-
-                        ${esc(l.faction)}
-
-                      </td>
-
-
-
-                      <td>
-
-                        <a
-
-                          class="button small-button"
-
-                          href="api.php?action=download&amp;id=${l.id}"
-
-                          download
-
-                        >
-
-                          Scarica .txt
-
-                        </a>
-
-                      </td>
-
-
-
-                    </tr>
-
-                  `
-
-                ).join('')
-
-            }
-
-
-
-          </tbody>
-
-
-
-        </table>
-
-
-
-        ${
-
-          !state.lists.length
-
-            ? empty(
-
-                'file',
-
-                'Nessuna lista caricata.',
-
-                'Carica la tua prima lista per averla sempre a disposizione.'
-
-              )
-
-            : ''
-
-        }
-
-
-
-      </div>
-
-
-
-    </section>
-
-  `;
-
-
-
-  const drop=document.querySelector('#drop');
-
-
-
-  const input=document.querySelector(
-
-    '[name=file]'
-
-  );
-
-
-
-  drop.ondragover=e=>{
-
-    e.preventDefault();
-
-    drop.classList.add('dragover');
-
-  };
-
-
-
-  drop.ondragleave=()=>{
-
-    drop.classList.remove('dragover');
-
-  };
-
-
-
-  drop.ondrop=e=>{
-
-    e.preventDefault();
-
-
-
-    drop.classList.remove('dragover');
-
-
-
-    if(e.dataTransfer.files.length===1){
-
-      input.files=e.dataTransfer.files;
-
-    }else{
-
-      notify(
-
-        'Scegli un solo file alla volta.',
-
-        true
-
-      );
-
-    }
-
-  };
-
-
-
-  bindForm(
-
-    'list-form',
-
-    async form=>{
-
-      const file=input.files[0];
-
-
-
-      if(
-
-        !file ||
-
-        !file.name.toLowerCase().endsWith('.txt')
-
-      ){
-
-        throw Error(
-
-          'Scegli un file .txt.'
-
-        );
-
-      }
-
-
-
-      if(file.size>1048576){
-
-        throw Error(
-
-          'Il file supera il limite di 1 MB.'
-
-        );
-
-      }
-
-
-
-      let text;
-
-
-
-      try{
-
-        text=new TextDecoder(
-
-          'utf-8',
-
-          {
-
-            fatal:true
-
-          }
-
-        ).decode(
-
-          await file.arrayBuffer()
-
-        );
-
-      }catch{
-
-        throw Error(
-
-          'Salva il file come testo UTF-8 e riprova.'
-
-        );
-
-      }
-
-
-
-      await api(
-
-        'list',
-
-        {
-
-          name:form.elements.name.value,
-
-          faction:form.elements.faction.value,
-
-          filename:file.name,
-
-          text
-
-        }
-
-      );
-
-
-
-      await refresh();
-
-
-
-      notify(
-
-        'Lista caricata. È disponibile nell’archivio del settore.'
 
       );
 
