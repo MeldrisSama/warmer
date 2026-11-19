@@ -28,6 +28,13 @@ test('Mobile catalog keeps allies in their own section and role-specific plus bu
  assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Alleati')",c),/>Marine</);
  visible(c,'sm_dark_angels');assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Alleati')",c),/DW Squad/);
 });
+test('Deathwatch Agent variants and Watch Master also require Support in every catalog view',()=>{
+ const c=context(catalog());visible(c,'sm_dark_angels');assert.ok(visible(c,'sm_dark_angels').includes('agent'));
+ assert.doesNotMatch(vm.runInContext('wbMobileCatalogList()',c),/Deathwatch Kill Team|Watch Master/);
+ assert.doesNotMatch(vm.runInContext('wbCatalogList()',c),/Deathwatch Kill Team|Watch Master/);
+ visible(c,'sm_dark_angels',['support']);assert.match(vm.runInContext("wbMobileCatalogList('Alleati')",c),/Deathwatch Kill Team/);assert.match(vm.runInContext('wbCatalogList()',c),/Watch Master/);
+ visible(c,'sm_dark_angels');assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Alleati')",c),/Deathwatch Kill Team|Watch Master/);
+});
 test('Real catalog keeps conditional imported datasheets out of the native catalog', {skip:!process.env.BUILDER_CATALOG_PATH},()=>{
   const data=catalog(process.env.BUILDER_CATALOG_PATH),c=context(data),units=new Map(data.units.map(u=>[u.id,u]));
   const has=(u,k)=>u.keywords.split(',').some(s=>s.trim().toLowerCase()===k.toLowerCase());
@@ -39,7 +46,7 @@ test('Real catalog keeps conditional imported datasheets out of the native catal
     assert.equal(visible(c,fid).filter(matches).length,0,fid+' leaked '+key);
     assert.ok(visible(c,fid,[did]).some(matches),fid+' failed to unlock '+key);
     if(key==='Deathwatch'){
-      visible(c,fid);const agents=vm.runInContext("wbMobileCatalogList('Alleati','Deathwatch')",c);assert.match(agents,/Assigned Agents/);
+      visible(c,fid);const agents=vm.runInContext("wbMobileCatalogList('Alleati','Deathwatch')",c);assert.doesNotMatch(agents,/data-wb-mobile-add/);
       assert.doesNotMatch(vm.runInContext("wbMobileCatalogList('Infantry','Deathwatch')",c),/data-wb-mobile-add/);
     }
   }
@@ -49,5 +56,11 @@ test('Real catalog keeps conditional imported datasheets out of the native catal
     if(rule.id==='freeblades')assert.ok(!rule.unitIds.some(id=>has(units.get(id),'Adeptus Mechanicus')));
     if(rule.id==='dreadblades')assert.ok(!rule.unitIds.some(id=>has(units.get(id),'Damned')||has(units.get(id),'Heretic Astartes')));
     if(rule.id==='daemonic_pact')assert.ok(!rule.unitIds.some(id=>has(units.get(id),'Heretic Astartes')));
+  }
+  for(const faction of data.factions.filter(f=>f.id==='sm'||f.id.startsWith('sm_')&&f.id!=='sm_deathwatch')){
+    const deathwatch=id=>{const u=units.get(id);return has(u,'Deathwatch')||has(u,'Kill Team')||/Deathwatch|\bWatch Master\b|\bWatch Captain Artemis\b/i.test(u.name);};
+    assert.equal(visible(c,faction.id).filter(deathwatch).length,0,faction.id+' still shows Deathwatch');
+    const did=faction.detachments.find(d=>d.name==='Deathwatch Support')?.id;assert.ok(did);
+    assert.ok(visible(c,faction.id,[did]).some(deathwatch));assert.equal(visible(c,faction.id).filter(deathwatch).length,0);
   }
 });

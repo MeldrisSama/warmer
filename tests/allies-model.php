@@ -22,7 +22,8 @@ foreach([
     ['knight','Knight','qi','Imperial Knights'],['rangers','Skitarii Rangers','adm','Adeptus Mechanicus'],['rangers_alias','Skitarii Rangers','qi','Imperial Knights, Adeptus Mechanicus'],
     ['chaos_knight','Chaos Knight','qt','Chaos Knights'],['cultist','Cultists','csm','Damned'],['cultist_alias','Cultists','qt','Chaos Knights, Damned'],
     ['daemon','Daemon','cd','Legiones Daemonica'],['lord','Chaos Lord','csm','Heretic Astartes, Character'],['lord_alias','Chaos Lord','cd','Legiones Daemonica, Heretic Astartes, Character'],
-    ['marine','Marine','sm','Adeptus Astartes'],['deathwatch','DW Squad','sm','Adeptus Astartes, Deathwatch, Kill Team']
+    ['marine','Marine','sm','Adeptus Astartes'],['deathwatch','DW Squad','sm','Adeptus Astartes, Deathwatch, Kill Team'],
+    ['dw_agent','Deathwatch Kill Team','aoi','Agents of the Imperium, Retinue, Kill Team'],['dw_watch','Watch Master','aoi','Agents of the Imperium, Character'],['agent','Inquisitor','aoi','Agents of the Imperium, Character']
 ] as $row)$add(...$row);
 foreach([
     ['gc',['cult','guard_alias','lictor_alias','forbidden'],['brood'=>'Brood Brother Auxilia','final'=>'Final Day']],
@@ -48,6 +49,13 @@ checkAlly(count(builderValidateV2($catalog,$army('dru','corsair_alias',['reapers
 $over=$army('dru','troupe_alias');$over['entries'][0]['manualPoints']=501;
 checkAlly(count(builderValidateV2($catalog,$over)['errors'])>0,'Host alias bypasses ally points cap');
 checkAlly(builderValidateV2($catalog,$army('sm_deathwatch','deathwatch'))['errors']===[],'Native Deathwatch army lost its units');
+foreach(['dw_agent','dw_watch'] as $unit){
+    checkAlly(count(builderValidateV2($catalog,$army('sm_dark_angels',$unit))['errors'])>0,'Agent variant bypasses Support');
+    checkAlly(builderValidateV2($catalog,$army('sm_dark_angels',$unit,['support']))['errors']===[],'Agent variant not unlocked');
+}
+checkAlly(builderValidateV2($catalog,$army('sm_dark_angels','agent'))['errors']===[],'Other Imperial Agent requires Support');
+$quota=$army('sm_dark_angels','dw_agent',['support']);$quota['entries']=array_map(static fn($n)=>array_replace($quota['entries'][0],['entryId'=>'copy'.$n]),[1,2,3]);
+checkAlly((bool)array_filter(builderValidateV2($catalog,$quota)['errors'],static fn($e)=>str_contains($e,'Assigned Agents')),'Assigned Agents quota was bypassed');
 // Simulate an old imported payload with a leaked native ID. Read/save repair
 // permissions at runtime without rewriting catalogs or existing army entries.
 $old=$catalog;$old['factions'][0]['unitIds'][]='guard_alias';

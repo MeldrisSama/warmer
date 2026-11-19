@@ -226,7 +226,7 @@ function beEnhancementsHtml(unit,entry){
 }
 function beAllyRules(){
   const ids=builderUi.army.detachmentIds;
-  return (wbFaction().allies||[]).filter(r=>(!r.detachmentIds.length||r.detachmentIds.some(id=>ids.includes(id)))&&!r.excludedDetachmentIds.some(id=>ids.includes(id)));
+  return (wbFaction().allies||[]).filter(r=>(!r.detachmentIds.length||r.detachmentIds.some(id=>ids.includes(id)))&&!r.excludedDetachmentIds.some(id=>ids.includes(id))).map(rule=>({...rule,unitIds:rule.unitIds.filter(id=>rule.unitDetachmentIds?.[id]===undefined||rule.unitDetachmentIds[id].some(det=>ids.includes(det)))})).filter(rule=>rule.unitIds.length);
 }
 function beAllyRule(id){
   return beAllyRules().filter(r=>r.unitIds.includes(id)).sort((a,b)=>Number(Boolean(b.detachmentIds.length))-Number(Boolean(a.detachmentIds.length)))[0];
