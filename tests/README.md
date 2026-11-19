@@ -6,6 +6,8 @@ General site/profile checks: `node --test tests/site-profile.test.cjs tests/them
 
 The same suite covers read-only list links on standings and recent matches, observer access to league lists after both submissions, no participant controls for observers, and homepage indexing only after a confirmed, non-void result. Saved builder drafts remain owner-only; submitted snapshots survive builder edits/deletion. A single submission and anonymous requests remain protected.
 
+League photo checks cover participant-only upload/replacement after confirmation, cross-season and observer rejection, invalid image data, anonymous downloads, unchanged scores, closed seasons, cancelled matches and rollback preserving the previous file without orphaning the replacement. UI checks verify file limits, observer-only viewing and absence of upload controls before confirmation.
+
 `builder-loadout-rules.test.cjs` / `loadout-rules-model.php` cover bundle consumption, independent row quotas, all-model swaps, footnote thresholds, locked and incompatible equipment, optional slots, numbered bearers, reverse-order dependencies, shared replace-or-add limits and the verified missing plasma profiles. Optional model allocation is preserved through API save/defaults in `automation-model.php`; tampered counts are rejected. Include `tests/builder-loadout-rules.test.cjs` in the full command below.
 
 Latest refinement checks cover mandatory Warlord defaults and server validation, collapsed categories and search, independent Build vs combined Play sheets, dismissible errors that preserve validation, backdrop dismissal and the compact options menu for fixed units. The units export includes army metadata and selected upgrades while omitting weapon details.

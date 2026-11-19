@@ -57,10 +57,23 @@ test('Standings have no per-player Lists button and a completed match opens its 
 test('League observers can read revealed lists without receiving participant controls',()=>{
   const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
   const c=vm.createContext({state:{user:{id:'observer'},league:{}},mine:f=>f.lineups!==null,player:id=>id,confirmed:()=>false,playable:()=>true,playerArmy:()=>'',openFixture:null});
-  vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function fixtureRow('),source.indexOf('function renderRounds(')),c);
+  vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function photoPanel('),source.indexOf('function renderRounds(')),c);
   c.fixture={id:'fixture',a:'one',b:'two',lineups:null,listsReadable:true};
   let html=vm.runInContext('fixtureRow(fixture)',c);assert.match(html,/data-lineup="one"/);assert.match(html,/data-lineup="two"/);assert.doesNotMatch(html,/<form|leaguePropose|leagueConfirm/);
   c.fixture.listsReadable=false;html=vm.runInContext('fixtureRow(fixture)',c);assert.doesNotMatch(html,/data-lineup|<details/);
+});
+
+test('League photos are visible to observers while upload stays with participants after confirmation',async()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
+  const c=vm.createContext({mine:f=>f.lineups!==null,escapeHtml:s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;'),player:id=>id,action:(name,label)=>`<button value="${name}">${label}</button>`});
+  vm.runInContext(source.slice(source.indexOf('function photoPanel('),source.indexOf('function fixtureRow(')),c);
+  c.fixture={a:'one',b:'two',lineups:{},result:null};assert.equal(vm.runInContext('photoPanel(fixture)',c),'');
+  c.fixture.result={void:false,photo:null};assert.match(vm.runInContext('photoPanel(fixture)',c),/name="photo"/);
+  c.fixture.result.photo='api.php?action=photo&id=match';c.fixture.lineups=null;
+  const html=vm.runInContext('photoPanel(fixture)',c);assert.match(html,/<img/);assert.doesNotMatch(html,/<form|name="photo"/);
+  c.fixture.lineups={};c.fixture.result.void=true;assert.doesNotMatch(vm.runInContext('photoPanel(fixture)',c),/<form/);
+  await assert.rejects(c.matchPhotoData({size:6*1024*1024,type:'image/png'}),/5 MB/);
+  await assert.rejects(c.matchPhotoData({size:100,type:'text/html'}),/JPG/);
 });
 
 test('Logout inside Profile preserves the existing API flow and handles failure without leaving the page',async()=>{

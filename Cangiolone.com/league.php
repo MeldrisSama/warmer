@@ -83,7 +83,7 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         $lineups=$submitted[$fixture['id']]??[];
         $fixtures[]=[
             'id'=>$fixture['id'],'round'=>$fixture['round'],'a'=>$fixture['a'],'b'=>$fixture['b'],
-            'result'=>$match ? array_intersect_key($match,array_flip(['scoreA','scoreB','date','mission','void'])) : null,
+            'result'=>$match ? array_intersect_key($match,array_flip(['scoreA','scoreB','date','mission','void']))+['photo'=>empty($match['photo']) ? null : 'api.php?action=photo&id='.rawurlencode($match['id'])] : null,
             'pending'=>$mine ? $pending : null,
             'awaiting'=>$pending!==null,
             'listsReadable'=>isset($lineups[$fixture['a']],$lineups[$fixture['b']]),

@@ -331,8 +331,9 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const match = overrides => ({ a: aliceId, b: bobId, scoreA: 80, scoreB: 50, date: '2020-01-01', mission: 'Test mission', request: randomUUID(), ...overrides });
   const registration = (username, code) => ({ username, name: username, password, code });
   function sql(statement) {
-    const result = spawnSync(php, ['-r', '$pdo=new PDO("sqlite:".$argv[1]);$pdo->exec($argv[2]);', join(application, 'api.sqlite'), statement], { encoding: 'utf8' });
+    const result = spawnSync(php, ['-r', '$pdo=new PDO("sqlite:".$argv[1]);if(str_starts_with($argv[2],"SELECT "))echo json_encode($pdo->query($argv[2])->fetchAll(PDO::FETCH_ASSOC));else $pdo->exec($argv[2]);', join(application, 'api.sqlite'), statement], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
+    return result.stdout ? JSON.parse(result.stdout) : undefined;
   }
 
   await t.test('Appearance assets load publicly through the local router and both pages include the early theme script', async () => {
@@ -598,7 +599,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('photo&id=../../config.php', undefined, 404);
   });
 
-  await t.test('League registration, blind list exchange and opponent-confirmed results', async () => {
+  await t.test('League registration, blind list exchange and opponent-confirmed results', async t => {
     assert.equal((await state()).league, null);
     await guest('league', undefined, 401);
     await alice('leagueOpen', { name: 'Test' }, 403);
@@ -675,6 +676,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await spectator('leaguePropose', score, 403);
     await alice('leaguePropose', { ...score, date: '2999-01-01' }, 422);
     await alice('leaguePropose', score);
+    await alice('leaguePhoto',{fixture:id,photo:png},409);
     const first = (await fixtureFor(bob)).pending.token;
     assert.equal((await state()).matches.length, originalMatches);
     assert.equal((await fixtureFor(spectator)).pending, null);
@@ -701,12 +703,45 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(confirmed.date, score.date);
     assert.equal(confirmed.void, false);
     const saved = (await state()).matches.find(match => match.request === 'league:' + id);
+    await t.test('League participants attach and replace photos atomically; observers can only view them',async()=>{
+      const data={fixture:id,league:firstLeague,photo:png};
+      await spectator('leaguePhoto',data,403);
+      await guest('leaguePhoto',data,401);
+      await alice('leaguePhoto',{...data,league:'0'.repeat(24)},404);
+      for(const photo of [null,42,'','data:image/png;base64,aGVsbG8='])await alice('leaguePhoto',{...data,photo},422);
+      const uploads=join(application,'uploads/matches');
+      await alice('leaguePhoto',data);
+      let stored=sql(`SELECT photo FROM w40k_matches WHERE id='${saved.id}'`)[0].photo;
+      const firstPath=stored;
+      assert.deepEqual(await readFile(join(application,stored)),Buffer.from(png.split(',')[1],'base64'));
+      const photoAction='photo&id='+saved.id;
+      assert.equal((await fixtureFor(spectator)).result.photo,'api.php?action='+photoAction);
+      assert.deepEqual(Buffer.from(await spectator(photoAction)),Buffer.from(png.split(',')[1],'base64'));
+      await guest(photoAction,undefined,401);
+      const before=await readdir(uploads);
+      sql("CREATE TRIGGER reject_league_photo BEFORE UPDATE ON w40k_matches BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+      try {
+        await bob('leaguePhoto',data,503);
+        assert.deepEqual(await readdir(uploads),before);
+        assert.equal(sql(`SELECT photo FROM w40k_matches WHERE id='${saved.id}'`)[0].photo,stored);
+        assert.deepEqual(await readFile(join(application,stored)),Buffer.from(png.split(',')[1],'base64'));
+      }finally{sql('DROP TRIGGER reject_league_photo');}
+      await bob('leaguePhoto',data);
+      stored=sql(`SELECT photo FROM w40k_matches WHERE id='${saved.id}'`)[0].photo;
+      assert.notEqual(stored,firstPath);
+      assert.ok(!(await readdir(uploads)).includes(firstPath.split('/').at(-1)));
+      assert.ok((await state()).matches.find(match=>match.id===saved.id).photo);
+      const unchanged=(await state()).matches.find(match=>match.id===saved.id);
+      assert.equal(unchanged.scoreA,saved.scoreA);assert.equal(unchanged.scoreB,saved.scoreB);
+      assert.equal(unchanged.date,saved.date);assert.equal(unchanged.by,saved.by);
+    });
     const publicLists=(await spectator('state')).readableLists.filter(list=>list.fixture===id);
     assert.equal(publicLists.length,2);
     assert.ok(publicLists.every(list=>list.match===saved.id));
     assert.ok(publicLists.every(list=>!('text' in list)));
     assert.equal(await spectator(download(bobId)),'Army B');
     await admin('void', { id: saved.id, void: true });
+    await alice('leaguePhoto',{fixture:id,photo:png},409);
     assert.equal((await fixtureFor(spectator)).result.void, true);
     assert.equal((await spectator('state')).readableLists.some(list=>list.fixture===id),false);
     await admin('void', { id: saved.id, void: false });
@@ -762,6 +797,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leaguePropose', { ...score, fixture: unfinished.id, league: firstLeague }, 409);
     await admin('void', { id: saved.id, void: true }, 409);
     assert.ok((await state()).matches.find(match => match.id === saved.id).leagueLocked);
+    await alice('leaguePhoto',{fixture:id,photo:png});
     await alice('leaguePropose', { ...score, fixture: parallel.fixtures[0].id, league: secondLeague });
     await admin('leagueResume', { league: firstLeague }, 409);
     await alice('leagueReopen', { league: firstLeague }, 403);
