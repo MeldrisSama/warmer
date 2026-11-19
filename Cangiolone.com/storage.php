@@ -187,7 +187,7 @@ final class SectorStorage {
     public function load(string $scope='archive'): array {
         $keys=match($scope) {
             'league'=>['users'=>'id','matches'=>'id']+self::LEAGUE_KEYS,
-            'state'=>self::KEYS+array_intersect_key(self::LEAGUE_KEYS,['league'=>true,'league_members'=>true,'league_fixtures'=>true]),
+            'state'=>self::KEYS+self::LEAGUE_KEYS,
             default=>self::KEYS
         };
         $data=[];

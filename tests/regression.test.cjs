@@ -656,12 +656,17 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.ok(!JSON.stringify(await state()).includes('Army A final'));
     await bob(download(aliceId), undefined, 403);
     await alice(download(aliceId), undefined, 403);
+    await spectator(download(aliceId), undefined, 403);
+    assert.equal((await fixtureFor(spectator)).listsReadable, false);
     await bob('leagueLineup', list('Army B'));
     assert.equal(await bob(download(aliceId)), frozenBuilderText);
     await alice('builderDelete',{id:savedBuilderArmy.id});
     assert.equal(await bob(download(aliceId)), frozenBuilderText);
     assert.equal(await alice(download(bobId)), 'Army B');
-    await spectator(download(aliceId), undefined, 403);
+    assert.equal(await spectator(download(aliceId)), frozenBuilderText);
+    assert.equal((await fixtureFor(spectator)).listsReadable, true);
+    assert.equal((await spectator('state')).readableLists.some(list=>list.fixture===id),false);
+    await spectator('leagueDownload&fixture='+id+'&player=unknown',undefined,404);
     await guest(download(aliceId), undefined, 401);
     await alice('leagueLineup', list('Changed after reveal'), 409);
 
@@ -696,8 +701,14 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(confirmed.date, score.date);
     assert.equal(confirmed.void, false);
     const saved = (await state()).matches.find(match => match.request === 'league:' + id);
+    const publicLists=(await spectator('state')).readableLists.filter(list=>list.fixture===id);
+    assert.equal(publicLists.length,2);
+    assert.ok(publicLists.every(list=>list.match===saved.id));
+    assert.ok(publicLists.every(list=>!('text' in list)));
+    assert.equal(await spectator(download(bobId)),'Army B');
     await admin('void', { id: saved.id, void: true });
     assert.equal((await fixtureFor(spectator)).result.void, true);
+    assert.equal((await spectator('state')).readableLists.some(list=>list.fixture===id),false);
     await admin('void', { id: saved.id, void: false });
 
     const secondLeague = (await admin('leagueOpen', { name: 'Girone parallelo' })).id;

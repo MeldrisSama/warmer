@@ -263,9 +263,10 @@ if($action==='state') {
         return $match;
     },$db['matches']);
 
+    $readableLists=leagueReadableLists($db);
     $profile=mailProfile($db,$me['id']);
     $needsEmail=$mail!==null && ($_SESSION['askEmail']??false) && $profile['email']===null && $profile['pending_email']===null;
-    result(['mailEnabled'=>$mail!==null,'needsEmail'=>$needsEmail,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+    result(['mailEnabled'=>$mail!==null,'needsEmail'=>$needsEmail,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'readableLists'=>$readableLists,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
