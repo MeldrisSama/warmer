@@ -398,10 +398,6 @@ function profilePage(onboarding=false){
   };
 }
 
-function sharedArmyLists(){
-  return state.readableLists||[];
-}
-
 function openArmyLists(lists,title){
   document.getElementById('army-list-reader')?.close();
   const reader=document.createElement('dialog');
@@ -1041,7 +1037,7 @@ function standings(){
 
                       <td>
 
-                        ${esc(u.name)} ${sharedArmyLists().some(list=>list.player===u.id)?`<button class="small-button" type="button" data-player-lists="${esc(u.id)}">Liste</button>`:''}
+                        ${esc(u.name)}
 
                         ${
 
@@ -1289,7 +1285,6 @@ function standings(){
 
 
 
-  document.querySelectorAll('[data-player-lists]').forEach(button=>button.onclick=()=>openArmyLists(sharedArmyLists().filter(list=>list.player===button.dataset.playerLists),name(button.dataset.playerLists)));
   document.querySelectorAll('[data-match-lists]').forEach(button=>button.onclick=()=>openArmyLists((state.readableLists||[]).filter(list=>list.match===button.dataset.matchLists),'Liste della partita'));
 
   document

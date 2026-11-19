@@ -16,7 +16,7 @@ File applicativi modificati: app.js, style.css, campionato.php e campionato.css.
 
 ## Lettura delle liste
 
-La classifica generale ora mostra un pulsante Liste accanto al giocatore e nelle azioni delle sue partite di campionato concluse. Apre un popup di testo, con scelta della lista e download TXT: non apre il builder. Vengono mostrate le copie consegnate per incontri con risultato confermato e non annullato, non le bozze private del builder. Se non ci sono copie consultabili, il pulsante non compare. Le vecchie liste condivise senza collegamento a una partita non sono incluse in questa nuova vista.
+Il pulsante Liste compare nelle azioni delle partite di campionato concluse; non compare accanto ai nomi dei giocatori nella classifica. Apre un popup di testo, con scelta della lista e download TXT: non apre il builder. Vengono mostrate le copie consegnate per incontri con risultato confermato e non annullato, non le bozze private del builder. Se non ci sono copie consultabili, il pulsante non compare. Le vecchie liste condivise senza collegamento a una partita non sono incluse in questa nuova vista.
 
 Nel calendario del campionato tutti gli utenti autenticati possono leggere entrambe le liste appena entrambi i giocatori le hanno consegnate, anche prima del risultato. Una sola consegna rimane nascosta. La home non anticipa queste liste: le indicizza solo dopo la conferma del risultato. Le copie restano immutabili rispetto a successive modifiche o eliminazioni delle armate nel builder. Leggere un incontro altrui non permette di consegnare liste, proporre o confermare risultati per quell'incontro.
 
@@ -27,3 +27,5 @@ Questa aggiunta modifica anche api.php, league.php, storage.php e campionato.js;
 Branch aggiornato su main dopo la correzione della cache degli asset. Suite completa applicazione/builder/temi/HTTP: **111 test passati**. I precedenti 40 erano la selezione pertinente alle modifiche generali; i controlli dell'intero catalogo esterno restano separati e non sono compresi in questo numero. Rimangono i limiti di verifica Safari fisico e hosting MySQL/IIS.
 
 Il pacchetto locale FTPS di questo aggiornamento contiene 10 file per `/cangiolone.com/warhammer/`: `app.js`, `campionato.js`, `style.css`, `campionato.css`, `assets.php`, `storage.php`, `league.php`, `api.php`, `campionato.php`, `index.php`. Include helper e pagine della correzione cache già presente su main, per evitare di ripristinare URL statici vecchi. Caricare dipendenze e asset prima di API e pagine di ingresso. Il pacchetto non contiene configurazioni, upload, database o cataloghi e non richiede una nuova importazione del catalogo.
+
+Le partite confermate nel campionato attualmente vengono create senza foto: il calendario non offre un caricamento fotografico. La correzione della colonna Foto riguarda la visualizzazione delle foto esistenti nelle ultime partite della home.
