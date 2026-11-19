@@ -5,6 +5,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
 header("Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 header('Cache-Control: no-store');
+require_once __DIR__.'/assets.php';
 ?><!doctype html>
 <html lang="it" data-type="software">
 <head>
@@ -18,9 +19,9 @@ header('Cache-Control: no-store');
   <meta property="og:title" content="Campionato Warhammer 40.000 · Cronache del settore">
   <meta property="og:description" content="Calendario, classifica e risultati del campionato.">
   <title>Campionato Warhammer 40.000 · Cronache del settore</title>
-  <link rel="stylesheet" href="campionato.css"><link rel="stylesheet" href="theme.css"><script src="theme.js"></script>
-  <script defer src="standings.js"></script>
-  <script defer src="campionato.js"></script>
+  <link rel="stylesheet" href="<?= assetUrl('campionato.css') ?>"><link rel="stylesheet" href="<?= assetUrl('theme.css') ?>"><script src="<?= assetUrl('theme.js') ?>"></script>
+  <script defer src="<?= assetUrl('standings.js') ?>"></script>
+  <script defer src="<?= assetUrl('campionato.js') ?>"></script>
 </head>
 <body>
   <a class="skip" href="#campionato">Salta al campionato</a>
