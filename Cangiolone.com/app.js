@@ -294,6 +294,7 @@ function render(){
 
   ).join('');
 
+  nav.querySelector('a[href="#builder"]')?.addEventListener('click',event=>builderNavigate(event));
 
 
   nav.hidden=state.needsEmail;
