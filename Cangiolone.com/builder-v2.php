@@ -86,7 +86,7 @@ function builderNormalizeV2(array $raw): array {
         $out['factions'][]=['id'=>$id,'name'=>builderString($f['name']??null,'fazione'),'unitIds'=>array_values(array_unique($ids)),'detachments'=>$ds];
     }
     if ($enriched) $out['factions']=builderBuildAllies($out);
-    return $out;
+    return $enriched?builderRestoreRuleParameters($out):$out;
 }
 function builderValidateV2(array $catalog, array $in): array {
     if(($catalog['featuresVersion']??0)>=3)$catalog['factions']=builderBuildAllies($catalog);

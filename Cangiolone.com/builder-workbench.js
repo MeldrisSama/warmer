@@ -1,6 +1,6 @@
 'use strict';
 
-const workbench={mode:'build',pane:'roster',detailTab:'profiles',selected:null,preview:null,dirty:false,revision:0,search:'',catalogFaction:null,filters:{legends:true,allies:true,titanic:true},categoryOpen:{},hiddenErrors:[],activeEffects:{},exportFormat:'gw'};
+const workbench={mode:'build',pane:'roster',detailTab:'profiles',selected:null,preview:null,dirty:false,revision:0,search:'',catalogFaction:null,filters:{legends:true,allies:true,titanic:true},categoryOpen:{},hiddenErrors:[],activeEffects:{},exportFormat:'gw',scrollPositions:{}};
 const wbUnits=()=>new Map((builderUi.catalog?.units||[]).map(u=>[u.id,u]));
 const wbEntry=id=>builderUi.army.entries.find(e=>e.entryId===id);
 const wbFaction=()=>builderUi.catalog.factions.find(f=>f.id===builderUi.army.factionId);
@@ -33,7 +33,11 @@ function wbOpenMobileCatalog(category='',trigger){
   const clear=dialog.querySelector('[data-wb-clear-search]');
   search.addEventListener('input',()=>{list.innerHTML=wbMobileCatalogList(category,search.value);clear.hidden=!search.value;});
   clear.addEventListener('click',()=>{search.value='';list.innerHTML=wbMobileCatalogList(category);clear.hidden=true;search.focus();});
-  dialog.querySelector('[data-wb-popup-filters]').addEventListener('click',event=>{const filters=wbOpenFilters(event.currentTarget);filters.addEventListener('close',()=>{list.innerHTML=wbMobileCatalogList(category,search.value);},{once:true});});
+  const filterButton=dialog.querySelector('[data-wb-popup-filters]');
+  const filterPanel=document.createElement('div');filterPanel.hidden=true;filterPanel.innerHTML=wbFiltersHtml();filterButton.closest('.wb-popup-search-toolbar').after(filterPanel);
+  filterPanel.id='wb-mobile-catalog-filters';filterButton.setAttribute('aria-controls',filterPanel.id);filterButton.setAttribute('aria-expanded','false');filterButton.removeAttribute('aria-haspopup');
+  filterButton.addEventListener('click',()=>{filterPanel.hidden=!filterPanel.hidden;filterButton.setAttribute('aria-expanded',String(!filterPanel.hidden));});
+  filterPanel.addEventListener('change',event=>{const key=event.target.dataset.wbFilter;if(!Object.hasOwn(workbench.filters,key))return;workbench.filters[key]=event.target.checked;list.innerHTML=wbMobileCatalogList(category,search.value);wbSearch(workbench.search);});
   list.addEventListener('click',event=>{const button=event.target.closest('[data-wb-mobile-add]');if(!button)return;const before=builderUi.army.entries.length,top=dialog.scrollTop;wbAdd(button.dataset.wbMobileAdd);if(builderUi.army.entries.length===before)return;dialog.querySelector('[data-wb-added]').textContent=wbUnits().get(button.dataset.wbMobileAdd).name+' aggiunta';list.innerHTML=wbMobileCatalogList(category,search.value);dialog.scrollTop=top;list.querySelector(`[data-wb-mobile-add="${button.dataset.wbMobileAdd}"]`)?.focus({preventScroll:true});});
 }
 function wbOpenMobileSettings(trigger){
@@ -92,7 +96,7 @@ function wbSetMode(mode){
   if(mode==='play'&&builderWorkbenchTotals().errors.length){notify('Correggi gli errori della lista prima di passare alla partita.',true);return false;}
   workbench.mode=mode;workbench.preview=null;
   if(mode==='play'){const entry=wbEntry(workbench.selected);if(entry?.attachedTo)workbench.selected=entry.attachedTo;workbench.pane='roster';}
-  builderWorkbenchRender();if(typeof main!=='undefined')main.querySelectorAll?.('[data-wb-scroll]').forEach(panel=>{panel.scrollTop=0;});return true;
+  builderWorkbenchRender();workbench.scrollPositions={};if(typeof main!=='undefined')main.querySelectorAll?.('[data-wb-scroll]').forEach(panel=>{panel.scrollTop=0;});return true;
 }
 function wbDetachments(){return wbFaction().detachments.filter(d=>builderUi.army.detachmentIds.includes(d.id));}
 function wbIncursionException(detachments=wbDetachments()){
@@ -187,8 +191,9 @@ function wbArmySettings(open=false){
   const a=builderUi.army,f=wbFaction();
   return `<details class="wb-configuration wb-army-settings" ${open?'open':''}><summary><strong>${esc(f.name)}</strong><span>${a.limit} pt · ${a.dpLimit} DP</span><span>Configura armata</span></summary><div class="wb-army-settings-grid"><label>Fazione<select id="wb-faction">${builderUi.catalog.factions.filter(x=>x.id===f.id||builderPlayableFactions().some(p=>p.id===x.id)).map(x=>`<option value="${x.id}" ${x.id===f.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label><div class="wb-fields">${wbNumber('Limite punti','limit',a.limit,100,5000,100)}${wbNumber('DP','dpLimit',a.dpLimit,0,20,1,[1000,2000].includes(a.limit))}</div><div class="wb-detachment-summary"><button id="wb-detachments" type="button">Distaccamenti · ${a.detachmentIds.length} selezionati</button><label>Disposizione<select id="wb-disposition">${wbDispositionOptions()}</select></label><div class="wb-detachment-recap">${wbDetachments().map(d=>`<button class="wb-detachment-link" data-wb-detachment-rule="${esc(d.id)}">${esc(d.name)}</button>`).join('')||'<p class="wb-muted">Nessun distaccamento selezionato</p>'}</div></div></div></details>`;
 }
+function wbFiltersHtml(){return `<fieldset class="wb-filters"><legend>Mostra unità</legend>${[['legends','Legends'],['allies','Alleati'],['titanic','Titanic']].map(([key,label])=>`<label class="wb-check"><input type="checkbox" data-wb-filter="${key}" ${workbench.filters[key]?'checked':''}>${label}</label>`).join('')}</fieldset>`;}
 function wbOpenFilters(trigger){
-  const dialog=wbModal('Filtri del catalogo',`<fieldset class="wb-filters"><legend>Mostra unità</legend>${[['legends','Legends'],['allies','Alleati'],['titanic','Titanic']].map(([key,label])=>`<label class="wb-check"><input type="checkbox" data-wb-filter="${key}" ${workbench.filters[key]?'checked':''}>${label}</label>`).join('')}</fieldset>`,trigger);
+  const dialog=wbModal('Filtri del catalogo',wbFiltersHtml(),trigger);
   dialog.addEventListener('change',event=>{const key=event.target.dataset.wbFilter;if(!Object.hasOwn(workbench.filters,key))return;workbench.filters[key]=event.target.checked;wbSearch(workbench.search);});
   return dialog;
 }
@@ -334,7 +339,9 @@ function wbRules(rows,unitId=''){return rows.map(r=>{
   let description=wbDescription(r);const core=wbCoreRule(r.name);
   // Some old exports contain only a repeated title/reference in place of the rule.
   if(core&&(!description.trim()||description.replace(/\s|24\.\d{2}/g,'').toUpperCase()===String(r.name).replace(/\s/g,'').toUpperCase()))description=wbDescription(core);
-  const label=(r._bearerModel?wbText(r._bearerModel)+' · ':'')+wbText(r.name||description)+(r.upgrade==='true'?' · Upgrade':''),title=r._added?`<span class="wb-bonus">${label}</span>`:label,body=r.name?beRich(description,unitId):'';
+  const name=r.name||description,parameter=String(r.parameter||'').trim();
+  const ruleName=parameter&&!name.toUpperCase().endsWith(' '+parameter.toUpperCase())?wbText(name.replace(/\s+X$/i,''))+` <span class="wb-rule-parameter">${wbText(parameter)}</span>`:wbText(name);
+  const label=(r._bearerModel?wbText(r._bearerModel)+' · ':'')+ruleName+(r.upgrade==='true'?' · Upgrade':''),title=r._added?`<span class="wb-bonus">${label}</span>`:label,body=r.name?beRich(description,unitId):'';
   const long=description.length>450;
   return `<details class="wb-rule wb-rule-card${long?' wb-rule-long':''}"${long?'':' open'}><summary><strong>${title}</strong>${long?'<span>Leggi regola</span>':''}</summary><div>${body}</div></details>`;
 }).join('');}
@@ -418,7 +425,9 @@ function builderWorkbenchRender(){
   if(page()!=='builder')return;
   if(builderUi.view==='archive'){builderArchiveRender();return;}
   const a=builderUi.army, f=wbFaction(), units=wbUnits(), totals=builderWorkbenchTotals();
-  const old=main.querySelector('.workbench');const positions=old?[...old.querySelectorAll('[data-wb-scroll]')].map(el=>[el.dataset.wbScroll,el.scrollTop]):[];
+  const old=main.querySelector('.workbench');
+  if(old)for(const el of old.querySelectorAll('[data-wb-scroll]'))if(el.getClientRects().length)workbench.scrollPositions[el.dataset.wbScroll]=el.scrollTop;
+  const positions=Object.entries(workbench.scrollPositions);
   const configurationOpen=old?.querySelector('.wb-configuration')?.open;
   const focused=document.activeElement;const focusKey=focused?.getAttribute('data-wb-weapon');
   const focusedId=old?.contains(focused)?focused?.id:null;
@@ -489,6 +498,7 @@ function wbBind(container=null){
   on('#wb-detachments','click',wbOpenDetachments);
   on('[data-wb-field]','change',el=>{const e=wbEntry(workbench.selected),field=el.dataset.wbField;if(!e)return;if(field==='models'){const n=Number(el.value);if(Number.isInteger(n)&&n>=1&&n<=200)beResize(e,n);}else if(field==='manualPoints'){const n=Number(el.value);if(el.value==='')e.manualPoints=null;else if(Number.isInteger(n)&&n>=0&&n<=20000)e.manualPoints=n;}else if(field==='warlord'){a.entries.forEach(x=>x.warlord=false);e.warlord=el.checked;}else if(field==='attachedTo'){if(el.value&&!wbAttachmentTargets(e).some(x=>x.entryId===el.value)){notify('Questa unità non è una destinazione compatibile.',true);return;}e.attachedTo=el.value||null;}else e.notes=el.value;wbChanged();});
   on('[data-wb-weapon-step]','click',el=>wbChangeWeapon(el.dataset.wbWeaponLine,Number(el.dataset.wbWeaponStep)));
+  on('[data-wb-choice-radio]','change',el=>{if(beChangeChoice(wbEntry(workbench.selected),el.dataset.wbChoiceRadio,el.value,1))wbChanged();else builderWorkbenchRender();});
   on('[data-wb-enhancement]','change',el=>{const e=wbEntry(workbench.selected),id=el.dataset.wbEnhancement;e.enhancementIds=el.checked?[...e.enhancementIds,id]:e.enhancementIds.filter(x=>x!==id);beSyncEnhancements(wbUnits().get(e.unitId),e);wbChanged();});
   on('[data-wb-enhancement-model]','change',el=>{const e=wbEntry(workbench.selected);e.enhancementModels??={};if(el.value)e.enhancementModels[el.dataset.wbEnhancementModel]=el.value;else delete e.enhancementModels[el.dataset.wbEnhancementModel];wbChanged();});
   on('#wb-save','click',wbSave);on('#wb-copy-active','click',beCopyActive);
