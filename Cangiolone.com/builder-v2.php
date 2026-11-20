@@ -89,6 +89,7 @@ function builderNormalizeV2(array $raw): array {
     return $enriched?builderRestoreRuleParameters($out):$out;
 }
 function builderValidateV2(array $catalog, array $in): array {
+    $catalog=builderRestoreCatalogCosts($catalog);
     if(($catalog['featuresVersion']??0)>=3)$catalog['factions']=builderBuildAllies($catalog);
     $factionId=builderId($in['factionId']??null,'fazione');
     $factions=array_column($catalog['factions'],null,'id');

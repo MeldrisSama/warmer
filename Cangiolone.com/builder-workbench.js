@@ -9,12 +9,12 @@ const wbId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toStri
 const wbDescription=row=>row.description||(builderUi.catalog.texts||[]).find(t=>t.id===row.descriptionRef)?.description||'';
 const wbPlus=value=>/^\d+$/.test(String(value))?value+'+':value;
 const wbCategories=['Epic Hero','Character','Battleline','Infantry','Mounted/Beast','Vehicle','Other'];
-const wbMobileCategories=['Character','Battleline','Infantry','Mounted','Vehicle','Other','Alleati'];
+const wbMobileCategories=['Epic Hero','Character','Battleline','Infantry','Mounted','Vehicle','Other'];
 const wbIsPhone=()=>typeof matchMedia==='function'&&matchMedia('(max-width:850px)').matches;
 function wbMobileCategory(unit){
   if(!unit)return 'Other';
-  if(unit.id&&!wbFaction().unitIds.includes(unit.id))return 'Alleati';
-  const category=wbCategory(unit);return category==='Epic Hero'?'Character':category==='Mounted/Beast'?'Mounted':category;
+  if(unit.id&&!wbFaction().unitIds.includes(unit.id))return 'Other';
+  const category=wbCategory(unit);return category==='Mounted/Beast'?'Mounted':category;
 }
 function wbAllyLabel(unit){return (beAllyRule(unit.id)?.name||'Alleato')+(unit.factionId==='aoi'?' · Imperial Agents':'');}
 function wbMobileHeader(totals){
@@ -202,7 +202,7 @@ function wbProfileWeapons(unit,entry,type,origin=''){
 }
 function wbRosterRows(category=null,totals=builderWorkbenchTotals()){
   const units=wbUnits(),a=builderUi.army;
-  if(category===null)return wbMobileCategories.filter(c=>!['Other','Alleati'].includes(c)||a.entries.some(e=>wbMobileCategory(units.get(e.unitId))===c)||beCatalogIds().some(id=>wbMobileCategory(units.get(id))===c)).map(c=>`<section class="wb-roster-category"><div class="wb-roster-category-head"><h3>${esc(c)}</h3>${workbench.mode==='build'?`<button data-wb-open-catalog="${esc(c)}" aria-label="Aggiungi ${esc(c)}" aria-haspopup="dialog">+</button>`:''}</div>${wbRosterRows(c,totals)||'<p class="wb-muted">Nessuna unità</p>'}</section>`).join('');
+  if(category===null)return wbMobileCategories.map(c=>`<section class="wb-roster-category"><div class="wb-roster-category-head"><h3>${esc(c)}</h3>${workbench.mode==='build'?`<button data-wb-open-catalog="${esc(c)}" aria-label="Aggiungi ${esc(c)}" aria-haspopup="dialog">+</button>`:''}</div>${wbRosterRows(c,totals)||'<p class="wb-muted">Nessuna unità</p>'}</section>`).join('');
   return a.entries.filter(e=>(!e.attachedTo||!wbEntry(e.attachedTo)||wbEntry(e.attachedTo).attachedTo)&&(!category||wbMobileCategory(units.get(e.unitId))===category)).map(root=>{
     const group=wbGroup(root),groupSelected=group.some(e=>e.entryId===workbench.selected);
     return `<div class="wb-roster-group ${group.length>1?'is-attached':''} ${groupSelected?'is-selected':''}">${group.length>1?'<p class="wb-group-label">Unità attached</p>':''}${group.map(e=>{
@@ -459,8 +459,8 @@ function wbDownload(name,text,type){const url=URL.createObjectURL(new Blob([text
 async function wbSave(){
   if(builderUi.pending)return;
   const revision=workbench.revision, snapshot=builderClone(builderUi.army);builderUi.pending=true;builderWorkbenchRender();
-  try{const r=await api('builderSave',snapshot);if(workbench.revision===revision){builderUi.army=r.army;workbench.dirty=false;}else builderUi.army.id=r.army.id;builderUi.armies=(await api('builderArmies')).armies;notify(r.validation?.errors?.length?'Bozza salvata. Correggi gli errori prima di giocare.':'Armata salvata. Restano i controlli manuali sulle regole.');}
-  catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderWorkbenchRender();}
+  try{const r=await api('builderSave',snapshot);if(workbench.revision===revision){builderUi.army=r.army;workbench.dirty=false;}else builderUi.army.id=r.army.id;builderUi.armies=(await api('builderArmies')).armies;notify(r.local?'Lista salvata sul dispositivo.':r.validation?.errors?.length?'Bozza salvata. Correggi gli errori prima di giocare.':'Armata salvata. Restano i controlli manuali sulle regole.');}
+  catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderWorkbenchRender();if(typeof sectorOffline!=='undefined')sectorOffline.settled();}
 }
 function wbBind(container=null){
   const root=container||main.querySelector('.workbench'),a=builderUi.army;

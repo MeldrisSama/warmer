@@ -137,6 +137,10 @@ function notify(text,error=false){
 
 
 async function api(action,data){
+  return typeof sectorOffline==='undefined' ? networkApi(action,data) : sectorOffline.request(networkApi,action,data);
+}
+
+async function networkApi(action,data,onProgress){
 
   const r=await fetch(
 
@@ -147,6 +151,7 @@ async function api(action,data){
       method:data?'POST':'GET',
 
       credentials:'same-origin',
+      signal:typeof AbortSignal!=='undefined'&&AbortSignal.timeout?AbortSignal.timeout(onProgress?120000:15000):undefined,
 
       headers:data
 
@@ -174,9 +179,16 @@ async function api(action,data){
 
   try{
 
-    value=await r.json();
+    if(onProgress&&r.ok&&r.body?.getReader){
+      const reader=r.body.getReader(),decoder=new TextDecoder();let content='',loaded=0;
+      const encoding=r.headers.get('Content-Encoding'),length=Number(r.headers.get('Content-Length'));
+      const total=(!encoding||encoding==='identity')&&length>0?length:null;
+      for(;;){const chunk=await reader.read();if(chunk.done)break;loaded+=chunk.value.byteLength;content+=decoder.decode(chunk.value,{stream:true});onProgress({loaded,total});}
+      content+=decoder.decode();value=JSON.parse(content);
+    }else value=await r.json();
 
-  }catch{
+  }catch(error){
+    if(['AbortError','TimeoutError'].includes(error.name))throw error;
 
     throw new Error(
 
@@ -190,11 +202,7 @@ async function api(action,data){
 
   if(!r.ok){
 
-    throw new Error(
-
-      value.error||'Operazione non riuscita.'
-
-    );
+    const error=new Error(value.error||'Operazione non riuscita.');error.status=r.status;throw error;
 
   }
 
@@ -209,6 +217,7 @@ async function api(action,data){
 async function refresh(){
 
   state=await api('state');
+  if(typeof sectorOffline!=='undefined')sectorOffline.start(networkApi);
 
   render();
 
@@ -294,8 +303,21 @@ function render(){
 
   ).join('');
 
+  nav.onclick=event=>{
+    if(!event.target.closest('a[href="#builder"]')||page()!=='builder')return;
+    if(typeof sectorOffline!=='undefined'&&sectorOffline.unavailable()&&!sectorOffline.active())return;
+    event.preventDefault();
+    builderArchive();
+    if(typeof sectorOffline!=='undefined'&&builderUi.view==='archive')void sectorOffline.enter();
+  };
 
 
+
+  if(typeof sectorOffline!=='undefined'&&sectorOffline.unavailable()&&(p!=='builder'||!sectorOffline.active())){
+    emailBanner.hidden=true;
+    main.innerHTML='<section class="panel narrow"><h1>Serve una connessione</h1><p>Offline puoi consultare, creare e modificare le tue liste nella PWA. Le altre funzioni richiedono dati online.</p><a href="#builder">Apri le liste</a></section>';
+    return;
+  }
   nav.hidden=state.needsEmail;
   if(state.needsEmail && !['verify-email','reset-password'].includes(p)){
     profilePage(true);

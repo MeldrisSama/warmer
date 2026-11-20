@@ -39,6 +39,25 @@ test('Play opens member profiles immediately and escapes catalog text',()=>{
   vm.runInContext(`builderUi.catalog.units[0].name='<img src=x onerror=alert(1)>';`,c);
   assert.doesNotMatch(vm.runInContext('wbDetail()',c),/<img/);
 });
+
+test('Offline Play opens cached profiles, stays active and remains available in the mobile menu',()=>{
+  const c=context();c.sectorOffline={unavailable:()=>true};c.notify=()=>{};
+  c.api=()=>{throw Error('Play attempted a network request');};c.esc=v=>String(v??'');
+  vm.runInContext("builderUi.army.entries[0].weaponCounts={'1':5};workbench.selected=builderUi.army.entries[3].entryId;wbSetMode('play')",c);
+  assert.equal(vm.runInContext('workbench.mode',c),'play');
+  assert.equal(vm.runInContext('workbench.selected===builderUi.army.entries[0].entryId',c),true);
+  assert.match(vm.runInContext('wbDetail()',c),/Rifle/);
+  assert.match(vm.runInContext('wbDetail()',c),/Testo della regola/);
+  let menu='';c.wbModal=(_title,html)=>{menu=html;return {querySelector:()=>({addEventListener(){}}),addEventListener(){}};};
+  vm.runInContext('wbOpenMobileMenu()',c);
+  assert.match(menu,/data-wb-menu-mode="play" aria-pressed="true"/);
+  const source=readFileSync(join(root,'Cangiolone.com/builder-workbench.js'),'utf8');
+  c.page=()=> 'campionati';
+  vm.runInContext(source.slice(source.indexOf('function builderWorkbenchRender('),source.indexOf('function wbDownload('))+'\nbuilderWorkbenchRender();',c);
+  assert.equal(vm.runInContext('workbench.mode',c),'play','Offline rerender reset Play');
+  vm.runInContext("workbench.mode='build';builderUi.army.entries[4].attachedTo=null;wbSetMode('play')",c);
+  assert.equal(vm.runInContext('workbench.mode',c),'build','Offline bypassed list validation');
+});
 test('Weapon buttons increment and decrement safely without changing squad size',()=>{
   const c=context();
   vm.runInContext(`workbench.selected=builderUi.army.entries[0].entryId;wbChangeWeapon('1',1);`,c);

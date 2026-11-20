@@ -32,21 +32,7 @@ function exportText(string $text): string {
     return builderRuleText($text);
 }
 function exportCosts(array $rows): array {
-    usort($rows,static fn($a,$b)=>(int)$a['line']<=>(int)$b['line']);
-    $first=1; $last=200; $out=[]; $usable=true;
-    foreach ($rows as $r) {
-        $description=trim($r['description']);
-        if ($r['cost']==='') {
-            $usable=true; $first=1; $last=200;
-            if ($description==='YOUR UNIT COSTS') continue;
-            if (preg_match('/^YOUR (\d+)(?:ST|ND|RD|TH) TO (\d+)(?:ST|ND|RD|TH) UNITS? COSTS?$/',$description,$m)) { $first=(int)$m[1]; $last=(int)$m[2]; }
-            elseif (preg_match('/^YOUR (\d+)(?:ST|ND|RD|TH)(\+)? UNITS? COSTS?$/',$description,$m)) { $first=(int)$m[1]; $last=empty($m[2])?$first:200; }
-            else $usable=false;
-        } elseif ($usable && preg_match('/^(\d+) models?$/',$description,$m) && ctype_digit($r['cost'])) {
-            $out[]=['models'=>(int)$m[1],'points'=>(int)$r['cost'],'first'=>$first,'last'=>$last];
-        }
-    }
-    return $out;
+    return builderCostsFromRows($rows);
 }
 $groups=[];
 foreach (['models','wargear','abilities','options','unit_composition','models_cost','keywords','enhancements','stratagems'] as $table) $groups[$table]=exportGroup('Datasheets_'.$table);
