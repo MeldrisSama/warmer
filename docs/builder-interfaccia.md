@@ -1,5 +1,7 @@
 # Armata, catalogo e schede: interfaccia aggiornata
 
+Navigazione e configurazione, 20 novembre 2026: il link generale Army Builder apre l'archivio anche se il builder è già attivo o si rientra da un'altra pagina. Se ci sono modifiche non salvate richiede la conferma già prevista; durante un'operazione in corso mantiene aperta la lista. I clic con modificatori mantengono il comportamento dei normali link. Su mobile l'accesso «Configura armata e distaccamenti» è sopra le categorie dell'armata, con riepilogo dei distaccamenti selezionati e DP: scorre insieme alle unità. Rimosso dal menu lista; il popup di configurazione e il pannello desktop conservano i controlli esistenti.
+
 Correzioni del 20 novembre 2026: nel popup mobile i filtri Legends/Alleati/Titanic si espandono direttamente sotto la ricerca. Le armi mostrano nome e keyword a tutta larghezza, poi Gittata/A/BS-WS/S/AP/D sulla stessa riga, senza scorrimento laterale anche a 320px. Il desktop conserva la tabella. Il ritorno dalla scheda conserva la posizione dell'armata: i pannelli nascosti non sovrascrivono più con zero la posizione salvata; apertura di un'altra lista e cambio Build/Play la azzerano.
 
 Le alternative a un unico equipaggiamento usano caselle radio senza quantità. Restano i contatori quando il gruppo può contenere più modelli, una configurazione contiene più armi, un'arma occupa più slot o il ruolo è definito dall'equipaggiamento (es. Legionary with bolt rifle). Le scelte continuano a passare dagli stessi vincoli delle ricette; non cambia il formato delle liste.
