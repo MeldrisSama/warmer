@@ -238,6 +238,7 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
         $armies=array_merge(...array_values(LEAGUE_ARMIES));
         if(!isset($armies[$army])) fail('Scegli un esercito dall’elenco.');
         $db['league_members'][]=['id'=>$memberId,'league_id'=>$league['id'],'player'=>$player,'joined'=>date(DATE_ATOM),'army'=>$army];
+        if($rosterSettings) leagueRosterSave($in+['baseVersion'=>''],$me,$db,$league,$rosterSettings,$builder);
         notifyLeague($db,$mail,$league,[$player],'joined:'.$memberId,'Iscrizione confermata',
             'La tua iscrizione con '.$armies[$army].' è confermata. Troverai il calendario nella pagina del campionato quando verrà pubblicato.','Apri il campionato');
         return null;

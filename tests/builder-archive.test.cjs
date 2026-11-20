@@ -162,3 +162,17 @@ test('Search changes only the catalog list and does not render the whole screen'
   vm.runInContext(`wbSearch('missing');`,c);
   assert.match(c.nodes.get('#wb-catalog-list').innerHTML,/Nessuna unità/);
 });
+
+test('Pool format creates a distinct basin without match requirements and blocks Play',()=>{
+  const c=context();
+  vm.runInContext(`builderCreationRender();`,c);
+  assert.match(c.main.innerHTML,/name="battleSize" value="pool"/);
+  assert.match(c.main.innerHTML,/Pool del campionato/);
+  assert.match(c.main.innerHTML,/builder-create-pool-limit/);
+  vm.runInContext(`builderWorkbenchRender=()=>{};builderStart('test',6000,3,'Pool della stagione','pool');wbAdd('squad');`,c);
+  assert.equal(vm.runInContext('builderUi.army.purpose',c),'pool');
+  assert.equal(vm.runInContext('builderUi.army.limit',c),6000);
+  assert.equal(vm.runInContext('builderWorkbenchTotals().issues.length',c),0);
+  assert.equal(vm.runInContext('wbSetMode("play")',c),false);
+  assert.doesNotMatch(vm.runInContext('wbArmySettings()',c),/id="wb-detachments"|id="wb-disposition"/);
+});

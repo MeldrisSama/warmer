@@ -1,5 +1,22 @@
 'use strict';
 
+function beIsPool(){return builderUi.army?.purpose==='pool';}
+function bePoolOptions(unit,entry){
+  const recipe=unit.loadoutRecipe;if(!recipe)return [];
+  return recipe.weapons.filter(w=>Number(w.cost)>0).map(w=>({id:w.id,name:w.name,cost:Number(w.cost),maximum:recipe.groups.reduce((sum,g)=>sum+Math.max(0,...g.choices.map(c=>c.weapons[w.id]||0))*beCapacity(recipe,g,entry.models,entry.loadoutSelections?._models),0)})).filter(w=>w.maximum>0);
+}
+function bePoolReserve(unit,entry){return Math.max(0,...bePoolOptions(unit,entry).map(w=>w.cost*(entry.rosterPaidOptions?.[w.id]||0)));}
+function bePoolClamp(entry){
+  const options=bePoolOptions(wbUnits().get(entry.unitId),entry),old=entry.rosterPaidOptions||{};entry.rosterPaidOptions={};
+  for(const option of options)if(old[option.id]>0)entry.rosterPaidOptions[option.id]=Math.min(old[option.id],option.maximum);
+}
+function bePoolControls(unit,entry){
+  return `<section class="wb-unit-controls"><h4>${wbText(unit.name)} · ${wbPrice(entry)??'?'} pt nel pool</h4>${wbSizes(unit).length>1?wbNumber('Miniature','models',entry.models,wbSizes(unit)[0],wbSizes(unit).at(-1)):`<p>${entry.models} modelli</p>`}${beCompositionHtml(unit,entry)}
+    <p class="wb-warning"><strong>Equipaggiamenti extra disponibili.</strong> Dichiara qui le alternative a pagamento. Paghi il costo massimo per questa copia, senza sommarle. Nelle liste pagherai le armi effettivamente montate.</p>
+    ${bePoolOptions(unit,entry).map(w=>`<label>${esc(w.name)} · ${w.cost} pt ciascuno<input type="number" min="0" max="${w.maximum}" step="1" data-wb-pool-option="${esc(w.id)}" value="${entry.rosterPaidOptions?.[w.id]||0}"></label>`).join('')||'<p class="wb-muted">Nessuna opzione a pagamento. Le dotazioni gratuite si scelgono nella lista dell’incontro.</p>'}
+    <p>Riserva equipaggiamenti: <strong>${bePoolReserve(unit,entry)} pt</strong>. Warlord, distaccamenti e potenziamenti si scelgono nelle liste degli incontri.</p></section>`;
+}
+
 function beModelCounts(recipe,models,requested=null){
   if(!recipe.flexibleModels)return {};
   const counts=requested?builderClone(requested):Object.fromEntries(recipe.models.map(m=>[m.id,m.min]));
@@ -233,6 +250,7 @@ function beEnhancementsHtml(unit,entry){
   return ['Enhancement','Upgrade'].map(kind=>{const rows=allowed.filter(x=>(x.upgrade==='true'?'Upgrade':'Enhancement')===kind);return rows.length?`<h4>${kind}</h4>${rows.map(x=>`<label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${entry.enhancementIds.includes(x.id)?'checked':''} ${entry.enhancementIds.length&&!entry.enhancementIds.includes(x.id)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt</span></label>${x.upgrade!=='true'&&entry.enhancementIds.includes(x.id)&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${beCharacterModels(unit).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`).join('')}`:'';}).join('');
 }
 function beAllyRules(){
+  if(beIsPool())return wbFaction().allies||[];
   const ids=builderUi.army.detachmentIds;
   return (wbFaction().allies||[]).filter(r=>(!r.detachmentIds.length||r.detachmentIds.some(id=>ids.includes(id)))&&!r.excludedDetachmentIds.some(id=>ids.includes(id))).map(rule=>({...rule,unitIds:rule.unitIds.filter(id=>rule.unitDetachmentIds?.[id]===undefined||rule.unitDetachmentIds[id].some(det=>ids.includes(det)))})).filter(rule=>rule.unitIds.length);
 }
@@ -385,6 +403,7 @@ function beGearLines(entry){
   return lines;
 }
 function beExportText(format){
+  if(beIsPool())return ['Pool del campionato · '+builderUi.army.name,`${builderWorkbenchTotals().total} / ${builderUi.army.limit} punti`,...builderUi.army.entries.map(e=>`${e.models}× ${wbUnits().get(e.unitId).name} · ${wbPrice(e)} pt · riserva equipaggiamenti ${bePoolReserve(wbUnits().get(e.unitId),e)} pt`),'Le liste degli incontri vanno preparate separatamente.'].join('\n');
   const a=builderUi.army,units=wbUnits(),t=builderWorkbenchTotals(),detachments=wbDetachments().map(d=>d.name).join(', '),warlord=a.entries.find(e=>e.warlord);
   if(format==='names')return a.entries.map(e=>units.get(e.unitId).name).join('\n');
   if(format==='units'||format==='short'){
@@ -420,6 +439,10 @@ function beCopyActive(){
   const oldUnits=wbUnits(),nextUnits=new Map(active.units.map(u=>[u.id,u])),copy=builderClone(builderUi.army),ids=new Map(copy.entries.map(e=>[e.entryId,wbId()]));
   for(const entry of copy.entries){
     const old=oldUnits.get(entry.unitId),next=nextUnits.get(entry.unitId);if(!next){notify('Una scheda della lista non esiste nel catalogo attivo.',true);return;}
+    if(copy.purpose==='pool'){
+      if(JSON.stringify(old.loadoutRecipe)!==JSON.stringify(next.loadoutRecipe)){notify('La composizione o le dotazioni del pool sono cambiate: prepara un nuovo pool nel catalogo attivo.',true);return;}
+      const paid={};for(const [id,n] of Object.entries(entry.rosterPaidOptions||{})){const name=old.loadoutRecipe?.weapons.find(w=>w.id===id)?.name,weapon=next.loadoutRecipe?.weapons.find(w=>w.name===name);if(!weapon){notify('Una riserva del pool non esiste nel nuovo catalogo: copia non creata.',true);return;}paid[weapon.id]=n;}entry.rosterPaidOptions=paid;
+    }
     const weapons={};for(const [line,n] of Object.entries(entry.weaponCounts)){if(!n)continue;const name=old.weapons.find(w=>w.line===line)?.name,weapon=next.weapons.find(w=>w.name===name);if(!weapon){notify('Una dotazione salvata non è presente nel nuovo catalogo: copia non creata.',true);return;}weapons[weapon.line]=n;}
     if(entry.enhancementIds.some(id=>!next.enhancements.some(x=>x.id===id))){notify('Un potenziamento non è più disponibile: copia non creata.',true);return;}
     if(entry.enhancementModels){const bearers={};for(const [id,line] of Object.entries(entry.enhancementModels)){const name=old.models.find(m=>m.line===line)?.name,model=next.models.find(m=>m.name===name);if(!model){notify('Il modello portatore non è presente nel nuovo catalogo: copia non creata.',true);return;}bearers[id]=model.line;}entry.enhancementModels=bearers;}

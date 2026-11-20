@@ -2,7 +2,11 @@
 
 Un nuovo campionato ha due limiti in punti, impostati dall’amministratore alla creazione: roster e singola partita. I campionati precedenti conservano il flusso di consegna esistente. Non si applicano limiti retroattivi.
 
-Dopo l’iscrizione con la fazione, il giocatore sceglie una lista salvata nel builder come bacino. Ogni voce rappresenta una copia con taglia e composizione dei modelli dichiarate. Il bacino non deve avere Warlord, distaccamenti e requisiti di una lista da partita. I costi base, comprese le fasce di prezzo delle copie successive, vengono dal catalogo storico. I punti manuali non sono ammessi.
+Nel builder, fra i formati Incursion, Strike Force e Onslaught, il giocatore sceglie **Pool del campionato** e imposta il limite in punti del bacino. Questa modalità conserva copie, taglie e riserve degli equipaggiamenti a pagamento; non richiede Warlord, distaccamenti o associazioni dei Support e non dispone di Play. L’archivio distingue i pool dalle liste delle partite. Per creare un pool servono da 100 a 20.000 punti; il limite specifico del campionato viene controllato alla consegna.
+
+Durante l’iscrizione il giocatore sceglie fazione, pool salvato nel builder e opzioni extra disponibili, poi conferma con **Conferma iscrizione e roster**. Le riserve del pool sono preselezionate; si possono controllare prima della conferma. Iscrizione e prima versione del roster vengono salvate nella stessa transazione: un pool assente, non valido o un errore del database non lasciano un’iscrizione incompleta. Una richiesta ripetuta non duplica iscrizione e roster. Il selettore dell’incontro presenta invece le sole liste da partita.
+
+Ogni voce rappresenta una copia con taglia e composizione dei modelli dichiarate. Il bacino non deve avere Warlord, distaccamenti e requisiti di una lista da partita. I costi base, comprese le fasce di prezzo delle copie successive, vengono dal catalogo storico. I punti manuali non sono ammessi. Chi era già iscritto con la precedente versione conserva la possibilità di completare il roster dalla sezione dedicata.
 
 ## Equipaggiamenti opzionali
 
@@ -36,7 +40,7 @@ Ogni consegna conserva testo, dati strutturati e riferimento alla versione del r
 
 Tre nuove tabelle additive: `w40k_league_roster_settings`, `w40k_league_rosters`, `w40k_league_roster_lineups`. Nessuna riscrittura di roster, liste, cataloghi o incontri precedenti. Si usano connessione, lock applicativi e transazioni dello storage esistente. Non viene eseguito DDL del builder all’interno delle scritture di campionato.
 
-File applicativi: `api.php`, `storage.php`, `league.php`, nuovo `league-roster.php`, `campionato.php`, `campionato.js`, `campionato.css`. Caricare il nuovo modulo PHP prima di `api.php`. Il catalogo attuale con dotazioni guidate è sufficiente; non serve rigenerarlo.
+File applicativi del pacchetto cumulativo: `api.php`, `storage.php`, `league.php`, `league-roster.php`, `campionato.php`, `campionato.js`, `campionato.css`, `builder.js`, `builder-engine.js`, `builder-workbench.js`, `builder.css`. Caricare il modulo PHP prima di `api.php`. Il catalogo attuale con dotazioni guidate è sufficiente; non serve rigenerarlo. `builder-model.php`, `builder-v2.php` e `builder-source-fixes.php` sono esclusi da questo aggiornamento: non si sovrascrive l’hotfix separato dei costi.
 
 ## Verifiche
 
@@ -48,7 +52,7 @@ Per verificare esplicitamente il Defiler nel proprio catalogo locale, senza legg
 php -d memory_limit=256M tests/league-roster-catalog.php C:/percorso/catalogo.json
 ```
 
-Anche il test Node esegue questo controllo quando ? definito `BUILDER_CATALOG_PATH`. Verifica finale dopo integrazione con main e correzione dei potenziamenti: **130/130 test PASS**, nessuno skip, PHP 8.4 e SQLite isolato.
+Anche il test Node esegue questo controllo quando ? definito `BUILDER_CATALOG_PATH`. Verifica finale dopo integrazione con main e correzione dei potenziamenti: **131/131 test PASS**, nessuno skip, PHP 8.4 e SQLite isolato.
 
 Edge reale a 390×844 e 1440×900: creazione con limiti numerici, iscrizione, caricamento delle opzioni, calcolo 15+15→15, consegna e comando di chiusura finestra. Entrambe le sequenze terminano PASS, senza overflow o controlli fuori viewport. Shell, CSS e JavaScript applicativi reali, API simulate con dati sintetici; le API reali sono provate dalla suite SQLite. Fixture locali in `.taste-skill/roster-qa`, escluse da Git. Screenshot aggiornati in `.github/previews/roster-campionato-390.png` e `.github/previews/roster-campionato-1440.png`. Nessuna certificazione del layout come landing page e nessun gate da landing dichiarato.
 
@@ -56,7 +60,7 @@ MySQL, IIS e Safari fisico richiedono una verifica separata.
 
 ## Script FTPS
 
-Pacchetto locale verificato in `.taste-skill/release-roster/warhammer`, manifest SHA-256 in `.taste-skill/release-roster-manifest.json`. Lo script `.taste-skill/upload-roster-ftps.ps1` carica soltanto i sette file del pacchetto in `/cangiolone.com/warhammer`. Credenziali richieste interattivamente e inviate a curl tramite stdin, con TLS verificato. Nessuna cancellazione o inclusione di configurazioni, cataloghi, database e upload. Le tre tabelle vengono create al primo accesso: servono permessi CREATE sul database applicativo.
+Pacchetto locale verificato in `.taste-skill/release-roster/warhammer`, manifest SHA-256 in `.taste-skill/release-roster-manifest.json`. Lo script `.taste-skill/upload-roster-ftps.ps1` carica soltanto gli undici file del pacchetto in `/cangiolone.com/warhammer`. Credenziali richieste interattivamente e inviate a curl tramite stdin, con TLS verificato. Nessuna cancellazione o inclusione di configurazioni, cataloghi, database e upload. Le tre tabelle vengono create al primo accesso: servono permessi CREATE sul database applicativo.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .taste-skill/upload-roster-ftps.ps1 -CheckOnly
@@ -64,3 +68,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .taste-skill/upload-rost
 ```
 
 `-CheckOnly` verifica file e checksum senza rete. `-CheckConnection` verifica soltanto accesso e directory. Lo script non ? stato eseguito per collegarsi o caricare file sul server.
+
+Verifiche della modalità pool e iscrizione: 131 test, nessuno skip; creazione pool, costo massimo, salvataggio, archivio e riapertura verificati in Edge390/1440 con API simulate e in SQLite con API reali. Pool obbligatorio prima della conferma e salvataggio atomico dell’iscrizione verificati anche con errore DB simulato. Screenshot del nuovo flusso: `.github/previews/pool-formato-390.png`, `pool-formato-1440.png`, `pool-editor-390.png`, `roster-iscrizione-390.png`, `roster-iscrizione-1440.png`.
