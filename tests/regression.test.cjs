@@ -36,7 +36,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    for (const file of ['app.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
+    for (const file of ['app.js', 'standings.js', 'campionato.js', 'speedfreaks.js', 'league-reveal.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
       const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
     }
@@ -230,6 +230,13 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
+  await copyFile(join(root, 'Cangiolone.com/league-reveal.js'), join(application, 'league-reveal.js'));
+  await copyFile(join(root, 'Cangiolone.com/speedfreaks.js'), join(application, 'speedfreaks.js'));
+  await mkdir(join(application, 'assets/reveal'), { recursive: true });
+  await copyFile(join(root, 'Cangiolone.com/assets/reveal/warp.mp4'), join(application, 'assets/reveal/warp.mp4'));
+  await copyFile(join(root, 'Cangiolone.com/assets/reveal/bolter.mp4'), join(application, 'assets/reveal/bolter.mp4'));
+  await copyFile(join(root, 'Cangiolone.com/assets/reveal/orks.mp4'), join(application, 'assets/reveal/orks.mp4'));
+  await copyFile(join(root, 'Cangiolone.com/assets/reveal/orks.json'), join(application, 'assets/reveal/orks.json'));
   await copyFile(join(root, 'Cangiolone.com/builder-automation.php'), join(application, 'builder-automation.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-loadout-rules.php'), join(application, 'builder-loadout-rules.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-source-fixes.php'), join(application, 'builder-source-fixes.php'));
@@ -388,8 +395,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         assert.equal(response.headers.get('cache-control'), 'no-store');
         assert.equal(response.headers.get('clear-site-data'), null);
         const html = await response.text();
-        const urls = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
-        assert.equal(urls.length, page === 'index.php' ? 9 : 5);
+        const urls = [...html.matchAll(/(?:src|href|data-warp|data-bolter|data-orks|data-orks-motion)="([^" ]+\.(?:js|css|mp4|json)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
+        assert.equal(urls.length, page === 'index.php' ? 9 : 11);
         result[page] = {};
         for (const url of urls) {
           const [file, query] = url.split('?');

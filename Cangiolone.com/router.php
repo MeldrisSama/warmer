@@ -21,6 +21,7 @@ if($path==='/campionato.php') {
     return true;
 }
 if(in_array($path,['/app.js','/style.css','/standings.js','/campionato.css','/campionato.js','/builder.css','/builder.js','/builder-workbench.js','/builder-engine.js','/theme.js','/theme.css'],true)) return false;
+if(in_array($path,['/league-reveal.js','/speedfreaks.js','/assets/reveal/warp.mp4','/assets/reveal/bolter.mp4','/assets/reveal/orks.mp4','/assets/reveal/orks.json'],true)) return false;
 if(preg_match('~^/assets/factions/[a-z_]+\.svg$~D',$path)&&is_file(__DIR__.$path))return false;
 
 http_response_code(404);

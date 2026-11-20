@@ -1,0 +1,110 @@
+PROMPT PER CREARE ANIMAZIONI WARHAMMER PER GLI ACCOPPIAMENTI
+
+Realizza una breve animazione per rivelare gli accoppiamenti di un campionato
+Warhammer 40.000. Usa i video e il codice presenti in questo repository come
+riferimento concreto di qualità e di integrazione.
+
+RIFERIMENTI DA GUARDARE PRIMA
+
+Repository: https://github.com/MeldrisSama/warmer
+Branch: feature/rivelazione-warp
+
+- Cangiolone.com/assets/reveal/warp.mp4
+- Cangiolone.com/assets/reveal/bolter.mp4
+- Cangiolone.com/assets/reveal/orks.mp4
+- Cangiolone.com/assets/reveal/orks.json
+- Cangiolone.com/league-reveal.js
+- Cangiolone.com/speedfreaks.js
+- scripts/art/README.md e scripts/render-*.py
+
+Gli MP4 non contengono i nomi: il sito li aggiunge dinamicamente. Per valutare
+anche i testi, apri la schermata Campionati con un calendario pubblicato e usa
+Rivela abbinamenti. Prima di modificare il repository leggi AGENTS.md.
+
+DIREZIONE VISIVA
+
+Pixel art 16 bit, cupa e grimdark, con un po' dell'umorismo proprio di Warhammer.
+Usa riferimenti ufficiali o quelli forniti per proporzioni, materiali, armi,
+simboli e carattere della fazione. Forme riconoscibili, peso, ruggine, fuliggine,
+vernice consumata e ombre profonde. Evita mascotte, facce amichevoli, giocattoli,
+geometrie troppo pulite e soggetti generici che non sembrano Warhammer.
+
+Per una resa simile agli Speed Freeks: scena logica 256x144, massimo 32 colori
+nel master prima della compressione, ingrandimento nearest-neighbour a
+1024x576, 30 fps. Pixel chiaramente visibili, niente interpolazione morbida.
+Durata indicativa 6-8 secondi, con una pausa finale sufficiente a leggere i nomi.
+Conserva dettagli leggibili anche sul telefono.
+
+Se disponibili, usa imagegen per preparare gli sprite e la skill pixel-art
+per la conversione e l'animazione. Conserva sorgenti, riferimenti utilizzati,
+parametri, seed e un renderer riproducibile. Non serve generazione sul server.
+
+ESEMPIO APPROVATO SPEED FREEKS
+
+Un buggy rosso modificato alla maniera degli Orki corre in un deserto polveroso.
+Ha un Orko al volante, un passeggero che urla con una pistola, un mitragliere
+con minigun fissa sopra e un grot ben visibile sul muso. Pelle verde leggibile,
+metallo sporco, motore e tubi esposti, scosse della camera, terreno veloce,
+polverone dietro, fumo dagli scarichi e dalle armi.
+
+Le canne della minigun ruotano attorno al proprio asse con scie di movimento.
+Le vampe sono grandi ed esplosive, con nucleo luminoso, lingue di fuoco e
+scintille. La fiammata di ogni arma segue l'asse della sua canna: quella della
+pistola inclinata non deve essere orizzontale.
+
+Il buggy accelera, una lamiera si strappa violentemente dalla fiancata lasciando
+scoperto il telaio. Il pezzo vola verso la camera in circa un secondo, compie
+tre rapidi ribaltamenti verticali e impatta con forza, scintille e contraccolpo.
+Poi si assesta. I nomi sono già dipinti sulla lamiera quando è ancora sul mezzo:
+seguono prospettiva, rotazioni e scosse, e non si vedono quando appare il retro.
+
+Mantieni coerente la stessa prospettiva di telaio, equipaggio e torretta.
+Non combinare la parte inferiore vista da dietro con la parte superiore vista
+da davanti. Una sola inquadratura coerente è preferibile a cambi di vista errati.
+
+Le ruote non vanno animate ruotando tutta un'immagine ellittica o solo il mozzo.
+Mantieni il profilo proiettato: tasselli e sporco scorrono sulla superficie
+curva del pneumatico; cerchioni e raggi seguono il piano scorciato. Controlla
+che il passo dei tasselli rispetto ai 30 fps non produca l'illusione di ruote
+ferme. Mantieni semplice e leggibile il movimento.
+
+TESTO DINAMICO E INTEGRAZIONE
+
+Esporta un filmato statico riutilizzabile, senza nomi incorporati. Non creare
+un video diverso per ogni coppia o utente. Sovrapponi i nomi in Canvas o DOM
+usando gli incontri già estratti e salvati dal server, senza rifare il sorteggio.
+
+Se il testo sta su un oggetto in movimento, esporta geometria e visibilità
+sincronizzate ai fotogrammi, come orks.json. Video e dati devono appartenere
+alla stessa esportazione. Il testo deve sembrare parte della superficie,
+non galleggiare sullo schermo o apparire solo dopo che l'oggetto si ferma.
+
+Gestisci nomi lunghi, accenti e caratteri speciali come testo, senza inserirli
+in HTML non protetto. Conserva anche una lettura completa e accessibile dei
+nomi. Escludi i riposi dalla sequenza e dal conteggio degli abbinamenti animati.
+
+Prevedi pausa, salto al calendario e movimento ridotto. Se video o geometria
+non sono disponibili, mostra comunque gli accoppiamenti. Al loop, al seek,
+al cambio coppia e alla chiusura cancella i vecchi callback e ripulisci
+l'overlay: non devono rimanere i nomi grandi del fotogramma precedente.
+Riusa i controlli e gli URL degli asset con hash già presenti nel progetto.
+
+COME PROCEDERE
+
+Mostrami prove animate brevi mentre lavori, con link o file che posso aprire.
+Prima verifica corsa, prospettiva e armi; poi distacco e impatto; infine nomi
+dinamici e integrazione. Incorpora le correzioni prima di rifinire il resto.
+Una key art è un riferimento, non dimostra che la geometria funzioni in movimento.
+
+Lavora in un branch separato, preservando gli altri lavori. Controlla video
+nel browser su desktop e mobile, riavvii ripetuti, cambio coppia, nomi lunghi
+e movimento ridotto. Esegui i test pertinenti del repository.
+
+Consegna MP4, eventuale GIF di anteprima, sprite e renderer, eventuali dati
+di movimento, codice dell'overlay e indicazioni sui file da distribuire.
+Non cambiare lo stile del sito per adattarlo all'animazione. Non fare merge
+o deploy pubblico senza una richiesta esplicita.
+
+NUOVA ANIMAZIONE DA REALIZZARE
+
+[Inserire qui fazione, soggetto, riferimenti allegati e sequenza desiderata.]

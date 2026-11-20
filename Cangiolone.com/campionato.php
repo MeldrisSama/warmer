@@ -21,6 +21,8 @@ require_once __DIR__.'/assets.php';
   <title>Campionato Warhammer 40.000 · Cronache del settore</title>
   <link rel="stylesheet" href="<?= assetUrl('campionato.css') ?>"><link rel="stylesheet" href="<?= assetUrl('theme.css') ?>"><script src="<?= assetUrl('theme.js') ?>"></script>
   <script defer src="<?= assetUrl('standings.js') ?>"></script>
+  <script defer src="<?= assetUrl('speedfreaks.js') ?>"></script>
+  <script defer src="<?= assetUrl('league-reveal.js') ?>"></script>
   <script defer src="<?= assetUrl('campionato.js') ?>"></script>
 </head>
 <body>
@@ -55,6 +57,7 @@ require_once __DIR__.'/assets.php';
           <div class="round-pick">
             <label for="round-picker">Giornata</label>
             <select id="round-picker"></select>
+            <button type="button" class="secondary" id="reveal-round">Rivela abbinamenti</button>
           </div>
         </div>
         <div id="round" class="round-scroll" tabindex="0" role="region" aria-label="Elenco delle giornate"></div>
@@ -65,6 +68,29 @@ require_once __DIR__.'/assets.php';
       </section>
     </div>
   </main>
+  <dialog id="league-reveal" aria-labelledby="reveal-title">
+    <div class="reveal-head">
+      <h2 id="reveal-title">Accoppiamenti del campionato</h2>
+      <label>Animazione<select id="reveal-animation"><option value="warp">Warp</option><option value="bolter">Bolter</option><option value="orks">Orki · Speed Freeks</option></select></label>
+      <button type="button" class="secondary" id="reveal-close">Salta al calendario</button>
+    </div>
+    <div class="reveal-stage" id="reveal-stage">
+      <video id="reveal-video" muted playsinline preload="none" aria-hidden="true" data-warp="<?= assetUrl('assets/reveal/warp.mp4') ?>" data-bolter="<?= assetUrl('assets/reveal/bolter.mp4') ?>" data-orks="<?= assetUrl('assets/reveal/orks.mp4') ?>" data-orks-motion="<?= assetUrl('assets/reveal/orks.json') ?>"></video>
+      <canvas id="reveal-engraving" width="640" height="360" aria-hidden="true" hidden></canvas>
+      <div class="reveal-names" aria-hidden="true">
+        <p id="reveal-day" hidden></p>
+        <div class="reveal-pair"><strong id="reveal-first" hidden></strong><span id="reveal-versus" hidden></span><strong id="reveal-second" hidden></strong></div>
+      </div>
+    </div>
+    <p id="reveal-announcement" class="reveal-announcement" role="status" aria-live="polite"></p>
+    <div class="reveal-controls">
+      <p id="reveal-progress"></p>
+      <p id="reveal-bye"></p>
+      <button type="button" class="secondary" id="reveal-pause">Pausa</button>
+      <button type="button" class="secondary" id="reveal-now">Mostra subito</button>
+      <button type="button" class="primary" id="reveal-next">Prossimo abbinamento</button>
+    </div>
+  </dialog>
   <dialog id="lineup-reader" aria-labelledby="lineup-title">
     <div class="reader-head">
       <h2 id="lineup-title">Lista esercito</h2>

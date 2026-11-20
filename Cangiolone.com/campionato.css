@@ -343,3 +343,46 @@ tbody td:last-child { color: var(--gold-light); font-weight: 750; }
 .masthead-inner .back{margin-left:auto}
 @media(max-width:650px){.masthead-inner{flex-wrap:wrap;padding-block:8px}.masthead-inner .wordmark{flex:1;font-size:1.15rem}.masthead-inner .back{order:3;width:100%;margin-left:0}.league-profile-link{order:2}}
 .fixture-photo>a{display:grid;gap:.5rem;width:fit-content;max-width:100%;margin-bottom:1rem}.fixture-photo img{display:block;max-width:100%;max-height:200px;object-fit:contain;border:1px solid var(--rule)}.fixture-photo input[type=file]{max-width:100%;min-width:0}
+
+/* The supplied Warp film keeps its own colours inside the reveal dialog. */
+#giornate > .section-head { flex-wrap: wrap; }
+.round-pick { flex-wrap: wrap; }
+#reveal-round { min-height: 44px; }
+#league-reveal { width: min(960px, calc(100% - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow: auto; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); }
+#league-reveal::backdrop { background: rgb(0 0 0 / .85); }
+.reveal-head, .reveal-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; }
+.reveal-head h2 { flex: 1; font: 400 1.3rem/1.3 var(--display); }
+.reveal-head button, .reveal-controls button { min-height: 44px; }
+.reveal-stage { position: relative; width: 100%; min-width: 0; aspect-ratio: 16 / 9; min-height: 260px; overflow: hidden; background: #080311; }
+.reveal-stage video { width: 100%; height: 100%; position: absolute; inset: 0; object-fit: cover; image-rendering: pixelated; }
+.reveal-stage.still video { visibility: hidden; }
+.reveal-names { position: absolute; inset: 0; width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; gap: 24px; padding: 20px; text-align: center; font-family: Consolas, 'Courier New', monospace; color: #fff2ff; text-shadow: 2px 2px #090316, -2px -2px #090316, 0 0 8px #090316; }
+#reveal-day { color: #e2a7fd; font-size: clamp(15px, 2.5vw, 24px); text-transform: uppercase; letter-spacing: .08em; }
+.reveal-pair { display: grid; grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 90px; }
+.reveal-pair strong { overflow-wrap: anywhere; font-size: clamp(20px, 3.5vw, 36px); line-height: 1.2; }
+.reveal-pair span { color: #e78dff; }
+.reveal-names [hidden] { display: block !important; visibility: hidden; }
+.reveal-names > p:not([hidden]), .reveal-pair > :not([hidden]) { animation: warp-label .24s steps(8) both; }
+@keyframes warp-label { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+.reveal-controls p { margin-right: auto; color: var(--muted); font-size: .9rem; }
+.reveal-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.reveal-stage.film { aspect-ratio: auto; min-height: 0; }
+.reveal-stage.film video { position: relative; display: block; height: auto; aspect-ratio: 16 / 9; object-fit: contain; }
+.reveal-stage.film.still video { display: none; }
+#reveal-engraving { position: absolute; top: 0; left: 0; width: 100%; height: auto; pointer-events: none; image-rendering: pixelated; }
+.film .reveal-names { position: relative; inset: auto; gap: 8px; padding: 12px 16px; }
+.film .reveal-pair { min-height: 48px; }
+.film .reveal-pair strong { font-size: clamp(18px, 2.5vw, 26px); }
+.film #reveal-day { font-size: 14px; }
+#reveal-bye { flex-basis: 100%; }
+#reveal-bye:empty { display: none; }
+@media (max-width: 540px) {
+  .reveal-stage { min-height: 300px; }
+  .reveal-head { align-items: stretch; }
+  .reveal-head h2 { flex-basis: 100%; }
+  .reveal-head button { width: 100%; }
+  .reveal-head label { width: 100%; }
+  .reveal-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .reveal-names { gap: 18px; padding: 16px; }
+  .reveal-controls > * { width: 100%; }
+}

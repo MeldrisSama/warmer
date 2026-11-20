@@ -19,6 +19,16 @@ let openFixture;
 let lineupRequest;
 let openingToken;
 let announcementToken;
+let leagueReveal;
+function revealRound(round) {
+  if (!state?.league?.start || !state.fixtures.some(fixture => fixture.round === round)) return;
+  leagueReveal ??= new LeagueReveal();
+  leagueReveal.open({ round, fixtures: state.fixtures, users: state.users, onClose() {
+    showLeagueView('giornate');
+    goToRound(round);
+    $('reveal-round').focus();
+  } });
+}
 let builderArmies=[];
 let builderListsLoaded=false;
 function builderListOptions(){return '<option value="">Incolla testo o carica un file</option>'+builderArmies.map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} · ${escapeHtml(a.factionName||a.edition+'ª ed.')}</option>`).join('');}
@@ -292,6 +302,7 @@ function render() {
     return;
   }
   const total = Math.max(0, ...state.fixtures.map(fixture => fixture.round));
+  $('reveal-round').hidden = !total;
   const current = state.league?.closed ? undefined : state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
   renderOverview(total, current);
   if (state.league && state.user.admin && state.mailEnabled && state.players.length) {
@@ -397,6 +408,7 @@ document.addEventListener('submit', async event => {
     state = await request('league');
     openFixture = fixture?.dataset.fixture;
     render();
+    if (name === 'leagueStart') revealRound(1);
     if (openFixture) $('round').querySelector(`[data-fixture="${openFixture}"] summary`)?.focus();
     notify(result.mailFailed
       ? (name === 'leagueAnnounce' ? 'Invio non riuscito per una o più email.' : `${notices[name]} Invio email non riuscito per uno o più destinatari.`)
@@ -413,6 +425,7 @@ document.addEventListener('submit', async event => {
 $('round-picker').addEventListener('change', event => {
   goToRound(Number(event.target.value));
 });
+$('reveal-round').addEventListener('click', () => revealRound(Number($('round-picker').value)));
 
 $('round').addEventListener('scroll', event => {
   if ($('giornate').hidden) return;
