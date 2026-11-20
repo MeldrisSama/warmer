@@ -48,8 +48,19 @@ Per verificare esplicitamente il Defiler nel proprio catalogo locale, senza legg
 php -d memory_limit=256M tests/league-roster-catalog.php C:/percorso/catalogo.json
 ```
 
-Anche il test Node esegue questo controllo quando è definito `BUILDER_CATALOG_PATH`. Verificati 128/128 test con il catalogo v6 locale. Dopo gli ultimi controlli su fazione e risultato, rieseguite le regressioni HTTP e il modello roster: 31 pass, un controllo opzionale del catalogo non richiesto in quella seconda esecuzione (già passato nella suite completa).
+Anche il test Node esegue questo controllo quando ? definito `BUILDER_CATALOG_PATH`. Verifica finale dopo integrazione con main e correzione dei potenziamenti: **130/130 test PASS**, nessuno skip, PHP 8.4 e SQLite isolato.
 
-Edge reale a 390×844 e 1440×900: creazione con limiti numerici, iscrizione, caricamento delle opzioni, calcolo 15+15→15, consegna e comando di chiusura finestra. Entrambe le sequenze terminano PASS, senza overflow o controlli fuori viewport. Shell, CSS e JavaScript applicativi reali, API simulate con dati sintetici; le API reali sono provate dalla suite SQLite. Fixture e screenshot in `.taste-skill/roster-qa`, esclusi da Git. Nessuna certificazione del layout come landing page e nessun gate da landing dichiarato.
+Edge reale a 390×844 e 1440×900: creazione con limiti numerici, iscrizione, caricamento delle opzioni, calcolo 15+15→15, consegna e comando di chiusura finestra. Entrambe le sequenze terminano PASS, senza overflow o controlli fuori viewport. Shell, CSS e JavaScript applicativi reali, API simulate con dati sintetici; le API reali sono provate dalla suite SQLite. Fixture locali in `.taste-skill/roster-qa`, escluse da Git. Screenshot aggiornati in `.github/previews/roster-campionato-390.png` e `.github/previews/roster-campionato-1440.png`. Nessuna certificazione del layout come landing page e nessun gate da landing dichiarato.
 
-MySQL, IIS e Safari fisico richiedono una verifica separata. Nessun push, PR o rilascio eseguito.
+MySQL, IIS e Safari fisico richiedono una verifica separata.
+
+## Script FTPS
+
+Pacchetto locale verificato in `.taste-skill/release-roster/warhammer`, manifest SHA-256 in `.taste-skill/release-roster-manifest.json`. Lo script `.taste-skill/upload-roster-ftps.ps1` carica soltanto i sette file del pacchetto in `/cangiolone.com/warhammer`. Credenziali richieste interattivamente e inviate a curl tramite stdin, con TLS verificato. Nessuna cancellazione o inclusione di configurazioni, cataloghi, database e upload. Le tre tabelle vengono create al primo accesso: servono permessi CREATE sul database applicativo.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .taste-skill/upload-roster-ftps.ps1 -CheckOnly
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .taste-skill/upload-roster-ftps.ps1 -HostName ftp.cangiolone.com
+```
+
+`-CheckOnly` verifica file e checksum senza rete. `-CheckConnection` verifica soltanto accesso e directory. Lo script non ? stato eseguito per collegarsi o caricare file sul server.
