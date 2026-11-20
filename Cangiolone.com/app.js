@@ -303,13 +303,7 @@ function render(){
 
   ).join('');
 
-  nav.onclick=event=>{
-    if(!event.target.closest('a[href="#builder"]')||page()!=='builder')return;
-    if(typeof sectorOffline!=='undefined'&&sectorOffline.unavailable()&&!sectorOffline.active())return;
-    event.preventDefault();
-    builderArchive();
-    if(typeof sectorOffline!=='undefined'&&builderUi.view==='archive')void sectorOffline.enter();
-  };
+  nav.querySelector('a[href="#builder"]')?.addEventListener('click',event=>builderNavigate(event));
 
 
 

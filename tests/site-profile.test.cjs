@@ -17,6 +17,12 @@ test('Verified profile shows its address without offering another verification f
   assert.match(html,/verified@example\.test/);assert.match(html,/Email verificata/);assert.doesNotMatch(html,/id="profile-email"|Invia.*link|name="email"/);assert.match(html,/id="profile-password"/);assert.match(html,/id="logout"/);assert.equal(c.appearanceMounted,true);
 });
 
+test('The Army Builder navigation link calls the archive navigation handler',()=>{
+  const c=context();let handler,called=false;c.builderNavigate=()=>{called=true;};c.builderPage=()=>{};c.nodes.get('#nav');
+  c.document.querySelector('#nav').querySelector=selector=>selector==='a[href="#builder"]'?{addEventListener(event,fn){assert.equal(event,'click');handler=fn;}}:null;
+  c.location.hash='#builder';vm.runInContext('render()',c);assert.equal(typeof handler,'function');handler({button:0});assert.equal(called,true);
+});
+
 test('An unverified or pending address retains verification and onboarding remains usable',()=>{
   const c=context();vm.runInContext(`state.account={email:null,pendingEmail:'pending@example.test'};profilePage(true);`,c);assert.match(c.mainNode.innerHTML,/id="profile-email"/);assert.match(c.mainNode.innerHTML,/Invia di nuovo il link/);assert.doesNotMatch(c.mainNode.innerHTML,/profile-password|profile-appearance/);assert.match(c.mainNode.innerHTML,/id="logout"/);
   vm.runInContext(`state.account={email:'old@example.test',pendingEmail:'new@example.test'};profilePage();`,c);assert.match(c.mainNode.innerHTML,/name="current"/);assert.match(c.mainNode.innerHTML,/new@example\.test/);

@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -221,12 +221,26 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     context.demo.league.closed = '2026-11-16';
     vm.runInContext('render();', context);
     assert.match(nodes.get('season-actions').innerHTML, /Riapri campionato/);
+    context.demo.league.closed=null;context.demo.league.joined=true;
+    context.demo.rosters={settings:{rosterLimit:3000,matchLimit:2000,windowOpen:true},versions:[],submitted:[]};
+    vm.runInContext('renderRoster();',context);
+    assert.match(nodes.get('roster-panel').innerHTML,/Equipaggiamenti con costo extra/);
+    assert.match(nodes.get('roster-panel').innerHTML,/Due opzioni da 15 costano 15/);
+    assert.match(nodes.get('roster-panel').innerHTML,/Chiudi finestra roster/);
+    const privateFixture={...first,lineups:{mine:false,opponent:false}};
+    context.privateFixture=privateFixture;
+    const rosterLineup=vm.runInContext('listPanel(privateFixture)',context);
+    assert.doesNotMatch(rosterLineup,/<textarea|type="file"/);
+    context.demo.rosters.settings.windowOpen=false;
+    vm.runInContext('renderRoster();',context);
+    assert.doesNotMatch(nodes.get('roster-panel').innerHTML,/class="roster-form"/);
+    assert.match(nodes.get('roster-panel').innerHTML,/Apri finestra roster/);
   });
 
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await cp(join(root,'Cangiolone.com/assets'),join(application,'assets'),{recursive:true});
@@ -238,6 +252,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   await copyFile(join(root, 'Cangiolone.com/builder-automation.php'), join(application, 'builder-automation.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-loadout-rules.php'), join(application, 'builder-loadout-rules.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-source-fixes.php'), join(application, 'builder-source-fixes.php'));
+  await copyFile(join(root, 'Cangiolone.com/builder-rule-parameters.json'), join(application, 'builder-rule-parameters.json'));
   const setupCode = 'isolated-test-setup';
   const hash = createHash('sha256').update(setupCode).digest('hex');
   // Never copy the deployed configuration or existing uploads into the test app.
@@ -865,6 +880,68 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     }
     const result = spawnSync(php, ['-r', '$xml=simplexml_load_file($argv[1]);exit(count($xml->xpath($argv[2]))===1?0:1);', join(application, 'web.config'), '/configuration/system.webServer/security/requestFiltering/hiddenSegments/add[@segment="uploads"]'], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+  await t.test('League rosters enforce paid options, shared windows, private history and immutable deliveries', async () => {
+    const fixtureResult=spawnSync(php,[join(root,'tests/league-roster-model.php')],{encoding:'utf8'});
+    assert.equal(fixtureResult.status,0,fixtureResult.stdout+fixtureResult.stderr);
+    const fixture=JSON.parse(fixtureResult.stdout);
+    const imported=await admin('builderImport',{catalog:fixture.raw});
+    const saveArmy=async(account,army)=> (await account('builderSave',{...army,catalogId:imported.catalogId})).army;
+    const a=await saveArmy(alice,fixture.army),b=await saveArmy(bob,fixture.army);
+    const wrongFaction=(await admin('leagueOpen',{name:'Altra fazione',rosterLimit:3000,matchLimit:2000})).id;
+    await bob('leagueJoin',{league:wrongFaction,army:'necrons'});
+    await bob('leagueRosterSave',{league:wrongFaction,builderArmyId:b.id,baseVersion:'',paidOptions:fixture.reserve},422);
+    await alice('leagueOpen',{name:'Non autorizzato',rosterLimit:3000,matchLimit:2000},403);
+    await admin('leagueOpen',{name:'Limiti non validi',rosterLimit:100,matchLimit:2000},422);
+    const league=(await admin('leagueOpen',{name:'Roster con riserva armi',rosterLimit:3000,matchLimit:2000})).id;
+    await alice('leagueJoin',{league,army:'orks'});await bob('leagueJoin',{league,army:'orks'});
+    await admin('leagueStart',{league},409);
+    await bob('leagueRosterPreview&id='+a.id,undefined,422);
+    const preview=await alice('leagueRosterPreview&id='+a.id);
+    assert.equal(preview.entries[0].options.length,3);
+    const submission={league,builderArmyId:a.id,baseVersion:'',paidOptions:fixture.reserve};
+    await alice('leagueRosterSave',submission);
+    const initial=(await alice('league&id='+league)).rosters.versions[0];
+    assert.equal(initial.roster.points,115);
+    assert.equal((await bob('league&id='+league)).rosters.versions.length,0);
+    await alice('leagueRosterSave',submission,409);
+    await admin('leagueRosterSave',{...submission,builderArmyId:a.id},403);
+    await bob('leagueRosterSave',{...submission,builderArmyId:b.id});
+    await admin('leagueStart',{league});
+    const season=await alice('league&id='+league),target={league,fixture:season.fixtures[0].id};
+    await alice('leaguePropose',{...target,scoreA:60,scoreB:40,date:season.today},409);
+    await alice('leagueRosterSave',{...submission,baseVersion:initial.id},409);
+    await alice('leagueRosterWindow',{league,open:true},403);
+    await alice('leagueLineup',{...target,text:'Testo non verificabile'},422);
+    const equipped=await saveArmy(alice,{...fixture.both,id:a.id});
+    sql("CREATE TRIGGER reject_roster_delivery BEFORE INSERT ON w40k_league_roster_lineups BEGIN SELECT RAISE(ABORT, 'test roster failure'); END");
+    await alice('leagueLineup',{...target,builderArmyId:equipped.id,text:''},503);
+    assert.equal((await alice('league&id='+league)).fixtures[0].lineups.mine,false);
+    sql('DROP TRIGGER reject_roster_delivery');
+    await alice('leagueLineup',{...target,builderArmyId:equipped.id,text:''});
+    const stored=sql('SELECT roster_id,payload FROM w40k_league_roster_lineups')[0];
+    assert.equal(stored.roster_id,initial.id);assert.equal(JSON.parse(stored.payload).points,130);
+    await admin('leagueRosterWindow',{league,open:true});
+    // Later roster versions cannot rewrite even a single previously delivered list.
+    const newReserve=structuredClone(fixture.reserve);
+    const heavy=preview.entries[0].options.find(option=>option.cost===25);newReserve.copy_a[heavy.id]=1;
+    await alice('leagueRosterSave',{...submission,baseVersion:initial.id,paidOptions:newReserve});
+    const versions=(await alice('league&id='+league)).rosters.versions;
+    assert.equal(versions.length,2);assert.equal(versions[0].roster.points,125);assert.equal(versions[1].roster.points,115);
+    assert.equal(sql('SELECT roster_id FROM w40k_league_roster_lineups')[0].roster_id,initial.id);
+    await bob('leagueLineup',{...target,builderArmyId:b.id,text:''});
+    const download='leagueDownload&fixture='+target.fixture+'&player='+aliceId;
+    const frozen=await alice(download);
+    await alice('leagueLineup',{...target,builderArmyId:a.id,text:''},409);
+    await alice('builderDelete',{id:a.id});
+    assert.equal(await bob(download),frozen);
+    assert.equal((await alice('league&id='+league)).rosters.versions.length,2);
+    await admin('leagueRosterWindow',{league,open:false});
+    await admin('leaguePause',{league});
+    await admin('leagueRosterWindow',{league,open:true},409);
+    await admin('leagueResume',{league});
+    await admin('leagueClose',{league});
+    await admin('leagueRosterWindow',{league,open:true},409);
   });
   await t.test('Account and league email is attempted immediately and sends only once per event', async () => {
     assert.equal((await state()).mailEnabled, false);

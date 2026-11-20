@@ -25,6 +25,16 @@ test('Direct access and fresh load show the archive without creating an army',as
   vm.runInContext('builderPage()',c);
   assert.match(c.main.innerHTML,/builder-create-new/);
 });
+
+test('Builder navigation returns to the archive and respects unsaved edits, pending work and modified clicks',()=>{
+  const c=context();let prevented=false;c.event={button:0,preventDefault(){prevented=true;}};
+  vm.runInContext(`builderStart('test')`,c);c.confirm=()=>false;
+  vm.runInContext('builderNavigate(event)',c);assert.equal(prevented,true);assert.equal(vm.runInContext('builderUi.view',c),'editor');
+  c.confirm=()=>true;prevented=false;vm.runInContext('builderNavigate(event)',c);assert.equal(prevented,true);assert.equal(vm.runInContext('builderUi.view',c),'archive');
+  vm.runInContext(`builderStart('test');builderUi.pending=true`,c);vm.runInContext('builderNavigate(event)',c);assert.equal(vm.runInContext('builderUi.view',c),'editor');
+  vm.runInContext('builderUi.pending=false',c);prevented=false;c.event.ctrlKey=true;vm.runInContext('builderNavigate(event)',c);assert.equal(prevented,false);assert.equal(vm.runInContext('builderUi.view',c),'editor');
+  c.event.ctrlKey=false;c.page=()=> 'classifica';vm.runInContext('builderNavigate(event)',c);assert.equal(prevented,false);assert.equal(vm.runInContext('builderUi.view',c),'editor');
+});
 test('Archive keeps faction groups for every ordering, with local army icons',()=>{
   const c=context();vm.runInContext(`builderUi.armies=[{id:'a',name:'Older Angels',edition:'11',factionId:'sm_dark_angels',factionName:'Dark Angels',updated:'2026-11-01'},{id:'b',name:'Chaos list',edition:'11',factionId:'csm',factionName:'Chaos Space Marines',updated:'2026-11-10'},{id:'c',name:'Recent Angels',edition:'11',factionId:'sm_dark_angels',factionName:'Dark Angels',updated:'2026-11-18'}]`,c);
   for(const sort of ['updated','created','faction']){c.sort=sort;vm.runInContext('builderUi.sort=sort;builderArchiveRender()',c);assert.equal((c.main.innerHTML.match(/class="builder-army-group"/g)||[]).length,2);assert.match(c.main.innerHTML,/assets\/factions\/sm_dark_angels.svg/);}

@@ -36,14 +36,16 @@ test('Epic Hero, Character and Other remain separate in catalogs and army on eve
 });
 
 test('Army Builder menu returns to archive inside the builder and preserves the army from other pages',()=>{
-  const nodes=new Map(),node=key=>{if(!nodes.has(key))nodes.set(key,{innerHTML:'',hidden:false});return nodes.get(key);};
+  let handler;
+  const nodes=new Map(),node=key=>{if(!nodes.has(key))nodes.set(key,{innerHTML:'',hidden:false,querySelector:()=>({addEventListener(_type,callback){handler=callback;}})});return nodes.get(key);};
   const c=vm.createContext({document:{querySelector:node},window:{addEventListener(){}},fetch:()=>new Promise(()=>{}),location:{hash:'#builder'},history:{},console});
   vm.runInContext(read('app.js'),c);
-  vm.runInContext("state={user:{id:'owner',admin:false},users:[],account:{},mailEnabled:false,needsEmail:false};builderPage=()=>{};leaguesPage=()=>{};var archives=0;builderArchive=()=>{archives++};render();",c);
-  let prevented=false;nodes.get('#nav').onclick({target:{closest:()=>({})},preventDefault(){prevented=true;}});
+  vm.runInContext(read('builder.js'),c);
+  vm.runInContext("state={user:{id:'owner',admin:false},users:[],account:{},mailEnabled:false,needsEmail:false};builderUi.owner='owner';builderPage=()=>{};leaguesPage=()=>{};var archives=0;builderArchive=()=>{archives++;return true};render();",c);
+  let prevented=false;handler({preventDefault(){prevented=true;}});
   assert.equal(prevented,true);assert.equal(vm.runInContext('archives',c),1);
   c.location.hash='#campionati';vm.runInContext('render()',c);prevented=false;
-  nodes.get('#nav').onclick({target:{closest:()=>({})},preventDefault(){prevented=true;}});
+  handler({preventDefault(){prevented=true;}});
   assert.equal(prevented,false);assert.equal(vm.runInContext('archives',c),1);
 });
 

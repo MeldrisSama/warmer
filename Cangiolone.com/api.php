@@ -188,9 +188,10 @@ require __DIR__.'/league.php';
 try { $mail=sectorMailConfig(); }
 catch(Throwable $error) { error_log('Warhammer mail configuration invalid'); $mail=null; }
 require __DIR__.'/builder-model.php';
+require __DIR__.'/league-roster.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
@@ -315,12 +316,13 @@ if($action==='download') {
 
 }
 
-if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText'],true)) {
+if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText','leagueRosterPreview'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
     if(isset($_GET['offlineOwner'])&&$_GET['offlineOwner']!==$me['id'])fail('Accedi con l’account delle liste offline.',401);
     try {
         builderSchema($storage->builderConnection(),$storage->builderDriver());
+        if($action==='leagueRosterPreview') result(leagueRosterPreview($storage->builderConnection(),$me['id'],builderId($_GET['id']??null,'armata')));
         result(builderHandle($storage->builderConnection(),$action,$me));
     } catch(BuilderInputError $e) { fail($e->getMessage()); }
     catch(Throwable $e) { error_log('Builder read failed: '.$e->getMessage()); fail('Catalogo non disponibile.',503); }
@@ -464,7 +466,10 @@ try {
             try {$in['text']=builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));}
             catch(BuilderInputError $e){fail($e->getMessage());}
         }
-        $leagueId=updateLeague($action,$in,$me,$db,$mail);
+        try {
+            if($action==='leagueLineup') leagueRosterCheckDelivery($in,$me,$db,$storage->builderConnection());
+            $leagueId=updateLeague($action,$in,$me,$db,$mail,$storage->builderConnection());
+        } catch(BuilderInputError $e) {fail($e->getMessage());}
         save();
         result($leagueId===null ? ['ok'=>true] : ['ok'=>true,'id'=>$leagueId]);
     }

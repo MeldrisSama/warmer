@@ -12,10 +12,19 @@ function builderDiscard(){
   return !builderHasUnsaved()||confirm('Abbandonare le modifiche non salvate?');
 }
 function builderArchive(){
-  if(!builderDiscard())return;
+  if(!builderDiscard())return false;
   builderUi.view='archive';builderUi.army=null;builderUi.catalog=builderUi.active;builderUi.baseline=null;
   Object.assign(workbench,{dirty:false,selected:null,preview:null,search:'',catalogFaction:null});
   builderRender();
+  return true;
+}
+function builderNavigate(event){
+  if(event.button>0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+  if(builderUi.owner!==state.user?.id)return;
+    if(page()!=='builder')return;
+    if(typeof sectorOffline!=='undefined'&&sectorOffline.unavailable()&&!sectorOffline.active())return;
+    event.preventDefault();
+    if(builderArchive()&&typeof sectorOffline!=='undefined')void sectorOffline.enter();
 }
 function builderFactionGroup(faction){
   if(/^(sm(?:_|$)|gk$)/.test(faction.id))return 'Adeptus Astartes';
