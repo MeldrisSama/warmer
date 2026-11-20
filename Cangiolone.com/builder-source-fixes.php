@@ -1,6 +1,25 @@
 <?php
 declare(strict_types=1);
 
+function builderRestoreRuleParameters(array $catalog): array {
+    static $snapshot=null,$parameters=[];
+    if($snapshot===null){
+        $data=json_decode(file_get_contents(__DIR__.'/builder-rule-parameters.json'),true,20,JSON_THROW_ON_ERROR);$snapshot=$data['snapshot'];
+        foreach($data['groups'] as $group)foreach($group['unitIds'] as $id)$parameters[$id][$group['name'].'|'.$group['model']]=$group['parameter'];
+    }
+    // This repairs a known loss in the November export, never guesses values for later snapshots.
+    if(!str_starts_with($catalog['version']??'',$snapshot))return $catalog;
+    foreach($catalog['units'] as &$unit){
+        // The importer makes a Chaos copy of each Titan using this exact suffix.
+        $id=($unit['factionId']??'')==='traitoris'?preg_replace('/_traitoris$/','',$unit['id']):$unit['id'];
+        foreach($unit['abilities'] as &$rule){
+            $parameter=$parameters[$id][$rule['name'].'|'.($rule['model']??'')]??null;
+            if($parameter!==null&&!isset($rule['parameter']))$rule['parameter']=$parameter;
+        }
+    }
+    unset($unit,$rule);return $catalog;
+}
+
 // Narrow, idempotent repairs for omissions in the CSV. Source and verification are
 // recorded in docs/builder-dotazioni.md; importing a saved catalog never edits old lists.
 function builderApplySourceFixes(array $unit): array {

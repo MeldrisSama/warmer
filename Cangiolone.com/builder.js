@@ -67,7 +67,7 @@ function builderStart(factionId,limit=2000,dpLimit=3,name='Nuova armata'){
   builderUi.catalog=builderUi.active;
   if(builderUi.catalog?.schemaVersion!==2||!builderPlayableFactions().some(f=>f.id===factionId)){notify('Seleziona una fazione giocabile del catalogo 11ª.',true);return;}
   builderUi.army=builderNewArmy();Object.assign(builderUi.army,{name:String(name).trim().slice(0,100)||'Nuova armata',factionId,limit,dpLimit:limit===1000?2:limit===2000?3:dpLimit});builderUi.view='editor';
-  Object.assign(workbench,{dirty:true,revision:workbench.revision+1,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{}});
+  Object.assign(workbench,{dirty:true,revision:workbench.revision+1,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{},scrollPositions:{}});
   builderRender();
 }
 async function builderOpen(id){
@@ -81,7 +81,7 @@ async function builderOpen(id){
     builderUi.catalog=r.catalog;builderUi.army=builderClone(army);builderUi.view='editor';builderUi.search='';
     if(r.catalog.schemaVersion===2)builderUi.army.dpLimit??=army.limit<=1000?2:3;
     builderUi.baseline=JSON.stringify(builderUi.army);
-    Object.assign(workbench,{dirty:false,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{}});
+    Object.assign(workbench,{dirty:false,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{},scrollPositions:{}});
     if(r.catalog.schemaVersion===2&&wbApplyRequiredWarlord())workbench.dirty=true;
   }catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderRender();}
 }
@@ -160,7 +160,7 @@ async function builderRestoreFile(file){
     const r=await api('builderCatalog&edition=11&catalogId='+encodeURIComponent(result.army.catalogId));
     if(!r.catalog)throw Error('Versione del catalogo non disponibile. La copia resta nell’archivio.');
     builderUi.catalog=r.catalog;builderUi.army=result.army;builderUi.view='editor';
-    Object.assign(workbench,{dirty:false,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{}});
+    Object.assign(workbench,{dirty:false,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{},scrollPositions:{}});
     notify('Backup ripristinato come nuova armata.');
   }catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderRender();}
 }

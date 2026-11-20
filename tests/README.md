@@ -1,5 +1,7 @@
 # Regression tests
 
+`builder-mobile-loadouts.test.cjs` checks direct single-weapon choices, conservative quantity controls for squads/multiple slots/equipment-defined models, and escaped rule parameters. Its PHP companion verifies the November snapshot repair, explicit values, idempotence and future-snapshot isolation; `BUILDER_CATALOG_PATH` optionally checks all 908 parameterized abilities in the v6 catalog, including Chaos Titan copies. Browser QA must also exercise mobile filters, roster scroll restoration and all six weapon statistics at 320/390px. Run the entire suite with `node --test tests/*.test.cjs` (PHP 8.1+ with SQLite; set `PHP_BINARY` when needed).
+
 Asset checks cover content-hashed JS/CSS URLs on both entry pages, changes with preserved file timestamps, stable URLs for unchanged files, public loading through the router and login/CSRF preservation. Deploy `assets.php` alongside `index.php` and `campionato.php`; upload assets and the helper before the entry pages. Already-open pages use the new files on their next reload.
 
 General site/profile checks: `node --test tests/site-profile.test.cjs tests/theme.test.cjs tests/regression.test.cjs`. They cover the verified/pending email states, Profile header icon, logout from Profile, removed legacy Lists navigation and redirect, escaping, and seven aligned recent-match cells with separate photo/actions columns. The legacy list API and league lineups remain covered by HTTP regressions; hiding the old page does not remove stored data.

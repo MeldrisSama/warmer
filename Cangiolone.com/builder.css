@@ -174,6 +174,24 @@ body:has(dialog.workbench[open]) .wb-mobile-add{visibility:hidden}
  .workbench[data-mode=play] .wb-columns{grid-template-columns:minmax(220px,.8fr) minmax(0,1.8fr)}
 }
 .wb-catalog-tools .wb-search-field input{padding-right:44px}
+.wb-rule-parameter{color:var(--text);font-weight:700}
+.workbench .wb-loadout-radio{margin:0;min-height:44px}.wb-loadout-radio input{width:18px;height:18px;min-height:18px;accent-color:var(--gold);margin:0;flex-shrink:0}
+@media(max-width:850px){
+ .wb-popup-search-toolbar{flex-wrap:wrap}.wb-popup-search-toolbar>button{min-width:76px}
+ .wb-mobile-catalog-dialog .wb-filters{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:0}.wb-mobile-catalog-dialog .wb-filters .wb-check{margin:0}
+ /* Each weapon gets the full width, followed by all six statistics. */
+ .wb-weapon-table table,.wb-weapon-table tbody{display:block;width:100%}
+ .wb-weapon-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .wb-weapon-table tbody tr{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:10px 0;border-bottom:1px solid var(--line)}
+ .wb-weapon-table th[scope=row]{grid-column:1/-1;min-width:0;padding:0 0 4px;border:0}
+ .wb-weapon-table .wb-weapon-origin{font-size:10px;margin-bottom:3px}
+ .wb-weapon-table .wb-weapon-name{font-size:14px}.wb-weapon-table .wb-mode-marker{font-size:14px}
+ .wb-weapon-table td{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 1px;min-width:0;border:0;font-size:14px;white-space:normal;overflow-wrap:anywhere}
+ .wb-weapon-table td::before{font:10px/1.4 Arial,sans-serif;color:var(--muted)}
+ .wb-weapon-table td:nth-child(2)::before{content:'Gittata'}.wb-weapon-table td:nth-child(3)::before{content:'A'}.wb-weapon-table td:nth-child(4)::before{content:'BS/WS'}.wb-weapon-table td:nth-child(5)::before{content:'S'}.wb-weapon-table td:nth-child(6)::before{content:'AP'}.wb-weapon-table td:nth-child(7)::before{content:'D'}
+ .wb-weapon-table .wb-weapon-keywords{gap:0 10px;margin-top:0}
+ .workbench .wb-weapon-table .wb-weapon-keyword{font-size:10px;letter-spacing:0}
+}
 @media(min-width:851px){
  .wb-roster-category .wb-roster-row{display:block;min-height:0}
  .wb-roster-category .wb-unit-name{padding:12px 8px}

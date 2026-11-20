@@ -87,7 +87,7 @@ foreach (exportRows('Datasheets') as $sheet) {
     $rules=[];
     foreach ($groups['abilities'][$id]??[] as $a) {
         $ref=$abilities[$a['ability_id']]??[];
-        $rules[]=['name'=>$a['name']?:($ref['name']??$a['type']),'description'=>$a['description']?:($ref['description']??$a['parameter']),'model'=>$a['model'],'type'=>$a['type']];
+        $rules[]=['name'=>$a['name']?:($ref['name']??$a['type']),'description'=>$a['description']?:($ref['description']??''),'parameter'=>$a['parameter'],'model'=>$a['model'],'type'=>$a['type']];
     }
     if ($sheet['damaged_description']) $rules[]=['name'=>'Damaged '.$sheet['damaged_w'],'description'=>$sheet['damaged_description'],'type'=>'Datasheet'];
     $upgrades=[];
