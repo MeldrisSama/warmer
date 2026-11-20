@@ -101,6 +101,7 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         'players'=>$league ? leaguePlayers($db,$league['id']) : [],
         'armies'=>array_column(array_values($members),'army','player'),
         'armyGroups'=>LEAGUE_ARMIES,
+        'rosters'=>leagueRosterState($db,$league,$myId),
         'fixtures'=>$fixtures
     ];
 }
@@ -152,7 +153,7 @@ function leagueDownload(SectorStorage $storage, array $db, string $player): neve
     exit;
 }
 
-function updateLeague(string $action, array $in, array $me, array &$db, ?array $mail): ?string {
+function updateLeague(string $action, array $in, array $me, array &$db, ?array $mail, PDO $builder): ?string {
     $player=$me['id'];
     if($action==='leagueOpen') {
         if(!$me['admin']) fail('Solo l’amministratore può aprire le iscrizioni.',403);
@@ -162,6 +163,12 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
         foreach($db['league'] as $league) if($league['id']===$id) {
             if($league['name']!==$name) fail('Richiesta già usata. Ricarica la pagina.',409);
             return $id;
+        }
+        if(isset($in['rosterLimit']) || isset($in['matchLimit'])) {
+            $rosterLimit=builderInt($in['rosterLimit']??null,'limite roster',100,20000);
+            $matchLimit=builderInt($in['matchLimit']??null,'limite partita',100,5000);
+            if($matchLimit>$rosterLimit) builderInvalid('Il limite della partita non può superare quello del roster.');
+            $db['league_roster_settings'][]=['id'=>$id,'payload'=>json_encode(['rosterLimit'=>$rosterLimit,'matchLimit'=>$matchLimit,'windowOpen'=>false],JSON_THROW_ON_ERROR)];
         }
         $league=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null,'paused'=>null];
         $db['league'][]=$league;
@@ -175,7 +182,7 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
     $fixtureIndex=null;
     $id=field($in,'league',24,false) ?: null;
     $lifecycle=in_array($action,LEAGUE_LIFECYCLE_ACTIONS,true);
-    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart','leagueAnnounce'],true)) {
+    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart','leagueAnnounce','leagueRosterSave','leagueRosterWindow'],true)) {
         $fixtureIndex=leagueFixture($db['league_fixtures'],field($in,'fixture',24),$player);
         $fixtureLeague=$db['league_fixtures'][$fixtureIndex]['league_id'];
         if($id!==null && $id!==$fixtureLeague) fail('Incontro non trovato.',404);
@@ -208,6 +215,21 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
     }
     if($league['closed']!==null) fail('Il campionato è concluso.',409);
     if($league['paused']!==null) fail('Il campionato è in pausa.',409);
+    $rosterSettings=leagueRosterSettings($db,$league['id']);
+    if($action==='leagueRosterWindow') {
+        if(!$me['admin']) fail('Solo l’amministratore può gestire la finestra dei roster.',403);
+        if(!$rosterSettings || !$league['start']) fail('La finestra è disponibile dopo l’avvio di un campionato con roster.',409);
+        if(!is_bool($in['open']??null)) fail('Stato della finestra non valido.');
+        $rosterSettings['windowOpen']=$in['open'];
+        foreach($db['league_roster_settings'] as &$row) if($row['id']===$league['id']) $row['payload']=json_encode($rosterSettings,JSON_THROW_ON_ERROR);
+        unset($row);
+        return null;
+    }
+    if($action==='leagueRosterSave') {
+        if(!$rosterSettings) fail('Questo campionato non prevede roster.',409);
+        leagueRosterSave($in,$me,$db,$league,$rosterSettings,$builder);
+        return null;
+    }
     if($action==='leagueJoin') {
         $memberId=$league['id'].':'.$player;
         if(in_array($memberId,array_column($db['league_members'],'id'),true)) return null;
@@ -225,6 +247,7 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
         if($league['start']) fail('Il calendario è già stato pubblicato.',409);
         $players=leaguePlayers($db,$league['id']);
         if(count($players)<2) fail('Servono almeno due iscritti.');
+        if($rosterSettings) foreach($players as $entrant) if(!leagueRosterVersions($db,$league['id'],$entrant)) fail('Tutti gli iscritti devono consegnare il roster prima dell’avvio.',409);
         shuffle($players);
         foreach(leagueSchedule($players) as $fixture) $db['league_fixtures'][]=$fixture+['league_id'=>$league['id']];
         $league['start']=date('Y-m-d');
@@ -232,6 +255,10 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
     }
 
     $fixture=&$db['league_fixtures'][$fixtureIndex];
+    if($rosterSettings && $action==='leaguePropose') {
+        $submitted=array_column($db['league_lineups'],null,'id');
+        if(!isset($submitted[$fixture['id'].':'.$fixture['a']],$submitted[$fixture['id'].':'.$fixture['b']])) fail('Entrambi i giocatori devono consegnare la lista verificata prima del risultato.',409);
+    }
     if($action==='leagueLineup') {
         $id=$fixture['id'].':'.$player;
         $opponent=$fixture['a']===$player ? $fixture['b'] : $fixture['a'];
