@@ -44,6 +44,7 @@ require_once __DIR__.'/assets.php';
       </div>
     </section>
     <p class="wrap" id="league-notice" role="status" aria-live="polite" hidden></p>
+    <section class="wrap roster-panel" id="roster-panel" aria-labelledby="roster-heading" hidden></section>
     <div class="wrap league-grid" id="league-content" hidden>
       <div class="league-tabs" id="league-tabs" role="tablist" aria-label="Campionato" hidden>
         <button type="button" role="tab" data-theme-menu="Classifica" id="tab-classifica" aria-controls="classifica" aria-selected="true">Classifica</button>
