@@ -71,6 +71,8 @@ h1 {
 .roster-panel ul { padding-left: 22px; }
 .roster-panel li + li { margin-top: 10px; }
 .roster-form { display: grid; gap: 16px; max-width: 720px; }
+.army-signup.roster-form { max-width: none; }
+.hero-layout:has(.army-signup.roster-form) { align-items: start; }
 .roster-form select { max-width: 100%; }
 .roster-form fieldset { min-width: 0; margin: 0 0 16px; padding: 16px; border: 1px solid var(--rule); }
 .roster-form legend { padding-inline: 6px; }

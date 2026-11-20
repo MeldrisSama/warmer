@@ -21,7 +21,7 @@ let openingToken;
 let announcementToken;
 let builderArmies=[];
 let builderListsLoaded=false;
-function builderListOptions(roster=false){return `<option value="">${roster?'Scegli una lista salvata':'Incolla testo o carica un file'}</option>`+builderArmies.map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} · ${escapeHtml(a.factionName||a.edition+'ª ed.')}</option>`).join('');}
+function builderListOptions(pool=false){return `<option value="">${pool?'Scegli un pool del campionato':'Scegli una lista salvata'}</option>`+builderArmies.filter(a=>(a.purpose==='pool')===pool).map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} · ${escapeHtml(a.factionName||a.edition+'ª ed.')}</option>`).join('');}
 
 async function request(name, data) {
   const id = leagueQuery.get('id');
@@ -87,12 +87,12 @@ function renderOverview(total, current) {
       <p>${players.length === 1 ? 'Giocatore iscritto' : 'Giocatori iscritti'}</p>`;
     actions.innerHTML = league.joined
       ? `<p>Iscrizione confermata.${armyLabel(user.id) ? ' · ' + escapeHtml(armyLabel(user.id)) : ''}</p>`
-      : `<form class="army-signup"><label>Il tuo esercito<select name="army" required>
+      : `<form class="army-signup${state.rosters?.settings?' roster-form':''}"><label>Il tuo esercito<select name="army" required>
           <option value="">Scegli l’esercito</option>
           ${Object.entries(state.armyGroups).map(([group, armies]) => `<optgroup label="${escapeHtml(group)}">
             ${Object.entries(armies).map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('')}
           </optgroup>`).join('')}
-        </select></label>${action('leagueJoin', 'Iscriviti al campionato')}</form>`;
+        </select></label>${state.rosters?.settings?rosterFormFields(true):''}${action('leagueJoin', state.rosters?.settings?'Conferma iscrizione e roster':'Iscriviti al campionato')}</form>`;
     if (user.admin && players.length < 2) {
       actions.insertAdjacentHTML('beforeend', '<p>Servono almeno due iscritti per pubblicare il calendario.</p>');
     }
@@ -149,6 +149,15 @@ function renderStandings() {
     <p class="fine-print">Vittoria 3 · Pareggio 1 · Sconfitta 0. A parità di punti conta la differenza punti vittoria.</p>`;
 }
 
+function rosterFormFields(signup=false) {
+  return `${signup?'<p>Nel builder crea un “Pool del campionato”, poi sceglilo qui. Il roster viene consegnato insieme all’iscrizione; potrai aggiornarlo fino alla pubblicazione del calendario.</p>':''}
+    <p>Limite roster: <strong>${state.rosters.settings.rosterLimit} punti</strong> · Limite partita: <strong>${state.rosters.settings.matchLimit} punti</strong>. I potenziamenti dei distaccamenti si scelgono e si pagano solo nelle liste degli incontri.</p>
+    <label>Pool di unità dal tuo builder<select name="builderArmyId" required ${builderListsLoaded?'':'disabled'}>${builderListOptions(true)}</select></label>
+    <p class="roster-equipment-note"><strong>Equipaggiamenti con costo extra: dichiarali adesso.</strong> Per ogni copia paghi il costo massimo tra le opzioni riservate, senza sommarle. Due opzioni da 15 costano 15 nel roster; una da 15 e una da 25 costano 25. Nella partita paghi tutte quelle effettivamente montate, rispettando le incompatibilità.</p>
+    <div data-roster-options aria-live="polite"></div><p data-roster-total aria-live="polite"></p>
+    <button type="button" class="secondary" data-roster-calculate>Calcola i punti del roster</button>`;
+}
+
 function renderRoster() {
   const panel=$('roster-panel'),data=state.rosters,settings=data?.settings;
   if(!panel)return;
@@ -165,10 +174,7 @@ function renderRoster() {
     ${editable?`<details class="roster-editor"><summary>${latest?'Prepara una nuova versione':'Prepara il tuo roster'}</summary>
       <p>Scegli una lista salvata nel builder come bacino di unità. Non deve rispettare i requisiti di una singola partita.</p>
       <form class="roster-form"><input type="hidden" name="baseVersion" value="${escapeHtml(latest?.id||'')}">
-      <label>Unità dal tuo builder<select name="builderArmyId" required ${builderListsLoaded?'':'disabled'}>${builderListOptions(true)}</select></label>
-      <p class="roster-equipment-note"><strong>Equipaggiamenti con costo extra: dichiarali adesso.</strong> Per ogni copia paghi il costo massimo tra le opzioni riservate, senza sommarle. Due opzioni da 15 costano 15 nel roster; una da 15 e una da 25 costano 25. Nella partita paghi tutte quelle effettivamente montate, rispettando le incompatibilità.</p>
-      <div data-roster-options aria-live="polite"></div><p data-roster-total aria-live="polite"></p>
-      <button type="button" class="secondary" data-roster-calculate>Calcola i punti del roster</button>
+      ${rosterFormFields()}
       ${action('leagueRosterSave','Consegna il roster')}
       </form></details>`:''}
     ${data.versions.length>1?`<details><summary>Versioni precedenti (${data.versions.length-1})</summary>${data.versions.slice(1).map(version=>`<details><summary>Versione ${version.version} · ${escapeHtml(formatDate(version.created))}</summary>${summary(version)}</details>`).join('')}</details>`:''}
@@ -193,7 +199,7 @@ function listPanel(fixture) {
       ? 'L’avversario ha consegnato. Carica la tua lista per sbloccare entrambe.'
       : 'Le liste saranno visibili a tutti i giocatori dopo entrambe le consegne.'}</p>
     <form class="lineup-form">
-      <label>Lista dal tuo List Builder<select name="builderArmyId" ${state.rosters?.settings?'required':''} ${builderListsLoaded?'':'disabled'}>${builderListOptions(Boolean(state.rosters?.settings))}</select></label>
+      <label>Lista dal tuo List Builder<select name="builderArmyId" ${state.rosters?.settings?'required':''} ${builderListsLoaded?'':'disabled'}>${builderListOptions()}</select></label>
       <p class="fine-print">Puoi consegnare una lista salvata nel tuo profilo. Al momento della consegna ne viene conservata una copia: le successive modifiche nel builder non cambiano la lista consegnata.</p>
       <pre data-builder-preview hidden aria-live="polite"></pre>
       ${state.rosters?.settings?'<p>La lista deve rispettare il roster e il limite partita. Il server controlla copie, taglie e opzioni a pagamento.</p>':`<label>Incolla la lista esercito<textarea name="text" rows="5" spellcheck="false"></textarea></label>
@@ -400,7 +406,7 @@ document.addEventListener('submit', async event => {
   if (fixture) data.fixture = fixture.dataset.fixture;
   try {
     if(name==='leagueRosterWindow')data.open=data.open==='true';
-    if(name==='leagueRosterSave')data.paidOptions=rosterPaidOptions(form);
+    if(name==='leagueRosterSave'||(name==='leagueJoin'&&state.rosters?.settings))data.paidOptions=rosterPaidOptions(form);
     if (name === 'leagueLineup') {
       const { file } = data;
       const pasted = (data.text||'').trim() !== '';
@@ -586,7 +592,7 @@ document.addEventListener('change',async event=>{
 });
 request('builderArmies').then(data=>{
   builderArmies=data?.armies||[];builderListsLoaded=true;
-  for(const select of document.querySelectorAll('.lineup-form [name=builderArmyId],.roster-form [name=builderArmyId]')){select.innerHTML=builderListOptions(Boolean(state?.rosters?.settings)||Boolean(select.closest('.roster-form')));select.disabled=false;}
+  for(const select of document.querySelectorAll('.lineup-form [name=builderArmyId],.roster-form [name=builderArmyId]')){select.innerHTML=builderListOptions(Boolean(select.closest('.roster-form')));select.disabled=false;}
 }).catch(()=>{builderListsLoaded=true;});
 request('league').then(data => {
   state = data;

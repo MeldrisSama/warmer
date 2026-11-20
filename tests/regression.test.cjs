@@ -120,6 +120,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
           if (!nodes.has(id)) nodes.set(id, {
             offsetTop: id === 'giornata-2' ? 180 : 0,
             innerHTML: '',
+            insertAdjacentHTML(position, html) { assert.equal(position, 'beforeend'); this.innerHTML += html; },
             events: {},
             attributes: {},
             setAttribute(name, value) { this.attributes[name] = value; },
@@ -235,6 +236,15 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     vm.runInContext('renderRoster();',context);
     assert.doesNotMatch(nodes.get('roster-panel').innerHTML,/class="roster-form"/);
     assert.match(nodes.get('roster-panel').innerHTML,/Apri finestra roster/);
+    context.demo.league.start=null;context.demo.league.joined=false;context.demo.user.admin=false;
+    vm.runInContext('renderOverview(0, undefined);',context);
+    assert.match(nodes.get('season-actions').innerHTML,/class="army-signup roster-form"/);
+    assert.match(nodes.get('season-actions').innerHTML,/name="builderArmyId" required/);
+    assert.match(nodes.get('season-actions').innerHTML,/Conferma iscrizione e roster/);
+    assert.match(nodes.get('season-actions').innerHTML,/data-roster-options/);
+    context.demo.rosters.settings=null;
+    vm.runInContext('renderOverview(0, undefined);',context);
+    assert.doesNotMatch(nodes.get('season-actions').innerHTML,/name="builderArmyId"/);
   });
 
   const application = join(directory, 'app');
@@ -859,31 +869,51 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const imported=await admin('builderImport',{catalog:fixture.raw});
     const saveArmy=async(account,army)=> (await account('builderSave',{...army,catalogId:imported.catalogId})).army;
     const a=await saveArmy(alice,fixture.army),b=await saveArmy(bob,fixture.army);
+    const poolDraft={...fixture.army,purpose:'pool',limit:6000,entries:fixture.army.entries.map(e=>({...e,rosterPaidOptions:fixture.reserve[e.entryId]}))};
+    const pool=await saveArmy(alice,poolDraft);
+    assert.equal(pool.purpose,'pool');assert.equal(pool.limit,6000);
+    const savedPool=(await alice('builderArmies')).armies.find(army=>army.id===pool.id);
+    assert.equal(savedPool.purpose,'pool');assert.deepEqual(savedPool.entries[0].rosterPaidOptions,fixture.reserve.copy_a);
+    const poolPreview=await alice('leagueRosterPreview&id='+pool.id);
+    assert.equal(poolPreview.entries[0].points,115);
+    const poolLeague=(await admin('leagueOpen',{name:'Iscrizione da pool dedicato',rosterLimit:3000,matchLimit:2000})).id;
+    await alice('leagueJoin',{league:poolLeague,army:'orks',builderArmyId:pool.id});
+    assert.equal((await alice('league&id='+poolLeague)).rosters.versions[0].roster.points,115);
     const wrongFaction=(await admin('leagueOpen',{name:'Altra fazione',rosterLimit:3000,matchLimit:2000})).id;
-    await bob('leagueJoin',{league:wrongFaction,army:'necrons'});
-    await bob('leagueRosterSave',{league:wrongFaction,builderArmyId:b.id,baseVersion:'',paidOptions:fixture.reserve},422);
+    await bob('leagueJoin',{league:wrongFaction,army:'necrons',builderArmyId:b.id,paidOptions:fixture.reserve},422);
+    assert.equal((await bob('league&id='+wrongFaction)).league.joined,false);
     await alice('leagueOpen',{name:'Non autorizzato',rosterLimit:3000,matchLimit:2000},403);
     await admin('leagueOpen',{name:'Limiti non validi',rosterLimit:100,matchLimit:2000},422);
     const league=(await admin('leagueOpen',{name:'Roster con riserva armi',rosterLimit:3000,matchLimit:2000})).id;
-    await alice('leagueJoin',{league,army:'orks'});await bob('leagueJoin',{league,army:'orks'});
-    await admin('leagueStart',{league},409);
+    await alice('leagueJoin',{league,army:'orks'},422);
+    assert.equal((await alice('league&id='+league)).league.joined,false);
     await bob('leagueRosterPreview&id='+a.id,undefined,422);
     const preview=await alice('leagueRosterPreview&id='+a.id);
     assert.equal(preview.entries[0].options.length,3);
     const submission={league,builderArmyId:a.id,baseVersion:'',paidOptions:fixture.reserve};
-    await alice('leagueRosterSave',submission);
+    await alice('leagueJoin',{...submission,army:'orks'});
     const initial=(await alice('league&id='+league)).rosters.versions[0];
     assert.equal(initial.roster.points,115);
+    // Repeated registration is idempotent, including the first roster version.
+    await alice('leagueJoin',{...submission,army:'orks'});
+    assert.equal((await alice('league&id='+league)).rosters.versions.length,1);
+    await admin('leagueStart',{league},422);
     assert.equal((await bob('league&id='+league)).rosters.versions.length,0);
     await alice('leagueRosterSave',submission,409);
     await admin('leagueRosterSave',{...submission,builderArmyId:a.id},403);
-    await bob('leagueRosterSave',{...submission,builderArmyId:b.id});
+    sql("CREATE TRIGGER reject_roster_signup BEFORE INSERT ON w40k_league_rosters BEGIN SELECT RAISE(ABORT, 'test signup failure'); END");
+    await bob('leagueJoin',{...submission,army:'orks',builderArmyId:b.id},503);
+    assert.equal((await bob('league&id='+league)).league.joined,false);
+    assert.equal((await bob('league&id='+league)).rosters.versions.length,0);
+    sql('DROP TRIGGER reject_roster_signup');
+    await bob('leagueJoin',{...submission,army:'orks',builderArmyId:b.id});
     await admin('leagueStart',{league});
     const season=await alice('league&id='+league),target={league,fixture:season.fixtures[0].id};
     await alice('leaguePropose',{...target,scoreA:60,scoreB:40,date:season.today},409);
     await alice('leagueRosterSave',{...submission,baseVersion:initial.id},409);
     await alice('leagueRosterWindow',{league,open:true},403);
     await alice('leagueLineup',{...target,text:'Testo non verificabile'},422);
+    await alice('leagueLineup',{...target,builderArmyId:pool.id,text:''},422);
     const equipped=await saveArmy(alice,{...fixture.both,id:a.id});
     sql("CREATE TRIGGER reject_roster_delivery BEFORE INSERT ON w40k_league_roster_lineups BEGIN SELECT RAISE(ABORT, 'test roster failure'); END");
     await alice('leagueLineup',{...target,builderArmyId:equipped.id,text:''},503);
