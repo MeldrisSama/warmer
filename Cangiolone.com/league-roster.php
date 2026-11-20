@@ -34,7 +34,7 @@ function leagueRosterEquipped(array $unit, array $entry): array {
     return array_filter($counts,static fn($n)=>$n>0);
 }
 
-function leagueRosterEntry(array $unit, array $entry, int $ordinal, array $declared): array {
+function leagueRosterEntry(array $unit, array $entry, int $ordinal, array $declared, bool $requireEquipped=true): array {
     if (($entry['manualPoints']??null)!==null) builderInvalid('I punti manuali non sono ammessi nei roster.');
     $base=builderEntryBasePrice($unit,$entry,$ordinal);
     if ($base===null) builderInvalid($unit['name'].': costo base non disponibile.');
@@ -49,7 +49,7 @@ function leagueRosterEntry(array $unit, array $entry, int $ordinal, array $decla
         $paid[$id]=$quantity;
         $budget=max($budget,$options[$id]['cost']*$quantity);
     }
-    foreach ($options as $id=>$option) if (($equipped[$id]??0)>($paid[$id]??0)) {
+    foreach ($options as $id=>$option) if ($requireEquipped && ($equipped[$id]??0)>($paid[$id]??0)) {
         builderInvalid($unit['name'].': riserva '.$option['name'].' nel roster prima di utilizzarlo.');
     }
     return ['entryId'=>$entry['entryId'],'unitId'=>$entry['unitId'],'name'=>$unit['name'],'models'=>$entry['models'],
@@ -63,13 +63,16 @@ function leagueRosterBuild(array $catalog, array $army, array $paidOptions, int 
     $entries=$army['entries']??[];
     if (!$entries) builderInvalid('Il roster deve contenere almeno un’unità.');
     // Reuse structural validation, without requiring a pool to be a playable match army.
-    $validation=builderValidateArmy($catalog,$army);
+    $structure=$army;$structure['limit']=min(5000,$army['limit']);
+    $validation=builderValidateArmy($catalog,$structure);
     $units=array_column($catalog['units'],null,'id');$counts=[];$out=[];$total=0;
     $known=array_column($entries,null,'entryId');
     foreach ($paidOptions as $id=>$options) if (!isset($known[$id]) || !is_array($options)) builderInvalid('Opzioni del roster non valide.');
     foreach ($validation['entries'] as $entry) {
         $id=$entry['entryId'];$uid=$entry['unitId'];$counts[$uid]=($counts[$uid]??0)+1;
-        $row=leagueRosterEntry($units[$uid],$entry,$counts[$uid],$paidOptions[$id]??[]);
+        $declared=$paidOptions[$id]??$known[$id]['rosterPaidOptions']??[];
+        if(!is_array($declared)) builderInvalid('Opzioni del pool non valide.');
+        $row=leagueRosterEntry($units[$uid],$entry,$counts[$uid],$declared,($army['purpose']??'')!=='pool');
         $total+=$row['points'];$out[]=$row;
     }
     if ($total>$limit) builderInvalid('Il roster supera il limite di '.$limit.' punti (totale '.$total.').');
@@ -116,10 +119,10 @@ function leagueRosterValidateLineup(array $catalog, array $army, array $roster, 
 function leagueRosterSavedArmy(PDO $pdo, string $owner, string $id): array {
     $stmt=$pdo->prepare('SELECT * FROM w40k_builder_armies WHERE id=? AND owner=?');$stmt->execute([$id,$owner]);$row=$stmt->fetch();
     if (!$row) builderInvalid('Armata non disponibile nel tuo profilo.');
-    $source=builderCatalogRow($pdo,$row['edition'],$row['catalog_id']);
-    if (!$source) builderInvalid('Catalogo storico non disponibile.');
+    $catalog=builderGetCatalog($pdo,$row['edition'],$row['catalog_id'])['catalog'];
+    if (!$catalog) builderInvalid('Catalogo storico non disponibile.');
     return ['army'=>json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR),
-        'catalog'=>json_decode($source['payload'],true,40,JSON_THROW_ON_ERROR),'catalogId'=>$row['catalog_id'],'edition'=>$row['edition']];
+        'catalog'=>$catalog,'catalogId'=>$row['catalog_id'],'edition'=>$row['edition']];
 }
 
 function leagueRosterSettings(array $db, string $league): ?array {
@@ -147,11 +150,11 @@ function leagueRosterPreview(PDO $pdo, string $owner, string $id): array {
     $ordinals=[];
     foreach ($army['entries'] as $entry) {
         $unit=$units[$entry['unitId']];$options=leagueRosterOptions($unit,$entry['models'],$entry['loadoutSelections']['_models']??[]);$equipped=leagueRosterEquipped($unit,$entry);
-        foreach ($options as &$option) $option['quantity']=$equipped[$option['id']]??0;
+        foreach ($options as &$option) $option['quantity']=($army['purpose']??'')==='pool'?($entry['rosterPaidOptions'][$option['id']]??0):($equipped[$option['id']]??0);
         unset($option);
         $ordinals[$unit['id']]=($ordinals[$unit['id']]??0)+1;
         $paid=[];foreach($options as $option)$paid[$option['id']]=$option['quantity'];
-        $row=leagueRosterEntry($unit,$entry,$ordinals[$unit['id']],$paid);
+        $row=leagueRosterEntry($unit,$entry,$ordinals[$unit['id']],$paid,($army['purpose']??'')!=='pool');
         $rows[]=$row;
         $rows[count($rows)-1]['options']=array_values($options);
     }
@@ -189,10 +192,48 @@ function leagueRosterCheckDelivery(array $in, array $me, array &$db, PDO $pdo): 
     if (!$version) fail('Consegna il roster prima della lista dell’incontro.',409);
     if (empty($in['builderArmyId'])) builderInvalid('Questo campionato richiede una lista dal builder per verificare il roster.');
     $source=leagueRosterSavedArmy($pdo,$me['id'],builderId($in['builderArmyId'],'armata'));
+    if(($source['army']['purpose']??'')==='pool') builderInvalid('Il pool è il bacino del campionato. Per l’incontro scegli una lista da partita.');
     $roster=json_decode($version['payload'],true,40,JSON_THROW_ON_ERROR);
     if ($source['catalogId']!==$roster['catalogId']) builderInvalid('Usa lo stesso catalogo della versione attuale del roster.');
     $validation=leagueRosterValidateLineup($source['catalog'],$source['army'],$roster,$settings['matchLimit']);
     $rows=array_column($db['league_roster_lineups'],null,'id');
     $rows[$id]=['id'=>$id,'roster_id'=>$version['id'],'payload'=>json_encode($validation,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)];
     $db['league_roster_lineups']=array_values($rows);
+}
+
+function leaguePoolSave(PDO $pdo, array $me, array $in): array {
+    $edition=builderEdition($in['edition']??null);$catalogId=builderId($in['catalogId']??null,'catalogo');
+    $catalog=builderGetCatalog($pdo,$edition,$catalogId)['catalog'];
+    if(!$catalog)builderInvalid('Catalogo non disponibile.');
+    if(($catalog['schemaVersion']??null)!==2) builderInvalid('Il pool richiede un catalogo con dotazioni guidate.');
+    $limit=builderInt($in['limit']??null,'limite pool',100,20000);
+    $data=$in;$data['limit']=min(5000,$limit);$data['detachmentIds']=[];$data['disposition']='';$data['dpLimit']=0;
+    $entries=$in['entries']??null;
+    if(!is_array($entries)||!array_is_list($entries))builderInvalid('Unità del pool non valide.');
+    $data['entries']=[];
+    foreach($entries as $entry) {
+        if(!is_array($entry))builderInvalid('Unità del pool non valida.');
+        $entry['enhancementIds']=[];$entry['enhancementModels']=[];$entry['warlord']=false;$entry['attachedTo']=null;
+        $data['entries'][]=$entry;
+    }
+    $validation=builderValidateArmy($catalog,$data);$units=array_column($catalog['units'],null,'id');
+    $original=array_column($in['entries'],null,'entryId');$ordinals=[];$total=0;
+    foreach($validation['entries'] as &$entry) {
+        $uid=$entry['unitId'];$ordinals[$uid]=($ordinals[$uid]??0)+1;
+        $paid=$original[$entry['entryId']]['rosterPaidOptions']??[];
+        if(!is_array($paid))builderInvalid('Opzioni del pool non valide.');
+        $reserved=leagueRosterEntry($units[$uid],$entry,$ordinals[$uid],$paid,false);
+        $entry['rosterPaidOptions']=$reserved['paidOptions'];$total+=$reserved['points'];
+    }
+    unset($entry);
+    $pdo->beginTransaction();
+    try {
+        $saved=builderHandle($pdo,'builderSave',$me,$data);
+        $saved['army']['purpose']='pool';$saved['army']['limit']=$limit;$saved['army']['dpLimit']=0;$saved['army']['entries']=$validation['entries'];
+        $pdo->prepare('UPDATE w40k_builder_armies SET payload=? WHERE id=? AND owner=?')->execute([
+            json_encode($saved['army'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$saved['army']['id'],$me['id']]);
+        $issues=$total>$limit?['Il pool supera il limite di punti.']:[];
+        $saved['validation']=['points'=>$total,'limit'=>$limit,'issues'=>$issues,'errors'=>$issues,'valid'=>false,'manualReview'=>true];
+        $pdo->commit();return $saved;
+    } catch(Throwable $e) {$pdo->rollBack();throw $e;}
 }

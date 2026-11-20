@@ -202,3 +202,4 @@ body:has(dialog.workbench[open]) .wb-mobile-add{visibility:hidden}
  .wb-roster-category .wb-row-actions button{width:auto;height:auto;padding:8px;font-size:12px}
  .wb-roster-category [data-wb-duplicate]::before,.wb-roster-category [data-wb-remove]::before{content:none}
 }
+.builder-battle-sizes .builder-battle-size:has(input[value=pool]){grid-column:1/-1}

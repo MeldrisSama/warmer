@@ -435,6 +435,7 @@ try {
     if(in_array($action,['builderImport','builderSave','builderDelete','builderDefaultSave','builderDefaultDelete'],true)) {
         try {
             builderSchema($storage->builderConnection(),$storage->builderDriver());
+            if($action==='builderSave'&&($in['purpose']??'')==='pool')result(leaguePoolSave($storage->builderConnection(),$me,$in));
             result(builderHandle($storage->builderConnection(),$action,$me,$in));
         } catch(BuilderInputError $e) { fail($e->getMessage()); }
     }

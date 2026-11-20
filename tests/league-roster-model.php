@@ -64,4 +64,18 @@ rosterCheck(leagueRosterValidateLineup($catalog,$flexible,$poolRoster,2000)['poi
 // A pool may lack Warlord/detachments even though a match list must declare them.
 $pool['detachmentIds']=[];$pool['disposition']='';$pool['entries'][0]['warlord']=false;
 rosterCheck(leagueRosterBuild($catalog,$pool,[],1000)['points']===200,'Pool incorrectly requires a playable army');
-echo json_encode(['raw'=>$raw,'army'=>$army,'both'=>$both,'reserve'=>$reserve,'roster'=>$roster],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+$pdo=new PDO('sqlite::memory:');$pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);builderSchema($pdo,'sqlite');
+$me=['id'=>'pool_owner','admin'=>true];$import=builderHandle($pdo,'builderImport',$me,['catalog'=>$raw]);
+$draft=$army;$draft['purpose']='pool';$draft['catalogId']=$import['catalogId'];$draft['limit']=6000;$draft['entries'][0]['rosterPaidOptions']=$reserve['copy_a'];
+$savedPool=leaguePoolSave($pdo,$me,$draft);
+rosterCheck($savedPool['army']['purpose']==='pool'&&$savedPool['army']['limit']===6000,'Pool purpose or custom point limit not persisted');
+rosterCheck($savedPool['validation']['points']===115&&!$savedPool['validation']['issues'],'Pool incorrectly uses match army requirements or additive gear pricing');
+rosterCheck(!$savedPool['army']['entries'][0]['warlord']&&!$savedPool['army']['detachmentIds'],'Pool retained match-only selections');
+$read=leagueRosterSavedArmy($pdo,$me['id'],$savedPool['army']['id']);
+$fromPool=leagueRosterBuild($read['catalog'],$read['army'],[],3000);
+rosterCheck($fromPool['points']===115,'Roster submission did not use paid options declared in pool');
+$preview=leagueRosterPreview($pdo,$me['id'],$savedPool['army']['id']);
+rosterCheck(count(array_filter($preview['entries'][0]['options'],static fn($o)=>$o['quantity']===1))===2,'Pool preview lost reserved choices');
+$tooMany=$draft;$tooMany['entries'][0]['rosterPaidOptions'][$cannon]=9;
+rosterReject(fn()=>leaguePoolSave($pdo,$me,$tooMany),'Pool accepts invalid reservation quantities');
+echo json_encode(['raw'=>$raw,'army'=>$army,'both'=>$both,'reserve'=>$reserve,'roster'=>$roster,'catalog'=>$catalog],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
