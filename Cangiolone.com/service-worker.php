@@ -10,6 +10,8 @@ $hash=hash_init('sha256');$urls=[];
 foreach ($files as $file) {
     $digest=hash_file('sha256',__DIR__.'/'.$file);hash_update($hash,$file.$digest);
     $urls[]=$file.(preg_match('/\.(js|css)$/',$file)?'?v='.$digest:'');
+    // The header/favicon use assetUrl(); the manifest uses the same PNGs without a query.
+    if(str_ends_with($file,'.png'))$urls[]=$file.'?v='.$digest;
 }
 ?>
 'use strict';

@@ -1,5 +1,5 @@
 'use strict';
-const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{spawnSync}=require('node:child_process');
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 test('Official package preserves production identity, excludes private data and rejects tampering and test destinations',t=>{
   const output=path.join(root,'.taste-skill','official-release-check-'+Date.now());
@@ -13,6 +13,12 @@ test('Official package preserves production identity, excludes private data and 
   const index=fs.readFileSync(path.join(app,'index.php'),'utf8');assert.match(index,/apple-mobile-web-app-title" content="Cronache del settore"/);assert.match(index,/class="brand-logo"/);assert.doesNotMatch(index,/Cangiolone TEST/);
   assert.match(fs.readFileSync(path.join(app,'api.php'),'utf8'),/session_name\('sector_session'\)/);
   assert.ok(fs.existsSync(path.join(app,'league-roster.php')));
+  const worker=spawnSync(process.env.PHP_BINARY||'php',['-r','$_SERVER["SCRIPT_NAME"]="/warhammer/service-worker.php";require $argv[1];',path.join(app,'service-worker.php')],{encoding:'utf8'});assert.equal(worker.status,0,worker.stderr);
+  const cached=JSON.parse(worker.stdout.match(/const files=(.*);/)[1]);
+  for(const image of ['assets/pwa/logo-192.png','assets/pwa/icon-192.png']){
+    const digest=crypto.createHash('sha256').update(fs.readFileSync(path.join(app,image))).digest('hex');
+    assert.ok(cached.includes(image));assert.ok(cached.includes(image+'?v='+digest),'Header logo missing from offline cache');
+  }
   if(process.platform==='win32'){
     const run=extra=>spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(output,'Upload-Cronache.ps1'),'-CheckOnly',...extra],{encoding:'utf8'});
     let result=run([]);assert.equal(result.status,0,result.stdout+result.stderr);
