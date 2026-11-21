@@ -12,8 +12,25 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Main contiene nuovi commit: integrarli, risolvere i conflitti, ripetere i test e rigenerare il pacchetto prima di pubblicare.' }
     git push -u origin feature/pwa-offline
     if ($LASTEXITCODE -ne 0) { throw 'Push GitHub non riuscito.' }
-    $credentialLines=@("protocol=https`nhost=github.com`n`n" | git credential fill)
-    if ($LASTEXITCODE -ne 0) { throw 'Credenziale GitHub non disponibile.' }
+    # Write the credential protocol directly: Windows PowerShell pipelines may add a BOM.
+    $credentialProcess=New-Object System.Diagnostics.Process
+    $credentialProcess.StartInfo.FileName='git'
+    $credentialProcess.StartInfo.Arguments='credential fill'
+    $credentialProcess.StartInfo.UseShellExecute=$false
+    $credentialProcess.StartInfo.CreateNoWindow=$true
+    $credentialProcess.StartInfo.RedirectStandardInput=$true
+    $credentialProcess.StartInfo.RedirectStandardOutput=$true
+    $credentialProcess.StartInfo.RedirectStandardError=$true
+    $credentialProcess.StartInfo.StandardInputEncoding=New-Object System.Text.UTF8Encoding($false)
+    try {
+        $null=$credentialProcess.Start()
+        $credentialProcess.StandardInput.Write("protocol=https`nhost=github.com`n`n")
+        $credentialProcess.StandardInput.Close()
+        $credentialLines=@($credentialProcess.StandardOutput.ReadToEnd() -split "`r?`n")
+        $credentialError=$credentialProcess.StandardError.ReadToEnd()
+        $credentialProcess.WaitForExit()
+        if ($credentialProcess.ExitCode -ne 0) { throw 'Credenziale GitHub non disponibile.' }
+    } finally { $credentialProcess.Dispose();$credentialError=$null }
     $tokenLine=$credentialLines | Where-Object { $_.StartsWith('password=') } | Select-Object -First 1
     if (-not $tokenLine) { throw 'Credenziale GitHub mancante.' }
     $previousToken=$env:GH_TOKEN
