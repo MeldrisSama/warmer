@@ -1,6 +1,7 @@
 [CmdletBinding()]
-param([string]$RepositoryDirectory = (Split-Path -Parent $PSScriptRoot))
+param([string]$RepositoryDirectory)
 $ErrorActionPreference = 'Stop'
+if(-not $RepositoryDirectory){$RepositoryDirectory=Split-Path -Parent $PSScriptRoot}
 Push-Location -LiteralPath $RepositoryDirectory
 try {
     if ((git branch --show-current) -ne 'feature/pwa-offline') { throw 'Aprire il branch feature/pwa-offline.' }
