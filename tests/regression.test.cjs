@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
 const { once } = require('node:events');
 const { createHash, randomUUID } = require('node:crypto');
-const { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } = require('node:fs/promises');
+const { cp, copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } = require('node:fs/promises');
 const { createServer } = require('node:net');
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
@@ -32,11 +32,11 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    for (const file of ['app.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
+    for (const file of ['app.js', 'sync-icons.js', 'offline.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
       const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
     }
@@ -250,9 +250,14 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
+  await cp(join(root,'Cangiolone.com/assets'),join(application,'assets'),{recursive:true});
+  await copyFile(join(root,'Cangiolone.com/service-worker.php'),join(application,'service-worker.php'));
+  await copyFile(join(root,'Cangiolone.com/manifest.webmanifest'),join(application,'manifest.webmanifest'));
+  await copyFile(join(root, 'Cangiolone.com/builder-sync.php'), join(application, 'builder-sync.php'));
+  await copyFile(join(root, 'Cangiolone.com/offline.js'), join(application, 'offline.js'));
   await copyFile(join(root, 'Cangiolone.com/builder-v2.php'), join(application, 'builder-v2.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-automation.php'), join(application, 'builder-automation.php'));
   await copyFile(join(root, 'Cangiolone.com/builder-loadout-rules.php'), join(application, 'builder-loadout-rules.php'));
@@ -414,7 +419,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         assert.equal(response.headers.get('clear-site-data'), null);
         const html = await response.text();
         const urls = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
-        assert.equal(urls.length, page === 'index.php' ? 9 : 5);
+        assert.equal(urls.length, page === 'index.php' ? 12 : 5);
         result[page] = {};
         for (const url of urls) {
           const [file, query] = url.split('?');
@@ -510,6 +515,30 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal((await alice('builderSave',changed)).army.created,null);
     await alice('builderDelete',{id:saved.id});
     assert.deepEqual((await alice('builderArmies')).armies,[]);
+  });
+
+  await t.test('PWA endpoints keep authentication, CSRF and explicit conflict resolution', async()=>{
+    const {catalog}=await alice('builderCatalog&edition=11');
+    const metadata=await alice('builderCatalog&edition=11&metadata=1');assert.equal(metadata.catalog.catalogId,catalog.catalogId);assert.match(metadata.catalog.revision,/^[a-f0-9]{64}$/);assert.equal(metadata.catalog.units,undefined);
+    const data={id:'offline_http',schemaVersion:2,edition:'11',catalogId:catalog.catalogId,name:'HTTP offline',factionId:'test',limit:2000,dpLimit:3,detachmentIds:[],disposition:'',entries:[]};
+    const request={id:data.id,army:data,baseRevision:null,operationId:'http_first'};
+    await guest('builderSync',request,401);
+    await alice('builderSync',request,403,{headers:{'X-CSRF-Token':'invalid'}});
+    await alice('builderSync',undefined,405);
+    await alice('builderArmies&offlineOwner='+bobId,undefined,401);
+    const saved=await alice('builderSync',{...request,offlineOwner:aliceId});
+    assert.match(saved.army.revision,/^[a-f0-9]{64}$/);
+    await bob('builderSync',request,422);
+    const online=await alice('builderSave',{...saved.army,name:'HTTP online'});
+    const conflict=await alice('builderSync',{...request,baseRevision:saved.army.revision,army:{...saved.army,name:'HTTP local'},operationId:'http_second'});
+    assert.equal(conflict.conflict,true);assert.equal(conflict.remote.name,online.army.name);
+    const keep=await alice('builderSync',{...request,baseRevision:conflict.revision,army:{...saved.army,name:'HTTP local'},operationId:'http_second'});
+    assert.equal(keep.army.name,'HTTP local');
+    await alice('builderSync',{id:data.id,baseRevision:keep.army.revision,deleted:true});
+    const worker=await fetch(base+'/service-worker.php');assert.equal(worker.status,200);assert.match(worker.headers.get('content-type'),/application\/javascript/);
+    const script=await worker.text();assert.match(script,/sector-shell-/);assert.doesNotMatch(script,/['"]api\.php['"]/);
+    assert.match(script,new RegExp('offline\\.js\\?v='+createHash('sha256').update(await readFile(join(application,'offline.js'))).digest('hex')));
+    const manifest=await (await fetch(base+'/manifest.webmanifest')).json();assert.equal(manifest.display,'standalone');assert.equal(manifest.start_url,'./index.php#builder');
   });
 
   await t.test('Login rejects unknown accounts and wrong passwords as form errors; logout removes access', async () => {

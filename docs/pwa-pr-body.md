@@ -1,0 +1,13 @@
+La PWA ufficiale **Cronache del settore** permette di creare, modificare e visualizzare le liste e usare Play senza connessione. Titolo, icone e intestazione usano il logo fornito dal proprietario. L'offline si attiva solo nell'app installata; campionati, risultati, foto e allegati richiedono rete.
+
+La sincronizzazione parte all'apertura, al rientro nell'app e dopo salvataggio/eliminazione. Le modifiche a una lista da entrambi i dispositivi aprono un confronto modale con scelta esplicita; i soli aggiornamenti del catalogo non producono conflitti. Account e archivi sono isolati per origine, percorso e utente. Il service worker conserva solo un elenco esplicito di file statici, senza cache delle API o delle immagini private.
+
+Corregge inoltre i costi omessi in 88 schede di 18 fazioni, recuperandoli dalla fonte dello stesso snapshot, e il salvataggio con il catalogo completo: letture/salvataggi ricevono il budget di memoria già usato dall'importazione; i pool riutilizzano il catalogo decodificato anziché caricarlo due volte. Salvataggi dei pool e sincronizzazione condividono lo stesso percorso, conservando riserve e modalità, anche all'interno della transazione di sincronizzazione.
+
+Integrati `origin/main` e il ramo `fix/roster-iscrizione` (PR26) risolvendo i conflitti, mantenendo roster e iscrizione con pool. Il menu Army Builder torna all'archivio quando si è già nel builder; dalle altre pagine riprende l'armata aperta. Epic Hero e Character restano separati, gli alleati rimangono in Other.
+
+Il generatore del rilascio e il nuovo uploader FTPS producono un pacchetto verificato tramite SHA-256 per `/warhammer`. Escludono configurazione, database, seed, cataloghi del gioco e allegati; service worker caricato per ultimo. Nessuna importazione o migrazione dei dati della prova nell'account ufficiale. Istruzioni in `docs/rilascio-ufficiale.md`.
+
+Validazione: suite Node/PHP con SQLite isolato e catalogo reale; regressione dedicata al catalogo completo con limiti iniziali PHP 64/128 MB, liste normali, pool e sincronizzazione; audit PHP/JavaScript su 4.828 prezzi. Verificati anche isolamento del pacchetto TEST e controlli locali dell'uploader ufficiale. Test su MySQL Aruba e Safari fisico non eseguiti. Il tentativo di QA Edge/CDP nell'ambiente corrente non ha prodotto un risultato verificabile e non è contato come superato.
+
+Logo fornito dall'utente, originale conservato in `design/cronache-del-settore-logo.png`; derivate per intestazione e Home in `Cangiolone.com/assets/pwa/`. Le schermate dei pool/iscrizione già incluse nel ramo integrato sono conservate in `.github/previews/`.

@@ -1,7 +1,56 @@
 <?php
 declare(strict_types=1);
 
+// Shared by the CSV importer and repairs of already imported catalogs.
+function builderCostsFromRows(array $rows): array {
+    usort($rows,static fn($a,$b)=>(int)($a['line']??0)<=>(int)($b['line']??0));
+    $first=1;$last=200;$usable=true;$out=[];
+    foreach($rows as $row){
+        $description=trim($row['description']??'');$cost=trim($row['cost']??'');
+        if($cost===''){
+            // Composition captions do not reset the unit-copy price bracket.
+            if(!str_starts_with($description,'YOUR '))continue;
+            $first=1;$last=200;$usable=true;
+            if($description==='YOUR UNIT COSTS')continue;
+            if(preg_match('/^YOUR (\d+)(?:ST|ND|RD|TH) TO (\d+)(?:ST|ND|RD|TH) UNITS? COSTS?$/D',$description,$m)){$first=(int)$m[1];$last=(int)$m[2];}
+            elseif(preg_match('/^YOUR (\d+)(?:ST|ND|RD|TH)(\+)? UNITS? COSTS?$/D',$description,$m)){$first=(int)$m[1];$last=empty($m[2])?$first:200;}
+            else $usable=false;
+        }elseif($usable&&ctype_digit($cost)&&preg_match('/^(\d+)(?:-(\d+))? models?$/D',$description,$m)){
+            $min=(int)$m[1];$max=isset($m[2])?(int)$m[2]:$min;
+            if($min<1||$max>200||$max<$min||(int)$cost>10000||$first<1||$last>200||$first>$last)continue;
+            for($models=$min;$models<=$max;$models++)$out[]=['models'=>$models,'points'=>(int)$cost,'first'=>$first,'last'=>$last];
+        }
+    }
+    return $out;
+}
+
+function builderFillMissingCosts(array $unit): array {
+    $known=[];$changed=false;
+    foreach($unit['points']??[] as $p)$known[$p['models'].':'.($p['first']??1).':'.($p['last']??200)]=true;
+    foreach(builderCostsFromRows($unit['costs']??[]) as $p){
+        $key=$p['models'].':'.$p['first'].':'.$p['last'];
+        if(!isset($known[$key])){$unit['points'][]=$p;$known[$key]=true;$changed=true;}
+    }
+    if($changed)usort($unit['points'],static fn($a,$b)=>[$a['models'],$a['first']??1]<=>[$b['models'],$b['first']??1]);
+    return $unit;
+}
+
+function builderRestoreCatalogCosts(array $catalog): array {
+    // Repair the known export loss without substituting current points in historical snapshots.
+    if(($catalog['featuresVersion']??0)<3||!str_starts_with($catalog['version']??'','2026-11-12 23:45:38'))return $catalog;
+    $texts=array_column($catalog['texts']??[],'description','id');
+    $description=static fn($r)=>$r['description']??($texts[$r['descriptionRef']??'']??'');
+    foreach($catalog['units'] as &$unit){
+        $fixed=builderFillMissingCosts($unit);
+        if(($fixed['points']??[])===($unit['points']??[]))continue;
+        $unit=builderApplySourceFixes($fixed);
+        $unit['loadoutRecipe']=builderCompileLoadout($unit,$description);
+    }
+    unset($unit);return $catalog;
+}
+
 function builderRestoreRuleParameters(array $catalog): array {
+    $catalog=builderRestoreCatalogCosts($catalog);
     static $snapshot=null,$parameters=[];
     if($snapshot===null){
         $data=json_decode(file_get_contents(__DIR__.'/builder-rule-parameters.json'),true,20,JSON_THROW_ON_ERROR);$snapshot=$data['snapshot'];
@@ -23,6 +72,7 @@ function builderRestoreRuleParameters(array $catalog): array {
 // Narrow, idempotent repairs for omissions in the CSV. Source and verification are
 // recorded in docs/builder-dotazioni.md; importing a saved catalog never edits old lists.
 function builderApplySourceFixes(array $unit): array {
+    $unit=builderFillMissingCosts($unit);
     if(in_array($unit['id']??'',['000002374','000004001'],true)){
         // The two published formations use the same unit cost; the heavy team is one model.
         // https://wahapedia.ru/wh40k11ed/factions/astra-militarum/Death-Korps-Grenadier-Squad

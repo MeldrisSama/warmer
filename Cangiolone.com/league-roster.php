@@ -207,7 +207,7 @@ function leaguePoolSave(PDO $pdo, array $me, array $in): array {
     if(!$catalog)builderInvalid('Catalogo non disponibile.');
     if(($catalog['schemaVersion']??null)!==2) builderInvalid('Il pool richiede un catalogo con dotazioni guidate.');
     $limit=builderInt($in['limit']??null,'limite pool',100,20000);
-    $data=$in;$data['limit']=min(5000,$limit);$data['detachmentIds']=[];$data['disposition']='';$data['dpLimit']=0;
+    $data=$in;unset($data['purpose']);$data['limit']=min(5000,$limit);$data['detachmentIds']=[];$data['disposition']='';$data['dpLimit']=0;
     $entries=$in['entries']??null;
     if(!is_array($entries)||!array_is_list($entries))builderInvalid('Unità del pool non valide.');
     $data['entries']=[];
@@ -226,14 +226,15 @@ function leaguePoolSave(PDO $pdo, array $me, array $in): array {
         $entry['rosterPaidOptions']=$reserved['paidOptions'];$total+=$reserved['points'];
     }
     unset($entry);
-    $pdo->beginTransaction();
+    $ownsTransaction=!$pdo->inTransaction();
+    if($ownsTransaction)$pdo->beginTransaction();
     try {
-        $saved=builderHandle($pdo,'builderSave',$me,$data);
+        $saved=builderHandle($pdo,'builderSave',$me,$data,$catalog);
         $saved['army']['purpose']='pool';$saved['army']['limit']=$limit;$saved['army']['dpLimit']=0;$saved['army']['entries']=$validation['entries'];
         $pdo->prepare('UPDATE w40k_builder_armies SET payload=? WHERE id=? AND owner=?')->execute([
             json_encode($saved['army'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$saved['army']['id'],$me['id']]);
         $issues=$total>$limit?['Il pool supera il limite di punti.']:[];
         $saved['validation']=['points'=>$total,'limit'=>$limit,'issues'=>$issues,'errors'=>$issues,'valid'=>false,'manualReview'=>true];
-        $pdo->commit();return $saved;
-    } catch(Throwable $e) {$pdo->rollBack();throw $e;}
+        if($ownsTransaction)$pdo->commit();return $saved;
+    } catch(Throwable $e) {if($ownsTransaction)$pdo->rollBack();throw $e;}
 }

@@ -1,0 +1,38 @@
+/* Decorative companions to the operation's text, never its only status indication. */
+.sync-icon{display:block;flex:none;width:48px;height:48px;overflow:visible;color:inherit}
+.sync-icon-faint{opacity:.4}
+.sync-icon-highlight{stroke:var(--sync-icon-accent,currentColor)}
+.sync-icon-cog{--sync-icon-accent:var(--gold,currentColor)}
+.sync-icon-cog-wheel{transform-origin:24px 24px;animation:sync-icon-turn 9s linear infinite}
+.sync-icon-radar-sweep{transform-origin:24px 21px;animation:sync-icon-turn 3s linear infinite}
+.sync-icon-radar-sector{fill:currentColor;fill-opacity:.12;stroke:none}
+.sync-icon-radar-dot{fill:currentColor;animation:sync-icon-radar-signal 3s ease-out infinite}
+.sync-icon-radar-dot-second{animation-delay:1.5s}
+.sync-icon-star-ray{animation:sync-icon-ray 3.2s ease-in-out infinite}
+.sync-icon-star-ray:nth-of-type(2){animation-delay:.4s}
+.sync-icon-star-ray:nth-of-type(3){animation-delay:.8s}
+.sync-icon-star-ray:nth-of-type(4){animation-delay:1.2s}
+.sync-icon-star-ray:nth-of-type(5){animation-delay:1.6s}
+.sync-icon-star-ray:nth-of-type(6){animation-delay:2s}
+.sync-icon-star-ray:nth-of-type(7){animation-delay:2.4s}
+.sync-icon-star-ray:nth-of-type(8){animation-delay:2.8s}
+.sync-icon-star-core{fill:currentColor;fill-opacity:.18}
+.sync-icon-warp-rift{--sync-icon-accent:var(--sync-icon-warp,#a278ca)}
+.sync-icon-warp-core{fill:var(--sync-icon-accent);fill-opacity:.12;transform-origin:24px 24px;animation:sync-icon-warp-breathe 2.8s ease-in-out infinite}
+.sync-icon-warp-cracks{opacity:.55;animation:sync-icon-warp-signal 2.8s ease-in-out infinite}
+.sync-icon-necron-glyph{--sync-icon-accent:var(--sync-icon-necron,#5da580)}
+.sync-icon-necron-trace{stroke-dasharray:72;animation:sync-icon-trace 3.2s ease-in-out infinite}
+.sync-icon-necron-node{fill:currentColor;fill-opacity:.12;animation:sync-icon-node 3.2s ease-in-out infinite}
+.sync-icon-ork-bolts{--sync-icon-accent:var(--sync-icon-ork,#9aab61)}
+.sync-icon-ork-upper{animation:sync-icon-clack-upper 2.6s ease-in-out infinite}
+.sync-icon-ork-lower{animation:sync-icon-clack-lower 2.6s ease-in-out infinite}
+@keyframes sync-icon-turn{to{transform:rotate(360deg)}}
+@keyframes sync-icon-radar-signal{0%,15%{opacity:.35}22%,38%{opacity:1}75%,100%{opacity:.35}}
+@keyframes sync-icon-ray{0%,30%,100%{opacity:.3}50%,65%{opacity:1}}
+@keyframes sync-icon-warp-breathe{0%,100%{opacity:.6;transform:scaleX(.86)}50%{opacity:1;transform:scaleX(1.04)}}
+@keyframes sync-icon-warp-signal{0%,100%{opacity:.35}50%{opacity:.8}}
+@keyframes sync-icon-trace{0%{stroke-dashoffset:72;opacity:.3}45%,75%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:.35}}
+@keyframes sync-icon-node{0%,30%,100%{opacity:.4}50%,80%{opacity:1}}
+@keyframes sync-icon-clack-upper{0%,55%,85%,100%{transform:translateY(0)}67%,73%{transform:translateY(2px)}}
+@keyframes sync-icon-clack-lower{0%,55%,85%,100%{transform:translateY(0)}67%,73%{transform:translateY(-2px)}}
+@media(prefers-reduced-motion:reduce){.sync-icon,.sync-icon *{animation:none!important;stroke-dashoffset:0!important;opacity:1}}

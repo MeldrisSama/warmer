@@ -21,8 +21,10 @@ function builderArchive(){
 function builderNavigate(event){
   if(event.button>0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
   if(builderUi.owner!==state.user?.id)return;
-  if(page()==='builder')event.preventDefault();
-  if(!builderArchive())event.preventDefault();
+    if(page()!=='builder')return;
+    if(typeof sectorOffline!=='undefined'&&sectorOffline.unavailable()&&!sectorOffline.active())return;
+    event.preventDefault();
+    if(builderArchive()&&typeof sectorOffline!=='undefined')void sectorOffline.enter();
 }
 function builderFactionGroup(faction){
   if(/^(sm(?:_|$)|gk$)/.test(faction.id))return 'Adeptus Astartes';
@@ -89,9 +91,10 @@ async function builderOpen(id){
     builderUi.catalog=r.catalog;builderUi.army=builderClone(army);builderUi.view='editor';builderUi.search='';
     if(r.catalog.schemaVersion===2)builderUi.army.dpLimit??=army.limit<=1000?2:3;
     builderUi.baseline=JSON.stringify(builderUi.army);
+    if(army.catalogWarning)notify(army.catalogWarning,true);
     Object.assign(workbench,{dirty:false,selected:null,preview:null,mode:'build',pane:'roster',search:'',catalogFaction:null,activeEffects:{},scrollPositions:{}});
     if(r.catalog.schemaVersion===2&&wbApplyRequiredWarlord())workbench.dirty=true;
-  }catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderRender();}
+  }catch(err){notify(err.message,true);}finally{builderUi.pending=false;builderRender();if(typeof sectorOffline!=='undefined')sectorOffline.settled();}
 }
 function builderDate(value){
   const date=value?new Date(value):null;
@@ -111,12 +114,13 @@ function builderArchiveRender(){
   const groups=new Map();for(const army of builderSortedArmies()){const key=army.edition+':'+(army.factionId||army.factionName);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(army);}
   main.innerHTML=`<section class="workbench builder-archive" aria-label="Archivio armate">
     <div class="wb-heading"><div><p class="wb-muted">Warhammer 40.000 · Le tue liste</p><h1>Army Builder</h1></div><span>${builderUi.armies.length} / 100 armate</span></div>
-    <section class="wb-library"><h2>La prossima partita</h2>${canCreate?'<button id="builder-create-new" class="primary" type="button">Crea nuova lista</button>':'<p>Per creare un’armata importa un catalogo 11ª nel nuovo formato. Le liste salvate restano consultabili.</p>'}</section>
+    <div id="offline-panel"></div><section class="wb-library"><h2>La prossima partita</h2>${canCreate?'<button id="builder-create-new" class="primary" type="button">Crea nuova lista</button>':'<p>Per creare un’armata importa un catalogo 11ª nel nuovo formato. Le liste salvate restano consultabili.</p>'}</section>
     <section class="wb-library"><div class="wb-heading"><h2>Armate salvate</h2><label>Ordina per<select id="builder-sort"><option value="updated" ${builderUi.sort==='updated'?'selected':''}>Ultima modifica · più recenti</option><option value="created" ${builderUi.sort==='created'?'selected':''}>Creazione · più recenti</option><option value="faction" ${builderUi.sort==='faction'?'selected':''}>Fazione · A–Z</option></select></label></div>
     <div class="builder-archive-list">${[...groups.values()].map(rows=>`<details class="builder-army-group" open><summary>${builderFactionIcon(rows[0].factionId)}<span>${esc(rows[0].factionName||rows[0].factionId)}</span><small>${rows.length} liste · ${esc(rows[0].edition)}ª</small></summary>${rows.map(a=>`<article class="builder-archive-row"><div><h3>${esc(a.name)}</h3><p>${a.purpose==='pool'?'Pool del campionato · ':''}${esc(a.limit)} pt</p><dl><div><dt>Creazione</dt><dd>${esc(builderDate(a.created))}</dd></div><div><dt>Ultima modifica</dt><dd>${esc(builderDate(a.updated))}</dd></div></dl></div><div class="builder-actions"><button data-archive-open="${esc(a.id)}" aria-label="Apri ${esc(a.name)}">Apri</button><button data-archive-delete="${esc(a.id)}" aria-label="Elimina ${esc(a.name)}">Elimina</button></div></article>`).join('')}</details>`).join('')||'<div class="wb-empty"><h3>Nessuna armata salvata</h3><p>Crea la tua prima armata scegliendo una fazione.</p></div>'}</div></section>
-    <details class="wb-library"><summary>Catalogo e backup</summary><p>Le liste conservano la propria versione del catalogo.</p><label>Ripristina backup JSON<input id="wb-restore" type="file" accept=".json,application/json"></label>${state.user.admin?'<label>Importa catalogo JSON<input id="wb-import-file" type="file" accept=".json,application/json"></label><button id="wb-import">Importa catalogo</button>':''}</details><p class="builder-icon-credit">Icone: <a href="https://github.com/Certseeds/wh40k-icon" target="_blank" rel="noopener noreferrer">wh40k-icon · autori e licenza</a>.</p>
+    <details class="wb-library"><summary>Catalogo e backup</summary><p>Nella PWA le liste si aggiornano al catalogo disponibile alla sincronizzazione. Le selezioni non più compatibili restano conservate e vengono segnalate.</p><label>Ripristina backup JSON<input id="wb-restore" type="file" accept=".json,application/json"></label>${state.user.admin?'<label>Importa catalogo JSON<input id="wb-import-file" type="file" accept=".json,application/json"></label><button id="wb-import">Importa catalogo</button>':''}</details><p class="builder-icon-credit">Icone: <a href="https://github.com/Certseeds/wh40k-icon" target="_blank" rel="noopener noreferrer">wh40k-icon · autori e licenza</a>.</p>
   </section>`;
   builderArchiveBind();
+  if(typeof sectorOffline!=='undefined')void sectorOffline.refreshPanel();
 }
 function builderArchiveBind(){
   wbBind();
@@ -207,10 +211,12 @@ async function builderLoad(){
   builderUi.active=catalog.catalog;
   builderUi.catalog=catalog.catalog;
   builderUi.armies=armies.armies;
+  builderUi.defaults=defaults.defaults||[];
   builderUi.army=null;builderUi.view='archive';
   builderRender();
 }
 function builderPage(){
+  if(typeof sectorOffline!=='undefined')void sectorOffline.enter();
   if(builderUi.owner!==state.user?.id){builderUi.owner=null;builderUi.active=null;builderUi.catalog=null;builderUi.army=null;builderUi.armies=[];builderUi.defaults=[];builderUi.view='archive';if(typeof workbench!=='undefined')Object.assign(workbench,{dirty:false,selected:null,preview:null});}
   if(builderUi.owner===state.user?.id){builderRender();return;}
   main.innerHTML='<section class="panel"><h1>Army Builder</h1><p class="intro">Caricamento cataloghi…</p></section>';

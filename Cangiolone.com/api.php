@@ -319,6 +319,7 @@ if($action==='download') {
 if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText','leagueRosterPreview'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
+    if(isset($_GET['offlineOwner'])&&$_GET['offlineOwner']!==$me['id'])fail('Accedi con l’account delle liste offline.',401);
     try {
         builderSchema($storage->builderConnection(),$storage->builderDriver());
         if($action==='leagueRosterPreview') result(leagueRosterPreview($storage->builderConnection(),$me['id'],builderId($_GET['id']??null,'armata')));
@@ -432,10 +433,9 @@ try {
     }
     if(!$me) fail('Accedi per continuare.',401);
 
-    if(in_array($action,['builderImport','builderSave','builderDelete','builderDefaultSave','builderDefaultDelete'],true)) {
+    if(in_array($action,['builderImport','builderSave','builderDelete','builderDefaultSave','builderDefaultDelete','builderSync'],true)) {
         try {
             builderSchema($storage->builderConnection(),$storage->builderDriver());
-            if($action==='builderSave'&&($in['purpose']??'')==='pool')result(leaguePoolSave($storage->builderConnection(),$me,$in));
             result(builderHandle($storage->builderConnection(),$action,$me,$in));
         } catch(BuilderInputError $e) { fail($e->getMessage()); }
     }

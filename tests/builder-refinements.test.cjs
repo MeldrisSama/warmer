@@ -43,7 +43,7 @@ test('Combined loadouts show the retained melee weapon and chosen gun instead of
 });
 
 test('Army groups keep Battleline and selected detachments open only through their reference popup',()=>{
-  const c=context();assert.equal(vm.runInContext(`JSON.stringify(wbMobileCategories)`,c),JSON.stringify(['Character','Battleline','Infantry','Mounted','Vehicle','Other','Alleati']));
+  const c=context();assert.equal(vm.runInContext(`JSON.stringify(wbMobileCategories)`,c),JSON.stringify(['Epic Hero','Character','Battleline','Infantry','Mounted','Vehicle','Other']));
   vm.runInContext(`builderUi.catalog.factions[0].detachments=[{id:'alpha',name:'Alpha',dp:'1',force_disposition:'Take and Hold',description:'Rule'}];builderUi.army.detachmentIds=['alpha'];`,c);
   const html=vm.runInContext('wbArmySettings(true)',c);assert.match(html,/data-wb-detachment-rule="alpha"/);assert.doesNotMatch(html,/wb-detachment-resources|wb-detachment-rule-card/);
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 /** Army Builder: independent, versioned catalogs. No proprietary game data bundled. */
 final class BuilderInputError extends RuntimeException {}
 require_once __DIR__.'/builder-v2.php';
+require_once __DIR__.'/builder-sync.php';
 
 function builderInvalid(string $message): never { throw new BuilderInputError($message); }
 function builderString(mixed $value, string $label, int $max=100): string {
@@ -103,6 +104,9 @@ function builderNormalizeCatalog(array $raw): array {
     return ['edition'=>$edition,'version'=>$version,'source'=>$source,'license'=>$license,'factions'=>$out];
 }
 function builderCatalogRow(PDO $pdo, string $edition, ?string $id=null): ?array {
+    // Reads and saves need the same budget as importing a complete catalog.
+    $memory=trim((string)ini_get('memory_limit'));$factor=match(strtolower(substr($memory,-1))){'k'=>1024,'m'=>1048576,'g'=>1073741824,default=>1};
+    if($memory!=='-1'&&(int)$memory*$factor<268435456&&ini_set('memory_limit','256M')===false)builderInvalid('Memoria del server insufficiente per aprire e salvare il catalogo completo.');
     if ($id!==null) {
         $stmt=$pdo->prepare('SELECT * FROM w40k_builder_catalogs WHERE id=? AND edition=?');
         $stmt->execute([$id,$edition]);
@@ -138,6 +142,7 @@ function builderGetArmies(PDO $pdo, string $user): array {
             foreach ($army['entries'] as &$entry) $entry['weaponCounts']=(object)($entry['weaponCounts']??[]);
             unset($entry);
         }
+        $army['revision']=builderRevision($army);
         $armies[]=$army+['id'=>$row['id'],'updated'=>$row['updated'],'created'=>null,
             'factionName'=>$factionNames[$row['catalog_id']][$army['factionId']]??$army['factionId']];
     }
@@ -192,7 +197,7 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
     if (!$row) builderInvalid('Armata non disponibile nel tuo profilo.');
     $army=json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR);$source=builderCatalogRow($pdo,$row['edition'],$row['catalog_id']);
     if (!$source) builderInvalid('Catalogo della lista non disponibile.');
-    $catalog=json_decode($source['payload'],true,40,JSON_THROW_ON_ERROR);$units=array_column($catalog['units'],null,'id');$faction=array_column($catalog['factions'],null,'id')[$army['factionId']]??[];
+    $catalog=builderRestoreCatalogCosts(json_decode($source['payload'],true,40,JSON_THROW_ON_ERROR));$units=array_column($catalog['units'],null,'id');$faction=array_column($catalog['factions'],null,'id')[$army['factionId']]??[];
     $total=0;$unknown=false;$counts=[];
     foreach($army['entries'] as $entry){
         $u=$units[$entry['unitId']]??[];$ordinal=($counts[$entry['unitId']]??0)+1;$counts[$entry['unitId']]=$ordinal;$points=$entry['manualPoints']??null;
@@ -233,10 +238,22 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
     }
     return implode("\n",$lines);
 }
-function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): array {
+function builderHandle(PDO $pdo, string $action, array $me, array $data=[], ?array $preparedCatalog=null): array {
+    if($action==='builderSave'&&($data['purpose']??'')==='pool'){
+        require_once __DIR__.'/league-roster.php';
+        return leaguePoolSave($pdo,$me,$data);
+    }
+    if ($action==='builderSync') return builderSync($pdo,$me,$data);
     if ($action==='builderCatalog') {
         $edition=builderEdition($_GET['edition']??'10');
         $catalogId=isset($_GET['catalogId']) ? builderId($_GET['catalogId'],'catalogo') : null;
+        if(($_GET['metadata']??'')==='1'){
+            $row=builderCatalogRow($pdo,$edition,$catalogId);if(!$row)return ['catalog'=>null];
+            $hash=hash_init('sha256');hash_update($hash,$row['payload']);
+            // Read-time repairs can change a catalog without changing its stored ID.
+            foreach(['builder-model.php','builder-v2.php','builder-automation.php','builder-loadout-rules.php','builder-source-fixes.php','builder-rule-parameters.json'] as $file){$path=__DIR__.'/'.$file;hash_update($hash,$file.(is_file($path)?hash_file('sha256',$path):'missing'));}
+            return ['catalog'=>['catalogId'=>$row['id'],'edition'=>$row['edition'],'version'=>$row['version'],'revision'=>hash_final($hash)]];
+        }
         return builderGetCatalog($pdo,$edition,$catalogId);
     }
     if ($action==='builderArmies') return builderGetArmies($pdo,$me['id']);
@@ -251,7 +268,7 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): arr
         if ($action==='builderDefaultDelete') {$pdo->prepare('DELETE FROM w40k_builder_defaults WHERE owner=? AND unit_id=?')->execute([$me['id'],$unitId]);return ['ok'=>true];}
         $catalogId=builderId($data['catalogId']??null,'catalogo');$catalogRow=builderCatalogRow($pdo,'11',$catalogId);
         if (!$catalogRow) builderInvalid('Catalogo non disponibile.');
-        $catalog=json_decode($catalogRow['payload'],true,40,JSON_THROW_ON_ERROR);$unit=array_column($catalog['units'],null,'id')[$unitId]??null;
+        $catalog=builderRestoreCatalogCosts(json_decode($catalogRow['payload'],true,40,JSON_THROW_ON_ERROR));$unit=array_column($catalog['units'],null,'id')[$unitId]??null;
         if (!$unit) builderInvalid('Unità non disponibile.');
         $entry=$data['entry']??null;if (!is_array($entry)||($entry['unitId']??null)!==$unitId) builderInvalid('Default non valido.');
         if (!is_array($entry['weaponCounts']??[])) builderInvalid('Quantità armi del default non valide.');
@@ -294,9 +311,15 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[]): arr
     if ($action==='builderSave') {
         $edition=builderEdition($data['edition']??null);
         $catalogId=builderId($data['catalogId']??null,'catalogo');
-        $catalogRow=builderCatalogRow($pdo,$edition,$catalogId);
-        if (!$catalogRow) builderInvalid('Catalogo non trovato.');
-        $catalog=json_decode($catalogRow['payload'],true,40,JSON_THROW_ON_ERROR);
+        if($preparedCatalog!==null){
+            if(($preparedCatalog['catalogId']??null)!==$catalogId)builderInvalid('Catalogo non corrispondente alla lista.');
+            $catalog=$preparedCatalog;
+        }else{
+            $catalogRow=builderCatalogRow($pdo,$edition,$catalogId);
+            if (!$catalogRow) builderInvalid('Catalogo non trovato.');
+            $catalog=json_decode($catalogRow['payload'],true,40,JSON_THROW_ON_ERROR);
+            unset($catalogRow);
+        }
         $name=builderString($data['name']??null,'nome armata',100);
         $validation=builderValidateArmy($catalog,$data);
         $id=isset($data['id']) && $data['id']!==null ? builderId($data['id'],'armata') : bin2hex(random_bytes(12));
