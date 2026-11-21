@@ -21,10 +21,11 @@ try {
     $credentialProcess.StartInfo.RedirectStandardInput=$true
     $credentialProcess.StartInfo.RedirectStandardOutput=$true
     $credentialProcess.StartInfo.RedirectStandardError=$true
-    $credentialProcess.StartInfo.StandardInputEncoding=New-Object System.Text.UTF8Encoding($false)
     try {
         $null=$credentialProcess.Start()
-        $credentialProcess.StandardInput.Write("protocol=https`nhost=github.com`n`n")
+        $credentialBytes=[System.Text.Encoding]::UTF8.GetBytes("protocol=https`nhost=github.com`n`n")
+        $credentialProcess.StandardInput.BaseStream.Write($credentialBytes,0,$credentialBytes.Length)
+        $credentialProcess.StandardInput.BaseStream.Flush()
         $credentialProcess.StandardInput.Close()
         $credentialLines=@($credentialProcess.StandardOutput.ReadToEnd() -split "`r?`n")
         $credentialError=$credentialProcess.StandardError.ReadToEnd()
