@@ -381,31 +381,70 @@ function profileImage(user){
   return user.avatar?`<img class="profile-avatar" src="${esc(user.avatar)}" width="64" height="64" alt="">`:profileIcon();
 }
 
-async function profilePhotoData(file){
+async function profilePhotoImage(file){
   if(!file || !['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Scegli un’immagine JPG, PNG o WebP.');
   if(file.size>10*1024*1024)throw Error('Scegli un’immagine fino a 10 MB.');
-  const image=new Image();
-  image.src=await fileToBase64(file);
-  await image.decode().catch(()=>{throw Error('Immagine non leggibile.');});
-  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
-  const context=canvas.getContext('2d'),side=Math.min(image.naturalWidth,image.naturalHeight);
-  context.fillStyle='#fff';context.fillRect(0,0,256,256);
-  context.drawImage(image,(image.naturalWidth-side)/2,(image.naturalHeight-side)/2,side,side,0,0,256,256);
-  for(const quality of [0.85,0.7,0.5]){
-    const photo=canvas.toDataURL('image/jpeg',quality);
-    if(photo.length<=65559)return photo;
-  }
+  const image=new Image();image.src=await fileToBase64(file);
+  await image.decode().catch(()=>{throw Error('Immagine non leggibile.');});return image;
+}
+function profileCropBounds(image,crop){
+  const scale=Math.max(256/image.naturalWidth,256/image.naturalHeight)*Math.max(1,Math.min(4,crop.zoom));
+  const width=image.naturalWidth*scale,height=image.naturalHeight*scale;
+  return {width,height,x:Math.max(-(width-256)/2,Math.min((width-256)/2,crop.x)),y:Math.max(-(height-256)/2,Math.min((height-256)/2,crop.y))};
+}
+function profileDrawCrop(canvas,image,crop){
+  const box=profileCropBounds(image,crop);Object.assign(crop,{x:box.x,y:box.y});
+  const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,256,256);
+  context.drawImage(image,(256-box.width)/2+box.x,(256-box.height)/2+box.y,box.width,box.height);
+}
+async function profilePhotoData(file,crop={zoom:1,x:0,y:0}){
+  const image=await profilePhotoImage(file),canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+  profileDrawCrop(canvas,image,crop);return profileEncodePhoto(canvas);
+}
+function profileEncodePhoto(canvas){
+  for(const quality of [0.85,0.7,0.5]){const photo=canvas.toDataURL('image/jpeg',quality);if(photo.length<=65559)return photo;}
   throw Error('Immagine troppo complessa. Scegli una foto più semplice.');
+}
+function openProfilePhoto(trigger){
+  document.getElementById('profile-photo-dialog')?.close();
+  const dialog=document.createElement('dialog');dialog.id='profile-photo-dialog';dialog.className='profile-photo-dialog';dialog.setAttribute('aria-labelledby','profile-photo-title');
+  dialog.innerHTML=`<div class="profile-photo-heading"><h2 id="profile-photo-title">Immagine profilo</h2><button type="button" data-photo-close>Chiudi</button></div><p role="alert" class="error-inline" hidden></p><label class="field">Scegli una foto<input type="file" accept="image/jpeg,image/png,image/webp" data-photo-file></label><div data-photo-editor hidden><p>Sposta la foto sotto il cerchio e regola lo zoom. Puoi usare anche i tasti freccia.</p><div class="profile-crop-stage"><canvas width="256" height="256" tabindex="0" aria-label="Ritaglio foto: trascina o usa i tasti freccia"></canvas><span class="profile-crop-guide" aria-hidden="true"></span></div><label class="field">Zoom<input type="range" min="1" max="4" step="0.05" value="1" data-photo-zoom></label><div class="actions"><button type="button" data-photo-reset>Ricentra</button><button type="button" class="primary" data-photo-save>Salva immagine</button></div></div><p class="muted">JPG, PNG o WebP fino a 10 MB. Salvataggio leggero: 256 × 256 pixel, fino a 48 KB.</p>${state.user.avatar?'<button type="button" data-photo-remove>Rimuovi immagine</button>':''}`;
+  document.body.append(dialog);
+  const error=dialog.querySelector('[role="alert"]'),input=dialog.querySelector('[data-photo-file]'),canvas=dialog.querySelector('canvas'),zoom=dialog.querySelector('[data-photo-zoom]');
+  let image=null,crop={zoom:1,x:0,y:0},drag=null,selection=0,busy=false;
+  const redraw=()=>{if(image)profileDrawCrop(canvas,image,crop);},report=err=>{error.textContent=err.message;error.hidden=false;};
+  dialog.querySelector('[data-photo-close]').onclick=()=>dialog.close();
+  dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});
+  dialog.addEventListener('close',()=>{selection++;dialog.remove();if(trigger?.isConnected)trigger.focus();},{once:true});
+  input.onchange=async()=>{
+    const revision=++selection;image=null;dialog.querySelector('[data-photo-editor]').hidden=true;error.hidden=true;
+    try{const loaded=await profilePhotoImage(input.files[0]);if(revision!==selection||!dialog.open)return;image=loaded;crop={zoom:1,x:0,y:0};zoom.value=1;redraw();dialog.querySelector('[data-photo-editor]').hidden=false;}catch(err){if(revision===selection)report(err);}
+  };
+  zoom.oninput=()=>{crop.zoom=Number(zoom.value);redraw();};
+  canvas.onpointerdown=event=>{if(!image)return;event.preventDefault();drag={id:event.pointerId,x:event.clientX,y:event.clientY};canvas.setPointerCapture(event.pointerId);canvas.focus();};
+  canvas.onpointermove=event=>{if(!drag||drag.id!==event.pointerId)return;const scale=256/canvas.getBoundingClientRect().width;crop.x+=(event.clientX-drag.x)*scale;crop.y+=(event.clientY-drag.y)*scale;drag.x=event.clientX;drag.y=event.clientY;redraw();};
+  canvas.onpointerup=canvas.onpointercancel=canvas.onlostpointercapture=()=>{drag=null;};
+  canvas.onkeydown=event=>{const moves={ArrowLeft:[-8,0],ArrowRight:[8,0],ArrowUp:[0,-8],ArrowDown:[0,8]};if(!image||!moves[event.key])return;event.preventDefault();crop.x+=moves[event.key][0];crop.y+=moves[event.key][1];redraw();};
+  dialog.querySelector('[data-photo-reset]').onclick=()=>{crop={zoom:1,x:0,y:0};zoom.value=1;redraw();};
+  const save=async photo=>{
+    if(busy)return;busy=true;error.hidden=true;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=true);
+    try{await api('avatarSave',{photo});dialog.close();await refresh();notify(photo?'Immagine profilo aggiornata.':'Immagine profilo rimossa.');}
+    catch(err){if(dialog.isConnected)report(err);else notify(err.message,true);}
+    finally{busy=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
+  };
+  dialog.querySelector('[data-photo-save]').onclick=()=>{if(image)try{save(profileEncodePhoto(canvas));}catch(err){report(err);}};
+  const remove=dialog.querySelector('[data-photo-remove]');if(remove)remove.onclick=()=>save(null);
+  dialog.showModal();
 }
 
 function profilePage(onboarding=false){
   const account=state.account||{},showEmailForm=state.mailEnabled&&(!account.email||Boolean(account.pendingEmail));
   main.innerHTML=`<section class="panel profile-page">
-    <div class="profile-heading"><span class="profile-symbol" aria-hidden="true">${profileImage(state.user)}</span><div><p class="profile-eyebrow">Il tuo account</p><h1>${onboarding?'Aggiungi la tua email':esc(state.user.name)}</h1><p class="profile-username">${esc(state.user.username||'')}${state.user.admin?' · Amministratore':''}</p></div></div>
+    <div class="profile-heading">${onboarding?'<span class="profile-symbol" aria-hidden="true">'+profileImage(state.user)+'</span>':'<button type="button" id="profile-photo" class="profile-symbol profile-photo-trigger" aria-label="Modifica immagine profilo" aria-haspopup="dialog" title="Modifica immagine profilo">'+profileImage(state.user)+'</button>'}<div><p class="profile-eyebrow">Il tuo account</p><h1>${onboarding?'Aggiungi la tua email':esc(state.user.name)}</h1><p class="profile-username">${esc(state.user.username||'')}${state.user.admin?' · Amministratore':''}</p></div></div>
     ${onboarding?'<p class="intro">Ti invieremo un link di verifica. Potrai usare l’indirizzo per accedere e recuperare la password.</p>':''}
     ${account.email?`<div class="profile-identity"><span>${esc(account.email)}</span><span class="profile-verified">Email verificata</span></div>`:''}
     <div class="profile-grid">
-    ${onboarding?'':`<section class="account-settings profile-card"><h2>Immagine profilo</h2><p>La foto viene ritagliata al centro e ridotta a 256 × 256 pixel, fino a 48 KB.</p><form id="profile-photo"><p class="error-inline" role="alert" hidden></p><label class="field">Scegli una foto<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required></label><button class="primary" type="submit">Salva immagine</button></form>${state.user.avatar?'<button id="remove-profile-photo" type="button">Rimuovi immagine</button>':''}</section>`}
+
     ${showEmailForm?`<section class="account-settings profile-card">
       <h2>${account.pendingEmail?'Verifica la tua email':'Indirizzo email'}</h2>
       ${account.pendingEmail?`<p class="intro">Link inviato a ${esc(account.pendingEmail)}.</p>`:''}
@@ -428,14 +467,7 @@ function profilePage(onboarding=false){
     if(onboarding&&openLoginDestination())return;
     notify(state.account.pendingEmail?'Link di verifica inviato.':'L’indirizzo è già verificato.');
   });
-  if(!onboarding){
-    bindForm('profile-photo',async form=>{
-      const photo=await profilePhotoData(form.elements.photo.files[0]);
-      await api('avatarSave',{photo});await refresh();notify('Immagine profilo aggiornata.');
-    });
-    const remove=main.querySelector('#remove-profile-photo');
-    if(remove)remove.onclick=async()=>{remove.disabled=true;try{await api('avatarSave',{photo:null});await refresh();notify('Immagine profilo rimossa.');}catch(error){notify(error.message,true);remove.disabled=false;}};
-  }
+  if(!onboarding)main.querySelector('#profile-photo').onclick=event=>openProfilePhoto(event.currentTarget);
   if(!onboarding)bindForm('profile-password',async form=>{await api('passwordChange',Object.fromEntries(new FormData(form)));form.reset();notify('Password aggiornata.');});
   main.querySelector('#logout').onclick=async event=>{
     if(typeof builderDiscard==='function'&&!builderDiscard())return;
@@ -1083,7 +1115,7 @@ function standings(){
 
                       <td>
 
-                        ${esc(u.name)}
+                        ${u.avatar?'<img class="standings-avatar" src="'+esc(u.avatar)+'" width="28" height="28" alt="" loading="lazy">':''}${esc(u.name)}
 
                         ${
 

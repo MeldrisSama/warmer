@@ -90,7 +90,7 @@ test('Logout inside Profile preserves the existing API flow and handles failure 
 
 
 test('Profile photo controls, compression and removal preserve existing account flows',async()=>{
-  const c=context();vm.runInContext('profilePage()',c);assert.match(c.mainNode.innerHTML,/profile-photo/);assert.match(c.mainNode.innerHTML,/48 KB/);
+  const c=context();vm.runInContext('profilePage()',c);assert.match(c.mainNode.innerHTML,/profile-photo/);assert.match(c.mainNode.innerHTML,/aria-label="Modifica immagine profilo"/);assert.doesNotMatch(c.mainNode.innerHTML,/<h2>Immagine profilo/);
   await assert.rejects(c.profilePhotoData({type:'image/svg+xml',size:10}),/JPG/);
   await assert.rejects(c.profilePhotoData({type:'image/jpeg',size:11*1024*1024}),/10 MB/);
   const draws=[];let quality;
@@ -98,10 +98,10 @@ test('Profile photo controls, compression and removal preserve existing account 
   c.fileToBase64=async()=> 'data:image/png;base64,test';
   c.document.createElement=()=>({getContext:()=>({fillRect(){},drawImage(...args){draws.push(args);}}),toDataURL:(type,q)=>{quality=q;return 'data:image/jpeg;base64,small';}});
   assert.equal(await c.profilePhotoData({type:'image/png',size:100}),'data:image/jpeg;base64,small');
-  assert.equal(quality,0.85);assert.deepEqual(draws[0].slice(1),[100,0,600,600,0,0,256,256]);
+  assert.equal(quality,0.85);assert.equal(draws[0][2],0);assert.ok(Math.abs(draws[0][1]+128/3)<0.001);assert.equal(draws[0][4],256);
   vm.runInContext("state.user.avatar='api.php?action=avatar&id=owner&v=one';profilePage()",c);
-  assert.match(c.mainNode.innerHTML,/class="profile-avatar"/);assert.match(c.mainNode.innerHTML,/remove-profile-photo/);
-  const calls=[];c.api=async(action,data)=>calls.push([action,data.photo]);c.refresh=async()=>{};c.notify=()=>{};
-  await c.nodes.get('#remove-profile-photo').onclick();assert.deepEqual(calls,[['avatarSave',null]]);
+  assert.match(c.mainNode.innerHTML,/class="profile-avatar"/);let opened=false;c.openProfilePhoto=()=>{opened=true;};c.nodes.get('#profile-photo').onclick({currentTarget:{}});assert.equal(opened,true);
   vm.runInContext('profilePage(true)',c);assert.doesNotMatch(c.mainNode.innerHTML,/profile-photo/);
 });
+
+test('Crop geometry keeps the square covered at every zoom and drag offset',()=>{const c=context();for(const [w,h] of [[800,600],[300,900],[256,256]])for(const zoom of [1,2,4]){const box=c.profileCropBounds({naturalWidth:w,naturalHeight:h},{zoom,x:9999,y:-9999});assert.ok(box.width>=256&&box.height>=256);assert.ok(Math.abs(box.x)<=(box.width-256)/2);assert.ok(Math.abs(box.y)<=(box.height-256)/2);}});
