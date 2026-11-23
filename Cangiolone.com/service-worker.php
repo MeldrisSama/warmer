@@ -3,7 +3,7 @@ declare(strict_types=1);
 header('Content-Type: application/javascript; charset=utf-8');
 header('Cache-Control: no-cache');
 header('X-Content-Type-Options: nosniff');
-$files=['index.php','app.js','sync-icons.js','sync-icons.css','offline.js','standings.js','builder.js','builder-engine.js','builder-workbench.js','theme.js','style.css','builder.css','theme.css','manifest.webmanifest','assets/pwa/icon-192.png','assets/pwa/icon-512.png','assets/pwa/logo-192.png'];
+$files=['index.php','app.js','sync-icons.js','sync-icons.css','offline.js','standings.js','statistics.js','builder.js','builder-engine.js','builder-workbench.js','theme.js','style.css','builder.css','theme.css','manifest.webmanifest','assets/pwa/icon-192.png','assets/pwa/icon-512.png','assets/pwa/logo-192.png'];
 foreach (glob(__DIR__.'/assets/factions/*.svg') as $file) $files[]='assets/factions/'.basename($file);
 $namespace=substr(hash('sha256',rtrim(str_replace('\\','/',dirname($_SERVER['SCRIPT_NAME'])),'/').'/'),0,16);
 $hash=hash_init('sha256');$urls=[];

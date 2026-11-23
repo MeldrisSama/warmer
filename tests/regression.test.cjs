@@ -36,7 +36,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    for (const file of ['app.js', 'sync-icons.js', 'offline.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
+    for (const file of ['app.js', 'sync-icons.js', 'offline.js', 'standings.js', 'statistics.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
       const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
     }
@@ -55,7 +55,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       // Leave the initial HTTP refresh pending; supply state explicitly below.
       fetch: () => new Promise(() => {})
     });
-    for (const file of ['standings.js', 'app.js']) {
+    for (const file of ['standings.js', 'statistics.js', 'app.js']) {
       vm.runInContext(await readFile(join(root, 'Cangiolone.com', file), 'utf8'), context);
     }
     const users = ['Alice', 'Bob', 'Carlo', 'Dana'].map(name => ({ id: name, name }));
@@ -250,7 +250,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'statistics.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await cp(join(root,'Cangiolone.com/assets'),join(application,'assets'),{recursive:true});
@@ -367,7 +367,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   }
 
   await t.test('Appearance assets load publicly through the local router and both pages include the early theme script', async () => {
-    for (const file of ['theme.js', 'theme.css']) {
+    for (const file of ['theme.js', 'theme.css', 'statistics.js']) {
       const response = await fetch(`${base}/${file}`);
       assert.equal(response.status, 200, file);
       assert.equal(await response.text(), await readFile(join(application, file), 'utf8'));
@@ -419,7 +419,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         assert.equal(response.headers.get('clear-site-data'), null);
         const html = await response.text();
         const urls = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
-        assert.equal(urls.length, page === 'index.php' ? 12 : 5);
+        assert.equal(urls.length, page === 'index.php' ? 13 : 5);
         result[page] = {};
         for (const url of urls) {
           const [file, query] = url.split('?');
@@ -476,6 +476,31 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       await guest('register', registration(`${username}2`, invite.code), 403);
     }
     await alice('invite', {}, 403);
+  });
+
+  await t.test('Profile photos stay small, authenticated, owner-only and transactional',async()=>{
+    const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+    await guest('avatarSave',{photo:png},401);
+    await alice('avatarSave',{photo:png},403,{headers:{'X-CSRF-Token':'bad'}});
+    await alice('avatarSave',{photo:png,id:bobId});
+    const current=await alice('state'),url=current.user.avatar;
+    assert.ok(url.startsWith('api.php?action=avatar&id='+aliceId));
+    assert.equal(current.users.find(u=>u.id===bobId).avatar,undefined);
+    assert.ok(!JSON.stringify(current).includes('base64'));
+    await guest(url.split('action=')[1],undefined,401);
+    assert.deepEqual(await bob(url.split('action=')[1]),Buffer.from(png.split(',')[1],'base64'));
+    await alice('avatar&id[]=bad',undefined,404);
+    await alice('avatar&id=../../config.php',undefined,404);
+    for(const photo of [42,'','data:image/svg+xml;base64,PHN2Zy8+','data:image/jpeg;base64,'+png.split(',')[1],'data:image/png;base64,aGVsbG8=','data:image/png;base64,'+'a'.repeat(66000)])await alice('avatarSave',{photo},422);
+    const large=Buffer.from(png.split(',')[1],'base64');large.writeUInt32BE(257,16);
+    await alice('avatarSave',{photo:'data:image/png;base64,'+large.toString('base64')},422);
+    await alice('avatarSave',{},422);
+    assert.equal((await alice('state')).user.avatar,url);
+    sql("CREATE TRIGGER reject_avatar BEFORE UPDATE ON w40k_users BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+    try{await alice('avatarSave',{photo:null},503);assert.equal((await alice('state')).user.avatar,url);}finally{sql('DROP TRIGGER reject_avatar');}
+    await alice('avatarSave',{photo:null});
+    assert.equal((await alice('state')).user.avatar,undefined);
+    await bob(url.split('action=')[1],undefined,404);
   });
 
   await t.test('Builder archive persists dates, historical catalogs and owner isolation over HTTP', async () => {
@@ -576,6 +601,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(matches[0].by, aliceId);
     assert.equal(matches[0].scoreA, 80);
     assert.equal(matches[0].void, false);
+    assert.equal(matches[0].leagueId, null);
   });
 
   await t.test('Only the author or admin can cancel and restore a match', async () => {
@@ -757,6 +783,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(confirmed.date, score.date);
     assert.equal(confirmed.void, false);
     const saved = (await state()).matches.find(match => match.request === 'league:' + id);
+    assert.equal(saved.leagueId, firstLeague);
     await t.test('League participants attach and replace photos atomically; observers can only view them',async()=>{
       const data={fixture:id,league:firstLeague,photo:png};
       await spectator('leaguePhoto',data,403);

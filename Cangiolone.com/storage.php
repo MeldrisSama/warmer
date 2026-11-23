@@ -124,6 +124,10 @@ final class SectorStorage {
         foreach($definitions as $name=>$columns) $this->pdo->exec('CREATE TABLE IF NOT EXISTS `w40k_'.$name.'` ('.$columns.')'.($this->driver==='mysql'?' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci':''));
 
         $this->migrateLeagues();
+        $columns=$this->pdo->query($this->driver==='sqlite'?'PRAGMA table_info(w40k_users)':'SHOW COLUMNS FROM w40k_users')->fetchAll();
+        if(!in_array('avatar',array_column($columns,$this->driver==='sqlite'?'name':'Field'),true)) {
+            $this->pdo->exec('ALTER TABLE w40k_users ADD COLUMN avatar MEDIUMTEXT');
+        }
     }
 
     private function migrateLeagues(): void {

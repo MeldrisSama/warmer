@@ -49,9 +49,9 @@ function wbOpenMobileSettings(trigger){
 }
 function wbOpenMobileMenu(trigger){
   const a=builderUi.army;
-  const dialog=wbModal('Menu lista',`<label>Nome lista<input data-wb-mobile-name maxlength="100" value="${esc(a.name)}"></label><div class="wb-mobile-actions"><button data-wb-menu-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button ${beIsPool()?'disabled':''} data-wb-menu-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button>${workbench.mode==='play'?'<button data-wb-menu-action="stratagems">Stratagemmi</button>':''}<button data-wb-menu-action="export">Esporta lista</button><button data-wb-menu-action="backup">Backup JSON</button>${builderUi.active&&a.catalogId!==builderUi.active.catalogId?'<button data-wb-menu-action="copy">Crea copia col catalogo attivo</button>':''}<button data-wb-menu-action="archive">Torna alle armate</button></div>`,trigger);
+  const dialog=wbModal('Menu lista',`<label>Nome lista<input data-wb-mobile-name maxlength="100" value="${esc(a.name)}"></label><div class="wb-mobile-actions"><button data-wb-menu-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button ${beIsPool()?'disabled':''} data-wb-menu-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button>${workbench.mode==='play'?'<button data-wb-menu-action="stratagems">Stratagemmi</button>':''}<button data-wb-menu-action="search">Ricerca rapida</button><button data-wb-menu-action="export">Esporta lista</button><button data-wb-menu-action="backup">Backup JSON</button>${builderUi.active&&a.catalogId!==builderUi.active.catalogId?'<button data-wb-menu-action="copy">Crea copia col catalogo attivo</button>':''}<button data-wb-menu-action="archive">Torna alle armate</button></div>`,trigger);
   dialog.querySelector('[data-wb-mobile-name]').addEventListener('change',event=>{const value=event.target.value.trim();if(!value){event.target.value=a.name;return;}a.name=value;wbChanged();});
-  dialog.addEventListener('click',event=>{const button=event.target.closest('[data-wb-menu-mode],[data-wb-menu-action]');if(!button)return;dialog.close();if(button.dataset.wbMenuMode){wbSetMode(button.dataset.wbMenuMode);return;}switch(button.dataset.wbMenuAction){case 'export':beExport();break;case 'backup':wbDownload('armata-11.json',JSON.stringify(a,null,2),'application/json');break;case 'stratagems':wbModal('Stratagemmi · Core e distaccamenti',wbStratagems(wbAllStratagems()),main.querySelector('[data-wb-mobile-menu]'));break;case 'copy':beCopyActive();break;case 'archive':builderArchive();break;}});
+  dialog.addEventListener('click',event=>{const button=event.target.closest('[data-wb-menu-mode],[data-wb-menu-action]');if(!button)return;dialog.close();if(button.dataset.wbMenuMode){wbSetMode(button.dataset.wbMenuMode);return;}switch(button.dataset.wbMenuAction){case 'search':wbOpenQuickSearch(main.querySelector('[data-wb-mobile-menu]'));break;case 'export':beExport();break;case 'backup':wbDownload('armata-11.json',JSON.stringify(a,null,2),'application/json');break;case 'stratagems':wbModal('Stratagemmi · Core e distaccamenti',wbStratagems(wbAllStratagems()),main.querySelector('[data-wb-mobile-menu]'));break;case 'copy':beCopyActive();break;case 'archive':builderArchive();break;}});
 }
 function wbCategory(unit){
   const keys=(unit.category+' '+unit.keywords).toLowerCase();
@@ -443,7 +443,7 @@ function builderWorkbenchRender(){
   main.innerHTML=`<section class="workbench" data-mode="${workbench.mode}" data-pane="${workbench.pane}" aria-label="Army Builder 11ª edizione">
     ${wbMobileHeader(totals)}
     <div class="wb-heading"><button id="wb-archive">Torna alle armate</button><div><p class="wb-muted">Warhammer 40.000 · 11ª edizione</p><h1>Army Builder</h1></div><div class="wb-mode" role="group" aria-label="Modalità"><button data-wb-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button ${beIsPool()?'disabled':''} data-wb-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button></div></div>
-    <div class="wb-toolbar"><label class="wb-name">Nome armata<input id="wb-name" maxlength="100" value="${esc(a.name)}"></label><div class="wb-score" role="status"><strong>${totals.total}<small> / ${a.limit} pt</small></strong><span>${esc(wbDpSummary())}${totals.issues.length?` · ${totals.issues.length} avvisi`:''}</span></div><div class="wb-toolbar-actions"><span id="wb-save-state" role="status">${workbench.dirty?'Modifiche non salvate':'Bozza'}</span><button id="wb-save" class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvataggio…':'Salva armata'}</button>${workbench.mode==='play'?'<button id="wb-stratagems">Stratagemmi</button>':''}<button id="wb-export">Esporta lista</button><button id="wb-backup">Backup JSON</button></div></div>
+    <div class="wb-toolbar"><label class="wb-name">Nome armata<input id="wb-name" maxlength="100" value="${esc(a.name)}"></label><div class="wb-score" role="status"><strong>${totals.total}<small> / ${a.limit} pt</small></strong><span>${esc(wbDpSummary())}${totals.issues.length?` · ${totals.issues.length} avvisi`:''}</span></div><div class="wb-toolbar-actions"><span id="wb-save-state" role="status">${workbench.dirty?'Modifiche non salvate':'Bozza'}</span><button id="wb-save" class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvataggio…':'Salva armata'}</button>${workbench.mode==='play'?'<button id="wb-stratagems">Stratagemmi</button>':''}<button type="button" data-wb-quick-search>Ricerca rapida</button><button id="wb-export">Esporta lista</button><button id="wb-backup">Backup JSON</button></div></div>
     ${workbench.mode==='build'?wbArmySettings(configurationOpen??false):''}
     ${builderUi.active&&a.catalogId!==builderUi.active.catalogId?'<div class="wb-catalog-update"><p>Questa lista conserva i dati originali. Crea una copia per usare le nuove dotazioni e gli alleati.</p><button id="wb-copy-active">Crea copia col catalogo attivo</button></div>':''}
     ${wbErrorNotices(totals.errors)}
@@ -473,6 +473,7 @@ async function wbSave(){
 function wbBind(container=null){
   const root=container||main.querySelector('.workbench'),a=builderUi.army;
   const on=(selector,event,handler)=>root.querySelectorAll(selector).forEach(el=>el.addEventListener(event,()=>handler(el)));
+  on('[data-wb-quick-search]','click',wbOpenQuickSearch);
   on('[data-wb-mobile-save]','click',wbSave);
   on('[data-wb-mobile-menu]','click',wbOpenMobileMenu);
   on('[data-wb-open-settings]','click',wbOpenMobileSettings);
@@ -532,4 +533,69 @@ if(typeof window!=='undefined'){
   if(typeof matchMedia==='function')matchMedia('(max-width:850px)').addEventListener('change',()=>{if(builderUi.view==='editor'&&page()==='builder')builderWorkbenchRender();});
   window.addEventListener('beforeunload',event=>{if(builderHasUnsaved()){event.preventDefault();event.returnValue='';}});
   window.addEventListener('hashchange',()=>document.querySelectorAll('dialog.workbench[open]').forEach(dialog=>dialog.close()));
+}
+
+
+function wbQuickSearchIndex(catalog){
+  const texts=new Map((catalog.texts||[]).map(t=>[t.id,t.description])),rows=[],factions=new Map(),detachments=new Map();
+  for(const faction of catalog.factions||[]){
+    for(const id of faction.unitIds)factions.set(id,[...(factions.get(id)||[]),faction]);
+    for(const d of faction.detachments){detachments.set(d.id,{faction,detachment:d});add('rule',d,faction.id,faction.name+' · '+d.name);}
+  }
+  function add(kind,rule,factionId='',context='',unitId=''){
+    const description=rule.description||texts.get(rule.descriptionRef)||'';
+    if(!rule.name)return;
+    rows.push({kind,name:rule.name,description,factionId,factionIds:unitId?[...new Set([factionId,...(factions.get(unitId)||[]).map(f=>f.id)])]:[factionId],context,unitId,reference:rule.reference||'',sourceUrl:rule.sourceUrl||'',rule,
+      search:(rule.name+' '+description+' '+context+' '+(rule.reference||'')).toLocaleLowerCase()});
+  }
+  for(const rule of catalog.coreRules||[])add('keyword',rule,'','Core Rules');
+  for(const unit of catalog.units||[]){
+    const faction=(catalog.factions||[]).find(f=>f.id===unit.factionId)||(factions.get(unit.id)||[])[0],context=(faction?faction.name+' · ':'')+unit.name;
+    for(const rule of unit.abilities||[])add('rule',{...rule,sourceUrl:rule.sourceUrl||unit.sourceUrl},faction?.id||unit.factionId||'unassigned',context,unit.id);
+    for(const rule of unit.enhancements||[])add('rule',{...rule,sourceUrl:rule.sourceUrl||unit.sourceUrl},faction?.id||unit.factionId||'unassigned',context,unit.id);
+    const keywords=new Set((unit.keywords||'').split(',').map(k=>k.trim()).filter(Boolean));
+    for(const weapon of unit.weapons||[])for(const label of (weapon.description||texts.get(weapon.descriptionRef)||'').split(/[,;\n]+/)){const keyword=label.trim().replace(/^\[|\]$/g,'');if(keyword)keywords.add(keyword);}
+    for(const keyword of keywords){
+      const key=keyword.toUpperCase(),rule=(catalog.coreRules||[]).find(r=>key===r.name.toUpperCase()||key.startsWith(r.name.toUpperCase()+' ')||r.name.toUpperCase()==='ANTI'&&key.startsWith('ANTI-'));
+      add('keyword',{...rule,name:keyword,sourceUrl:rule?.sourceUrl||unit.sourceUrl},faction?.id||unit.factionId||'unassigned',context,unit.id);
+    }
+  }
+  for(const rule of catalog.stratagems||[]){
+    if(/boarding|combat patrol/i.test(rule.type||''))continue;
+    const owner=detachments.get(rule.detachment_id);
+    add('stratagem',rule,owner?.faction.id||(/core/i.test(rule.type||'')?'':rule.faction_id||'unassigned'),owner?owner.faction.name+' · '+owner.detachment.name:rule.type||'Stratagemmi');
+  }
+  return rows;
+}
+function wbQuickSearchFilter(rows,query,kind='',factionId=''){
+  const words=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  return rows.filter(row=>(!kind||row.kind===kind)&&(!factionId||!row.factionId||row.factionIds.includes(factionId))&&words.every(word=>row.search.includes(word))).sort((a,b)=>{
+    const score=row=>words.every(word=>row.name.toLocaleLowerCase().includes(word))?0:1;
+    return score(a)-score(b)||a.name.localeCompare(b.name,'en');
+  });
+}
+function wbQuickSearchReference(row){
+  try{const url=new URL(row.sourceUrl);if(['https:','http:'].includes(url.protocol))return `<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">Apri la fonte</a>`;}catch{}
+  return '';
+}
+function wbOpenQuickSearch(trigger){
+  const catalog=builderUi.catalog;if(!catalog)return;
+  const rows=wbQuickSearchIndex(catalog),labels={rule:'Regola',keyword:'Keyword',stratagem:'Stratagemma'};
+  const dialog=wbModal('Ricerca rapida',`<p class="wb-muted">Regole, keyword e stratagemmi nel catalogo ${esc(catalog.version)}. I testi scaricati sono consultabili anche offline; i link alle fonti richiedono rete.</p><div class="wb-quick-search-controls"><label>Cerca<input type="search" data-quick-query placeholder="Nome, testo o riferimento" autocomplete="off"></label><label>Tipo<select data-quick-kind><option value="">Tutti</option><option value="rule">Regole</option><option value="keyword">Keyword</option><option value="stratagem">Stratagemmi</option></select></label><label>Fazione<select data-quick-faction><option value="">Tutte le fazioni</option>${catalog.factions.map(f=>`<option value="${esc(f.id)}" ${f.id===builderUi.army?.factionId?'selected':''}>${esc(f.name)}</option>`).join('')}</select></label></div><p role="status" data-quick-status></p><div class="wb-quick-results"></div><article class="wb-rule wb-quick-detail" hidden tabindex="-1"></article>`,trigger);
+  dialog.classList.add('wb-quick-search-dialog');
+  const query=dialog.querySelector('[data-quick-query]'),kind=dialog.querySelector('[data-quick-kind]'),faction=dialog.querySelector('[data-quick-faction]'),list=dialog.querySelector('.wb-quick-results'),detail=dialog.querySelector('.wb-quick-detail'),status=dialog.querySelector('[data-quick-status]');let matches=[];
+  function update(){
+    matches=wbQuickSearchFilter(rows,query.value,kind.value,faction.value);list.hidden=false;detail.hidden=true;detail.innerHTML='';
+    status.textContent=matches.length?`${Math.min(80,matches.length)} di ${matches.length} risultati${matches.length>80?' · Affina la ricerca per vedere gli altri.':''}`:'Nessun risultato. Prova un altro termine o cambia i filtri.';
+    list.innerHTML=matches.slice(0,80).map((row,i)=>`<button type="button" data-quick-result="${i}" aria-expanded="false"><strong>${esc(row.name)}</strong><span>${labels[row.kind]}${row.kind==='stratagem'?' · '+esc(row.rule.cp_cost||'—')+' CP':''} · ${esc(row.context)}${row.reference?' · '+esc(row.reference):''}</span></button>`).join('');
+  }
+  query.addEventListener('input',update);kind.addEventListener('change',update);faction.addEventListener('change',update);
+  list.addEventListener('click',event=>{
+    const button=event.target.closest('[data-quick-result]');if(!button)return;const row=matches[Number(button.dataset.quickResult)];if(!row)return;
+    list.querySelectorAll('[aria-expanded]').forEach(el=>el.setAttribute('aria-expanded',String(el===button)));
+    detail.innerHTML=`<button type="button" data-quick-back>Torna ai risultati</button><h3>${esc(row.name)}</h3><p class="wb-muted">${labels[row.kind]} · ${esc(row.context)} ${esc(row.reference)}</p>${row.kind==='stratagem'?`<p>${esc(row.rule.cp_cost||'—')} CP · ${esc(row.rule.turn||'')} · ${esc(row.rule.phase||'')}</p>`:''}${row.description?(row.kind==='stratagem'?wbStratagemBody(row.description):beRich(row.description,row.unitId)):'<p>Il catalogo non contiene un testo autonomo per questa voce. Consulta la fonte della scheda.</p>'}${wbQuickSearchReference(row)}`;
+    list.hidden=true;detail.hidden=false;detail.focus();detail.scrollIntoView({block:'nearest'});
+  });
+  detail.addEventListener('click',event=>{if(event.target.closest('[data-quick-back]')){detail.hidden=true;list.hidden=false;query.focus();}});
+  update();query.focus();return dialog;
 }
