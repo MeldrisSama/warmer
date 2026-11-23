@@ -162,7 +162,11 @@ function saveMatchPhoto(?string $photo, string $matchId): ?string {
 
 }
 
-function publicUser(array $u): array { return array_intersect_key($u,array_flip(['id','name','username','admin'])); }
+function publicUser(array $u): array {
+    $public=array_intersect_key($u,array_flip(['id','name','username','admin']));
+    if(!empty($u['avatar'])) $public['avatar']='api.php?action=avatar&id='.rawurlencode($u['id']).'&v='.substr(hash('sha256',$u['avatar']),0,16);
+    return $public;
+}
 
 function matchDetails(array $in): array {
     foreach(['scoreA','scoreB'] as $k) if(!isset($in[$k]) || !is_int($in[$k]) || $in[$k]<0 || $in[$k]>100) fail('I punti vittoria devono essere interi tra 0 e 100.');
@@ -195,7 +199,7 @@ $leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStar
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
-    if(($leagueWrite || in_array($action,['void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    if(($leagueWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
     $scope=($leagueWrite || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
     $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
@@ -276,6 +280,19 @@ if($action==='league' || $action==='leagueDownload') {
     $id=$_GET['id']??null;
     if($id!==null && !is_string($id)) fail('Campionato non trovato.',404);
     result(leagueState($db,$me,$id,($_GET['new']??null)==='1')+['mailEnabled'=>$mail!==null]);
+}
+
+if($action==='avatar') {
+    if(!$me) fail('Accedi per vedere la foto.',401);
+    if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
+    foreach($db['users'] as $user) if($user['id']===($_GET['id']??null) && !empty($user['avatar'])) {
+        [$type,$encoded]=explode(';base64,',$user['avatar'],2);
+        $bytes=base64_decode($encoded,true);
+        header('Content-Type: '.substr($type,5));
+        header('Content-Length: '.strlen($bytes));
+        session_write_close();echo $bytes;exit;
+    }
+    fail('Immagine profilo non trovata.',404);
 }
 
 if($action==='photo') {
@@ -432,6 +449,19 @@ try {
         result(['ok'=>true]);
     }
     if(!$me) fail('Accedi per continuare.',401);
+
+    if($action==='avatarSave') {
+        $photo=$in['photo']??null;
+        if($photo!==null) {
+            if(!is_string($photo) || strlen($photo)>66000 || !preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$#D',$photo,$parts)) fail('Immagine profilo non valida: massimo 48 KB.');
+            $bytes=base64_decode($parts[2],true);
+            if($bytes===false || strlen($bytes)>49152) fail('L’immagine profilo non può superare 48 KB.',413);
+            $info=@getimagesizefromstring($bytes);
+            if(!$info || $info[0]<1 || $info[1]<1 || $info[0]>256 || $info[1]>256 || ($info['mime']??'')!=='image/'.$parts[1]) fail('Usa un’immagine JPG, PNG o WebP fino a 256 × 256 pixel.');
+        } elseif(!array_key_exists('photo',$in)) fail('Scegli un’immagine profilo.');
+        foreach($db['users'] as &$user) if($user['id']===$me['id']) $user['avatar']=$photo;
+        unset($user);save();result(['ok'=>true]);
+    }
 
     if(in_array($action,['builderImport','builderSave','builderDelete','builderDefaultSave','builderDefaultDelete','builderSync'],true)) {
         try {

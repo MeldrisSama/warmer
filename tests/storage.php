@@ -92,7 +92,7 @@ $storage = new SectorStorage($config);
 $data = $storage->load();
 check($data === ['users'=>[], 'matches'=>[], 'lists'=>[], 'invites'=>[], 'attempts'=>[], 'mail_accounts'=>[]], 'New database must be empty');
 
-$data['users'][] = ['id'=>'alice', 'username'=>'alice', 'name'=>'Alice', 'password'=>'hash', 'admin'=>true];
+$data['users'][] = ['id'=>'alice', 'username'=>'alice', 'name'=>'Alice', 'password'=>'hash', 'admin'=>true, 'avatar'=>null];
 $data['matches'][] = ['id'=>'match', 'a'=>'alice', 'b'=>'bob', 'scoreA'=>80, 'scoreB'=>50, 'date'=>'2026-01-01', 'mission'=>'Test', 'photo'=>null, 'by'=>'alice', 'void'=>false, 'created'=>'2026-01-01T12:00:00+01:00', 'request'=>'request'];
 $data['lists'][] = ['id'=>'list', 'owner'=>'alice', 'name'=>'Army', 'faction'=>'Orks', 'text'=>"Unità\n100 punti", 'date'=>'2026-01-01', 'size'=>16];
 $data['invites'][] = ['hash'=>'invite', 'expires'=>2000000000, 'used'=>false];
