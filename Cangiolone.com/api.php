@@ -258,7 +258,12 @@ if($action==='state') {
 
     $leagues=leagueSummaries($db,$me['id']);
     $locked=leagueMatchLocks($db);
-    $matches=array_map(function(array $match) use($locked): array {
+    $matchLeagues=[];
+    foreach($db['league_fixtures'] as $fixture) {
+        if($fixture['match_id']!==null) $matchLeagues[$fixture['match_id']]=$fixture['league_id'];
+    }
+    $matches=array_map(function(array $match) use($locked,$matchLeagues): array {
+        $match['leagueId']=$matchLeagues[$match['id']]??null;
         if(isset($locked[$match['id']])) $match['leagueLocked']=true;
         if(!empty($match['photo'])) $match['photo']='api.php?action=photo&id='.rawurlencode($match['id']);
         return $match;

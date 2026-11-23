@@ -576,6 +576,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(matches[0].by, aliceId);
     assert.equal(matches[0].scoreA, 80);
     assert.equal(matches[0].void, false);
+    assert.equal(matches[0].leagueId, null);
   });
 
   await t.test('Only the author or admin can cancel and restore a match', async () => {
@@ -757,6 +758,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal(confirmed.date, score.date);
     assert.equal(confirmed.void, false);
     const saved = (await state()).matches.find(match => match.request === 'league:' + id);
+    assert.equal(saved.leagueId, firstLeague);
     await t.test('League participants attach and replace photos atomically; observers can only view them',async()=>{
       const data={fixture:id,league:firstLeague,photo:png};
       await spectator('leaguePhoto',data,403);

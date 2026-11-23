@@ -281,6 +281,7 @@ function render(){
   nav.innerHTML=[
 
     ['classifica','Classifica'],
+    ['statistiche','Statistiche'],
     ['campionati','Campionati'],
     ['partita','Nuova partita'],
 
@@ -325,6 +326,8 @@ function render(){
 
   }else if(p==='profilo'){
     profilePage();
+  }else if(p==='statistiche'){
+    statisticsPage();
   }else if(['verify-email','reset-password'].includes(p)&&state.mailEnabled){
     emailAccountPage(p);
   }else if(p==='campionati'){
