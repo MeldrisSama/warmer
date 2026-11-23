@@ -1,5 +1,7 @@
 # Statistiche personali
 
+Il pannello Filtri è ora chiuso all'apertura: occupa una sola riga e mostra il numero di filtri attivi. Clic, tap o tastiera espandono gli stessi controlli; dopo l'applicazione la riga si richiude, lasciando spazio ai risultati.
+
 La voce **Statistiche** apre `#statistiche` per l'utente connesso. Mostra numero di partite, vittorie/pareggi/sconfitte, percentuale di vittorie, differenza e media dei punti fatti/subiti, ultimi dieci risultati in ordine cronologico, confronti diretti e storico.
 
 Il riepilogo include **Serie di vittorie attuale**: numero di vittorie consecutive alla fine dei risultati filtrati, zero senza risultati o se l'ultimo è un pareggio/una sconfitta. Nessuna icona o modifica al nome. Vittorie verdi e pareggi grigi nel riepilogo, andamento e storico; il verde si adatta al contrasto dei colori personali. Filtri raccolti in un box compatto, date affiancate anche su telefono e controlli touch di almeno44px.

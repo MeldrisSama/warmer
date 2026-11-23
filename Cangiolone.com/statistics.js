@@ -37,6 +37,7 @@ function statisticsPage(){
   const invalidRange=filters.from&&filters.to&&filters.from>filters.to;
   main.innerHTML=`<section class="panel statistics-page">
     <div class="page-heading"><p class="profile-eyebrow">${esc(state.user.name)}</p><h1>Statistiche personali</h1><p>Risultati, andamento e confronti diretti delle tue partite.</p></div>
+    <details class="statistics-filter-box"><summary>Filtri${Object.values(filters).filter(Boolean).length?' ? '+Object.values(filters).filter(Boolean).length+' attivi':' ? Tutte le partite'}</summary>
     <form id="statistics-filters" class="statistics-filters" aria-labelledby="statistics-filter-title">
       <h2 id="statistics-filter-title">Filtri</h2>
       <label class="field">Dal<input type="date" name="from" value="${esc(filters.from)}"></label>
@@ -45,7 +46,7 @@ function statisticsPage(){
       <label class="field">Campionato<select name="league">${option('','Tutti i campionati',filters.league)}${[...leagues].map(([id,title])=>option(id,title,filters.league)).join('')}</select></label>
       <label class="field">Avversario<select name="opponent">${option('','Tutti gli avversari',filters.opponent)}${opponents.map(id=>option(id,names.get(id)||'Giocatore',filters.opponent)).join('')}</select></label>
       <div class="statistics-filter-actions"><button type="submit" class="primary">Applica filtri</button><a href="#statistiche">Azzera filtri</a></div>
-    </form>
+    </form></details>
     ${invalidRange?'<p role="alert" class="error-inline">La data iniziale deve precedere o coincidere con quella finale.</p>':''}
     <p class="statistics-note">Solo partite registrate e non annullate; i risultati del campionato compaiono dopo la conferma. Le percentuali includono i pareggi nel totale. La serie attuale conta le vittorie consecutive finali nei risultati filtrati; un pareggio o una sconfitta la interrompe.</p>
     <dl class="statistics-summary" aria-label="Riepilogo dei risultati">
