@@ -258,6 +258,7 @@ function beAllyRule(id){
   return beAllyRules().filter(r=>r.unitIds.includes(id)).sort((a,b)=>Number(Boolean(b.detachmentIds.length))-Number(Boolean(a.detachmentIds.length)))[0];
 }
 function beCatalogIds(){
+  if(builderUi.army.rosterSource)return [...new Set(builderUi.army.rosterSource.roster.entries.map(e=>e.unitId))];
   const units=wbUnits();
   // Old alias IDs remain valid in armies; offer each allied datasheet once.
   const allies=beAllyRules().flatMap(rule=>{const seen=new Set();return rule.unitIds.filter(id=>{const u=units.get(id);if(!u)return false;const key=u.name.toLowerCase().replace(/[’']/g,'')+'|'+Boolean(u.legends);if(seen.has(key))return false;seen.add(key);return true;});});
@@ -434,6 +435,7 @@ function beExport(){
   return dialog;
 }
 function beCopyActive(){
+  if(builderUi.army.rosterSource){notify('Il roster conserva il proprio catalogo. Riparti dal roster aggiornato nel campionato.',true);return;}
   if(!builderDiscard())return;
   const active=builderUi.active;if(!active||active.schemaVersion!==2)return;
   const oldUnits=wbUnits(),nextUnits=new Map(active.units.map(u=>[u.id,u])),copy=builderClone(builderUi.army),ids=new Map(copy.entries.map(e=>[e.entryId,wbId()]));
@@ -461,4 +463,18 @@ async function beSaveDefault(){
 async function beDeleteDefault(){
   const entry=wbEntry(workbench.selected);if(!entry)return;
   try{await api('builderDefaultDelete',{unitId:entry.unitId});builderUi.defaults=(await api('builderDefaults')).defaults;notify('Default personale rimosso.');}catch(err){notify(err.message,true);}
+}
+
+
+function beRosterErrors(){
+  const a=builderUi.army,source=a.rosterSource;if(!source)return [];
+  const errors=[],reserved=new Map(source.roster.entries.map(e=>[e.entryId,e]));
+  if(a.catalogId!==source.roster.catalogId||a.factionId!==source.roster.factionId||a.limit!==source.matchLimit)errors.push('Conserva catalogo, fazione e limite partita del roster.');
+  for(const e of a.entries){
+    const r=reserved.get(e.entryId),u=wbUnits().get(e.unitId);
+    if(!r||r.unitId!==e.unitId||r.models!==e.models||Object.keys(r.modelCounts||{}).length!==Object.keys(e.loadoutSelections?._models||{}).length||Object.entries(r.modelCounts||{}).some(([id,n])=>e.loadoutSelections?._models?.[id]!==n)||e.manualPoints!=null){errors.push((u?.name||'Unità')+': copia, taglia o composizione non disponibili nel roster.');continue;}
+    const counts={};for(const g of u.loadoutRecipe?.groups||[])for(const c of g.choices)for(const [id,n] of Object.entries(c.weapons))counts[id]=(counts[id]||0)+(e.loadoutSelections?.[g.id]?.[c.id]||0)*n;
+    for(const option of r.options)if((counts[option.id]||0)>(r.paidOptions[option.id]||0))errors.push(u.name+': '+option.name+' non riservata per questa copia.');
+  }
+  return errors;
 }

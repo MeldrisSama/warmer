@@ -238,3 +238,23 @@ function leaguePoolSave(PDO $pdo, array $me, array $in): array {
         if($ownsTransaction)$pdo->commit();return $saved;
     } catch(Throwable $e) {if($ownsTransaction)$pdo->rollBack();throw $e;}
 }
+
+
+function leagueRosterDraftSource(PDO $pdo,string $owner,string $id): array {
+    $stmt=$pdo->prepare('SELECT r.*, s.payload AS settings FROM w40k_league_rosters r JOIN w40k_league_roster_settings s ON s.id=r.league_id WHERE r.id=? AND r.player=?');
+    $stmt->execute([$id,$owner]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
+    if(!$row) builderInvalid('Roster non disponibile nel tuo profilo.');
+    $roster=json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR);
+    $settings=json_decode($row['settings'],true,20,JSON_THROW_ON_ERROR);
+    return ['id'=>$id,'leagueId'=>$row['league_id'],'version'=>(int)$row['version'],'matchLimit'=>$settings['matchLimit'],'roster'=>$roster];
+}
+
+function leagueRosterDraftCheck(array $catalog,array $army,array $source,int $points): void {
+    $roster=$source['roster'];
+    if($army['catalogId']!==$roster['catalogId'] || $army['edition']!==$roster['edition'] || $army['factionId']!==$roster['factionId'] || $army['limit']!==$source['matchLimit']) builderInvalid('Conserva fazione, catalogo e limite partita del roster.');
+    $reserved=array_column($roster['entries'],null,'entryId');$units=array_column($catalog['units'],null,'id');
+    foreach($army['entries'] as $entry) {
+        if(!isset($reserved[$entry['entryId']]) || ($entry['manualPoints']??null)!==null || !leagueRosterMatches($reserved[$entry['entryId']],$entry,leagueRosterEquipped($units[$entry['unitId']],$entry))) builderInvalid('Copia, taglia, composizione o opzioni a pagamento non disponibili nel roster.');
+    }
+    if($points>$source['matchLimit']) builderInvalid('La lista supera il limite partita del roster.');
+}

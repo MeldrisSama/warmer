@@ -165,7 +165,7 @@ function renderRoster() {
   if(!settings)return;
   const latest=data.versions[0],editable=state.league.joined&&!state.league.closed&&!state.league.paused&&(!state.league.start||settings.windowOpen);
   const summary=version=>`<p>${escapeHtml(version.roster.name)} · ${version.roster.points} / ${settings.rosterLimit} punti</p><ul>${version.roster.entries.map(entry=>`<li><strong>${escapeHtml(entry.name)}</strong> · ${entry.models} modelli · ${entry.points} pt${entry.equipmentPoints?`<br>Riserva equipaggiamenti: ${entry.equipmentPoints} pt — ${entry.options.filter(o=>entry.paidOptions[o.id]).map(o=>`${entry.paidOptions[o.id]}× ${escapeHtml(o.name)}`).join(', ')}`:''}</li>`).join('')}</ul>`;
-  panel.innerHTML=`<div class="section-head"><h2 id="roster-heading">Roster del campionato</h2></div>
+  panel.innerHTML=`<div class="section-head"><h2 id="roster-heading">Roster del campionato</h2></div>${latest?`<p><a class="jump" href="index.php?roster=${encodeURIComponent(latest.id)}#builder">Crea lista dal roster</a></p>`:''}
     <p>Roster: <strong>${settings.rosterLimit} punti</strong> · Partite: <strong>${settings.matchLimit} punti</strong></p>
     <p>${state.league.start?(settings.windowOpen?'Finestra di modifica aperta per tutti gli iscritti.':'Roster bloccati. Le modifiche richiedono una finestra aperta dall’amministratore.'):'Puoi preparare e sostituire il roster fino alla pubblicazione del calendario.'}</p>
     <p class="fine-print">I potenziamenti dei distaccamenti si scelgono e si pagano solo nelle liste degli incontri.</p>

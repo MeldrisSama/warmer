@@ -45,7 +45,7 @@ function builderSync(PDO $pdo,array $me,array $data): array {
         }
         $warning=null;
         $active=builderCatalogRow($pdo,builderEdition($army['edition']??null));
-        if ($active && $active['id']!==($army['catalogId']??null) && ($army['schemaVersion']??null)===2) {
+        if (empty($army['rosterSource']) && $active && $active['id']!==($army['catalogId']??null) && ($army['schemaVersion']??null)===2) {
             $candidate=$army;$candidate['catalogId']=$active['id'];
             try {
                 $catalog=json_decode($active['payload'],true,40,JSON_THROW_ON_ERROR);

@@ -347,6 +347,13 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[], ?arr
         // Creation belongs to the server; unknown historical dates stay unknown.
         $previous=$existing!==false ? json_decode($existing['payload'],true,20,JSON_THROW_ON_ERROR) : [];
         $army['created']=$existing===false ? $updated : ($previous['created']??null);
+        $rosterSource=$data['rosterSource']??$previous['rosterSource']??null;
+        if($rosterSource!==null) {
+            require_once __DIR__.'/league-roster.php';
+            if(!is_array($rosterSource)) builderInvalid('Riferimento roster non valido.');
+            $army['rosterSource']=leagueRosterDraftSource($pdo,$me['id'],builderId($rosterSource['id']??null,'roster'));
+            leagueRosterDraftCheck($catalog,$army,$army['rosterSource'],$validation['points']);
+        }
         $payload=json_encode($army,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         if ($existing!==false) {
             $stmt=$pdo->prepare('UPDATE w40k_builder_armies SET name=?, edition=?, catalog_id=?, payload=?, updated=? WHERE id=? AND owner=?');

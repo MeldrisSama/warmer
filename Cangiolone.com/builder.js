@@ -205,6 +205,7 @@ function builderNewArmy(){
 async function builderLoad(){
   const edition=builderUi.edition;
   const owner=state.user?.id;
+  const rosterId=typeof location==='undefined'?null:new URLSearchParams(location.search).get('roster');
   const [catalog,armies,defaults]=await Promise.all([api('builderCatalog&edition='+edition),api('builderArmies'),api('builderDefaults')]);
   if(edition!==builderUi.edition||page()!=='builder'||owner!==state.user?.id) return;
   builderUi.owner=owner;
@@ -213,6 +214,16 @@ async function builderLoad(){
   builderUi.armies=armies.armies;
   builderUi.defaults=defaults.defaults||[];
   builderUi.army=null;builderUi.view='archive';
+  if(rosterId){
+    const {source}=await api('leagueRosterDraft&id='+encodeURIComponent(rosterId));
+    const historical=await api('builderCatalog&edition='+source.roster.edition+'&catalogId='+encodeURIComponent(source.roster.catalogId));
+    if(owner!==state.user?.id||page()!=='builder')return;
+    if(!historical.catalog)throw Error('Catalogo del roster non disponibile.');
+    builderUi.catalog=historical.catalog;builderUi.army=builderNewArmy();
+    Object.assign(builderUi.army,{name:('Lista da '+source.roster.name).slice(0,100),factionId:source.roster.factionId,edition:source.roster.edition,limit:source.matchLimit,dpLimit:source.matchLimit<=1000?2:3,rosterSource:source});
+    Object.assign(workbench,{dirty:true,mode:'build',pane:'roster',selected:null,preview:null,search:'',scrollPositions:{}});builderUi.view='editor';
+    const url=new URL(location.href);url.searchParams.delete('roster');history.replaceState(history.state,'',url);
+  }
   builderRender();
 }
 function builderPage(){

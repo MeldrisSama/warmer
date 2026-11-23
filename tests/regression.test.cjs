@@ -923,6 +923,31 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueJoin',{...submission,army:'orks'});
     const initial=(await alice('league&id='+league)).rosters.versions[0];
     assert.equal(initial.roster.points,115);
+    await guest('leagueRosterDraft&id='+initial.id,undefined,401);
+    await bob('leagueRosterDraft&id='+initial.id,undefined,422);
+    const source=(await alice('leagueRosterDraft&id='+initial.id)).source;
+    assert.equal(source.matchLimit,2000);assert.equal(source.roster.catalogId,imported.catalogId);
+    const derived={...fixture.army,catalogId:imported.catalogId,rosterSource:source,id:null};
+    const derivedSaved=(await alice('builderSave',derived)).army;
+    assert.equal(derivedSaved.rosterSource.id,initial.id);
+    assert.equal((await alice('builderArmies')).armies.find(a=>a.id===derivedSaved.id).rosterSource.id,initial.id);
+    const invalidCopy=structuredClone(derived);invalidCopy.entries[0].entryId='unreserved';
+    await alice('builderSave',invalidCopy,422);
+    await alice('builderSave',{...derived,limit:3000},422);
+    const forged=structuredClone(derived);forged.rosterSource.roster.entries.push({...forged.entries[0],entryId:'unreserved'});forged.entries[0].entryId='unreserved';
+    await alice('builderSave',forged,422);
+    const missingSource={...derived,id:derivedSaved.id};delete missingSource.rosterSource;
+    assert.equal((await alice('builderSave',missingSource)).army.rosterSource.id,initial.id);
+    await bob('builderSave',derived,422);
+    const changedCatalog=structuredClone(fixture.raw);changedCatalog.version='roster-sync-update';changedCatalog.units[0].points[0].points=105;
+    const nextCatalog=await admin('builderImport',{catalog:changedCatalog});assert.notEqual(nextCatalog.catalogId,imported.catalogId);
+    const remote=(await alice('builderArmies')).armies.find(a=>a.id===derivedSaved.id);
+    const synced=await alice('builderSync',{id:remote.id,baseRevision:remote.revision,army:remote});
+    assert.equal(synced.army.catalogId,imported.catalogId);assert.equal(synced.army.rosterSource.id,initial.id);
+    const forbidden=structuredClone(derived);forbidden.entries[0].models=2;await alice('builderSave',forbidden,422);
+    const draft={...derived,entries:[],detachmentIds:[],disposition:''};
+    assert.equal((await alice('builderSave',draft)).army.entries.length,0);
+
     // Repeated registration is idempotent, including the first roster version.
     await alice('leagueJoin',{...submission,army:'orks'});
     assert.equal((await alice('league&id='+league)).rosters.versions.length,1);
