@@ -36,7 +36,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
-    for (const file of ['app.js', 'sync-icons.js', 'offline.js', 'standings.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
+    for (const file of ['app.js', 'sync-icons.js', 'offline.js', 'standings.js', 'statistics.js', 'campionato.js', 'builder.js', 'builder-workbench.js', 'builder-engine.js', 'theme.js']) {
       const result = spawnSync(process.execPath, ['--check', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
     }
@@ -55,7 +55,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       // Leave the initial HTTP refresh pending; supply state explicitly below.
       fetch: () => new Promise(() => {})
     });
-    for (const file of ['standings.js', 'app.js']) {
+    for (const file of ['standings.js', 'statistics.js', 'app.js']) {
       vm.runInContext(await readFile(join(root, 'Cangiolone.com', file), 'utf8'), context);
     }
     const users = ['Alice', 'Bob', 'Carlo', 'Dana'].map(name => ({ id: name, name }));
@@ -250,7 +250,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'statistics.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await cp(join(root,'Cangiolone.com/assets'),join(application,'assets'),{recursive:true});
@@ -367,7 +367,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   }
 
   await t.test('Appearance assets load publicly through the local router and both pages include the early theme script', async () => {
-    for (const file of ['theme.js', 'theme.css']) {
+    for (const file of ['theme.js', 'theme.css', 'statistics.js']) {
       const response = await fetch(`${base}/${file}`);
       assert.equal(response.status, 200, file);
       assert.equal(await response.text(), await readFile(join(application, file), 'utf8'));
@@ -419,7 +419,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         assert.equal(response.headers.get('clear-site-data'), null);
         const html = await response.text();
         const urls = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
-        assert.equal(urls.length, page === 'index.php' ? 12 : 5);
+        assert.equal(urls.length, page === 'index.php' ? 13 : 5);
         result[page] = {};
         for (const url of urls) {
           const [file, query] = url.split('?');
