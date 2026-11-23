@@ -37,7 +37,7 @@ function statisticsPage(){
   const invalidRange=filters.from&&filters.to&&filters.from>filters.to;
   main.innerHTML=`<section class="panel statistics-page">
     <div class="page-heading"><p class="profile-eyebrow">${esc(state.user.name)}</p><h1>Statistiche personali</h1><p>Risultati, andamento e confronti diretti delle tue partite.</p></div>
-    <details class="statistics-filter-box"><summary>Filtri${Object.values(filters).filter(Boolean).length?' ? '+Object.values(filters).filter(Boolean).length+' attivi':' ? Tutte le partite'}</summary>
+    <details class="statistics-filter-box"><summary>Filtri${Object.values(filters).filter(Boolean).length?' · '+Object.values(filters).filter(Boolean).length+' attivi':' · Tutte le partite'}</summary>
     <form id="statistics-filters" class="statistics-filters" aria-labelledby="statistics-filter-title">
       <h2 id="statistics-filter-title">Filtri</h2>
       <label class="field">Dal<input type="date" name="from" value="${esc(filters.from)}"></label>
