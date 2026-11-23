@@ -12,6 +12,15 @@ function context(){
   return c;
 }
 
+test('Printable snapshots close on logout, account change or navigation away from the builder',()=>{
+  const c=context();let closed=0;c.wbClosePrint=()=>{closed++;};c.builderPage=c.auth=()=>{};
+  const preview={dataset:{owner:'owner'}},getElement=c.document.getElementById;c.document.getElementById=id=>id==='wb-print-preview'?preview:getElement(id);
+  c.location.hash='#builder';vm.runInContext('render()',c);assert.equal(closed,0);
+  preview.dataset.owner='someone-else';vm.runInContext('render()',c);assert.equal(closed,1);
+  preview.dataset.owner='owner';c.location.hash='#profilo';vm.runInContext('render()',c);assert.equal(closed,2);
+  c.location.hash='#builder';vm.runInContext('state.user=null;render()',c);assert.equal(closed,3);
+});
+
 test('Verified profile shows its address without offering another verification form',()=>{
   const c=context();vm.runInContext('profilePage()',c);const html=c.mainNode.innerHTML;
   assert.match(html,/verified@example\.test/);assert.match(html,/Email verificata/);assert.doesNotMatch(html,/id="profile-email"|Invia.*link|name="email"/);assert.match(html,/id="profile-password"/);assert.match(html,/id="logout"/);assert.equal(c.appearanceMounted,true);

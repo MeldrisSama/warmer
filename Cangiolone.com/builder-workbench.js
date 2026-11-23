@@ -200,6 +200,66 @@ function wbOpenFilters(trigger){
   dialog.addEventListener('change',event=>{const key=event.target.dataset.wbFilter;if(!Object.hasOwn(workbench.filters,key))return;workbench.filters[key]=event.target.checked;wbSearch(workbench.search);});
   return dialog;
 }
+
+function wbPrintHtml(){
+  const original=builderUi.army;
+  // Pricing synchronizes derived weapon counts; print a copy without changing the draft.
+  builderUi.army=builderClone(original);
+  try{
+    const a=builderUi.army,units=wbUnits(),totals=builderWorkbenchTotals(),seen=new Set(),groups=[];
+    const roots=a.entries.filter(e=>!e.attachedTo||!wbEntry(e.attachedTo)||wbEntry(e.attachedTo).attachedTo);
+    for(const root of [...roots,...a.entries]){
+      if(seen.has(root.entryId))continue;
+      const group=wbGroup(root).filter(e=>!seen.has(e.entryId));group.forEach(e=>seen.add(e.entryId));groups.push(group);
+    }
+    const cost=e=>{const base=wbPrice(e);return base===null?'Da verificare':base+e.enhancementIds.reduce((sum,id)=>sum+Number(units.get(e.unitId).enhancements.find(x=>x.id===id)?.cost||0),0)+' pt';};
+    return `<header class="wb-print-heading"><p>Cronache del settore · Warhammer 40.000 · ${esc(a.edition)}ª edizione</p><h1>${esc(a.name)}</h1><p>${esc(wbFaction().name)} · <strong>${totals.total} / ${a.limit} pt</strong> · ${esc(wbDpSummary())}</p><p>${esc(wbDetachments().map(d=>d.name).join(' · ')||'Distaccamenti da scegliere')} · ${esc(a.disposition||'Force Disposition da scegliere')}</p><p>Catalogo ${esc(builderUi.catalog.version)} · ${esc(a.catalogId)}</p><p class="wb-print-note">Copia della lista aperta, comprese le modifiche non salvate. I profili includono i modificatori già applicati dal builder; i valori modificati sono sottolineati e ne sono riportate le fonti. Restano i controlli manuali sulle regole.</p></header>
+      ${totals.issues.length?`<section class="wb-print-issues"><h2>Verifiche da completare</h2><ul>${[...new Set(totals.issues)].map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul></section>`:''}
+      <section class="wb-print-overview"><h2>Riepilogo della lista</h2><ul>${a.entries.map(e=>`<li><strong>${esc(wbInstanceName(e))}</strong> · ${e.models} ${e.models===1?'modello':'modelli'} · ${esc(cost(e))}${e.warlord?' · Warlord':''}${e.attachedTo?` · Associa a: ${esc(wbEntry(e.attachedTo)?wbInstanceName(wbEntry(e.attachedTo)):'unità mancante')}`:''}</li>`).join('')}</ul></section>
+      ${wbDetachments().length?`<section class="wb-print-army-rules"><h2>Regole dei distaccamenti</h2>${wbRules(wbDetachments().map(d=>({name:d.name,description:d.description||'Regola non disponibile nel catalogo.'})))}</section>`:''}
+      ${groups.map((group,i)=>`<article class="wb-print-card"><h2>${i+1}. ${group.map(e=>esc(wbInstanceName(e))).join(' + ')}</h2><p>${group.length>1?'Gruppo attached':'Unità indipendente'}</p>${group.map(e=>`<section class="wb-print-loadout"><h3>${esc(wbInstanceName(e))}${e.warlord?' · Warlord':''}</h3><p>${e.models} ${e.models===1?'modello':'modelli'} · ${esc(cost(e))}</p><ul>${beGearLines(e).map(line=>`<li>${esc(line)}</li>`).join('')||'<li>Dotazione da verificare nel builder.</li>'}</ul>${e.notes?`<p class="wb-print-notes">${esc(e.notes)}</p>`:''}</section>`).join('')}${wbAttachedProfiles(group)}</article>`).join('')}
+      <section class="wb-print-core" hidden></section>
+      ${wbAllStratagems().length?`<section class="wb-print-stratagems"><h2>Stratagemmi · Core e distaccamenti selezionati</h2>${wbStratagems(wbAllStratagems())}</section>`:''}
+      <p class="wb-print-note">Dati del catalogo locale · Non sostituisce le regole ufficiali.</p>`;
+  }finally{builderUi.army=original;}
+}
+function wbClosePrint(){
+  const view=document.getElementById('wb-print-preview');if(!view)return;
+  document.removeEventListener('keydown',view._keydown);document.title=view._title;view.remove();document.body.classList.remove('wb-print-open');
+  window.scrollTo(0,view._scrollY);if(view._trigger?.isConnected)view._trigger.focus({preventScroll:true});
+}
+function wbOpenPrint(trigger){
+  if(beIsPool()){notify('Il pool è un bacino di unità: prepara una lista da partita per stampare le schede.',true);return;}
+  if(!builderUi.army?.entries.length){notify('Aggiungi almeno un’unità alla lista prima di stampare.',true);return;}
+  wbClosePrint();
+  document.querySelectorAll('dialog.workbench[open]').forEach(dialog=>dialog.close());
+  const html=wbPrintHtml(),view=document.createElement('section');view.id='wb-print-preview';view.className='workbench wb-print-view';view.dataset.owner=state.user.id;
+  view.setAttribute('aria-label','Anteprima schede stampabili');view.tabIndex=-1;
+  view._trigger=trigger;view._scrollY=window.scrollY;view._title=document.title;
+  view.innerHTML=`<div class="wb-print-actions"><button type="button" data-print-close>Torna alla lista</button><button type="button" class="primary" data-print-run>Stampa / Salva PDF</button><p>Nel dialogo di stampa scegli la stampante oppure Salva come PDF.</p></div>${html}`;
+  view.querySelectorAll('.wb-unit-stratagems').forEach(node=>node.remove());
+  const referenced=new Set([...view.querySelectorAll('[data-wb-rule]')].map(node=>node.dataset.wbRule).filter(Boolean));
+  const rules=(builderUi.catalog.coreRules||[]).filter(rule=>referenced.has(rule.id));
+  if(rules.length){const core=view.querySelector('.wb-print-core');core.hidden=false;core.innerHTML='<h2>Regole comuni richiamate</h2>'+wbRules(rules);}
+  view.querySelectorAll('details').forEach(node=>node.open=true);
+  view.querySelectorAll('.wb-rule-long>summary>span').forEach(node=>node.remove());
+  view.querySelectorAll('[data-wb-rule]').forEach(node=>{const label=document.createElement('span');label.className=node.className;label.textContent=node.textContent;node.replaceWith(label);});
+  view.querySelectorAll('.wb-effects summary').forEach(node=>node.textContent='Modificatori applicati · fonti');
+  view.querySelectorAll('details').forEach(node=>{
+    const section=document.createElement('section'),summary=node.querySelector(':scope>summary');section.className=node.className;
+    if(summary){const heading=document.createElement('h4');heading.className='wb-print-rule-title';heading.append(...summary.childNodes);summary.replaceWith(heading);}
+    section.append(...node.childNodes);node.replaceWith(section);
+  });
+  document.body.append(view);document.body.classList.add('wb-print-open');document.title=builderUi.army.name+' · Schede';window.scrollTo(0,0);view.focus();
+  view.querySelector('[data-print-close]').onclick=wbClosePrint;
+  view.querySelector('[data-print-run]').onclick=()=>window.print();
+  view._keydown=event=>{if(event.key==='Escape'){event.preventDefault();wbClosePrint();}};document.addEventListener('keydown',view._keydown);
+}
+
+function wbPrintButton(trigger){
+  const button=document.createElement('button');button.type='button';button.dataset.wbPrint='';button.textContent='Schede stampabili';button.disabled=beIsPool();
+  button.onclick=()=>wbOpenPrint(trigger||button);return button;
+}
 function wbProfileWeapons(unit,entry,type,origin=''){
   return unit.weapons.flatMap(w=>w._variants||[w]).filter(w=>w.name&&w.type===type&&(!entry||Number(entry.weaponCounts[w.line]||0)>0||w.enhancement_id&&entry.enhancementIds.includes(w.enhancement_id))).filter(w=>!w.enhancement_id||entry?.enhancementIds.includes(w.enhancement_id)).flatMap(weapon=>beWeaponOwners(unit,entry,weapon).map(owner=>({weapon,count:owner.count,origin,model:owner.name,unitId:unit.id})));
 }
@@ -474,7 +534,9 @@ function wbBind(container=null){
   const root=container||main.querySelector('.workbench'),a=builderUi.army;
   const on=(selector,event,handler)=>root.querySelectorAll(selector).forEach(el=>el.addEventListener(event,()=>handler(el)));
   on('[data-wb-mobile-save]','click',wbSave);
-  on('[data-wb-mobile-menu]','click',wbOpenMobileMenu);
+  on('[data-wb-mobile-menu]','click',trigger=>{
+    wbOpenMobileMenu(trigger);document.querySelector('dialog[open] [data-wb-menu-action="export"]').before(wbPrintButton(trigger));
+  });
   on('[data-wb-open-settings]','click',wbOpenMobileSettings);
   on('[data-wb-open-catalog]','click',el=>wbOpenMobileCatalog(el.dataset.wbOpenCatalog,el));
   on('[data-wb-return-roster]','click',()=>{workbench.pane='roster';workbench.selected=null;workbench.preview=null;builderWorkbenchRender();});
@@ -527,6 +589,7 @@ function wbBind(container=null){
   on('#wb-manual','click',()=>{const e=wbEntry(workbench.selected);delete e.loadoutSelections;wbChanged();});
   on('#wb-standard','click',()=>{const e=wbEntry(workbench.selected);if(beStandard(e))wbChanged();});
   on('#wb-default-save','click',beSaveDefault);on('#wb-default-delete','click',beDeleteDefault);
+  const heading=!container&&a&&root.querySelector('.wb-heading');if(heading&&!root.querySelector('[data-wb-print]'))heading.append(wbPrintButton());
 }
 if(typeof window!=='undefined'){
   if(typeof matchMedia==='function')matchMedia('(max-width:850px)').addEventListener('change',()=>{if(builderUi.view==='editor'&&page()==='builder')builderWorkbenchRender();});

@@ -242,6 +242,7 @@ function name(id){
 
 
 function render(){
+  if(typeof wbClosePrint==='function'){const preview=document.getElementById('wb-print-preview');if(preview&&(!state.user||page()!=='builder'||preview.dataset.owner!==state.user.id))wbClosePrint();}
 
   const nav=document.querySelector('#nav');
 
