@@ -58,7 +58,7 @@ test('Themes persist, restore on another page and reset without changing other b
     for (const [i, field] of ['bg', 'surface', 'accent'].entries()) assert.equal(ui.swatches[i].style.backgroundColor, page.styles.get('--theme-' + field));
     for (const kind of ['bg', 'surface']) {
       const ground = page.styles.get('--theme-' + kind);
-      for (const token of ['text', 'muted', 'gold', 'bonus', 'keyword', 'warning', 'error']) assert.ok(contrast(page.styles.get('--theme-' + kind + '-' + token), ground) >= 4.5, option.id + '/' + token);
+      for (const token of ['text', 'muted', 'gold', 'bonus', 'keyword', 'warning', 'error', 'victory']) assert.ok(contrast(page.styles.get('--theme-' + kind + '-' + token), ground) >= 4.5, option.id + '/' + token);
     }
   }
   for (const [i, color] of ['#ffffff', '#000000', '#ff6600'].entries()) {
@@ -121,7 +121,7 @@ test('Text, semantic colors, borders and button labels stay readable on independ
     const { styles } = load(JSON.stringify({ bg, surface, accent }));
     for (const [kind, ground] of Object.entries({ bg, surface })) {
       const get = name => styles.get('--theme-' + kind + '-' + name);
-      for (const token of ['text', 'muted', 'gold', 'bonus', 'keyword', 'warning', 'error', 'info', 'medal-1', 'medal-2', 'medal-3']) {
+      for (const token of ['text', 'muted', 'gold', 'bonus', 'keyword', 'warning', 'error', 'victory', 'info', 'medal-1', 'medal-2', 'medal-3']) {
         assert.ok(contrast(get(token), ground) >= 4.5, `${kind}/${token} on ${ground}`);
       }
       assert.ok(contrast(get('line'), ground) >= 3);

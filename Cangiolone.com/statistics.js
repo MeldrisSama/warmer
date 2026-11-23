@@ -19,7 +19,9 @@ function personalResults(matches,player,filters={}){
 function summarizeResults(results){
   const played=results.length,w=results.filter(m=>m.result==='V').length,d=results.filter(m=>m.result==='P').length;
   const scored=results.reduce((n,m)=>n+m.scored,0),conceded=results.reduce((n,m)=>n+m.conceded,0);
-  return {played,w,d,l:played-w-d,scored,conceded,diff:scored-conceded,winRate:played?100*w/played:null,averageFor:played?scored/played:null,averageAgainst:played?conceded/played:null};
+  let winStreak=0;
+  for(let i=results.length-1;i>=0&&results[i].result==='V';i--)winStreak++;
+  return {played,w,d,l:played-w-d,winStreak,scored,conceded,diff:scored-conceded,winRate:played?100*w/played:null,averageFor:played?scored/played:null,averageAgainst:played?conceded/played:null};
 }
 
 function statisticsPage(){
@@ -35,7 +37,8 @@ function statisticsPage(){
   const invalidRange=filters.from&&filters.to&&filters.from>filters.to;
   main.innerHTML=`<section class="panel statistics-page">
     <div class="page-heading"><p class="profile-eyebrow">${esc(state.user.name)}</p><h1>Statistiche personali</h1><p>Risultati, andamento e confronti diretti delle tue partite.</p></div>
-    <form id="statistics-filters" class="statistics-filters">
+    <form id="statistics-filters" class="statistics-filters" aria-labelledby="statistics-filter-title">
+      <h2 id="statistics-filter-title">Filtri</h2>
       <label class="field">Dal<input type="date" name="from" value="${esc(filters.from)}"></label>
       <label class="field">Al<input type="date" name="to" value="${esc(filters.to)}"></label>
       <label class="field">Tipo<select name="type">${option('','Tutte le partite',filters.type)}${option('friendly','Amichevoli',filters.type)}${option('league','Campionato',filters.type)}</select></label>
@@ -44,14 +47,14 @@ function statisticsPage(){
       <div class="statistics-filter-actions"><button type="submit" class="primary">Applica filtri</button><a href="#statistiche">Azzera filtri</a></div>
     </form>
     ${invalidRange?'<p role="alert" class="error-inline">La data iniziale deve precedere o coincidere con quella finale.</p>':''}
-    <p class="statistics-note">Solo partite registrate e non annullate; i risultati del campionato compaiono dopo la conferma. Le percentuali includono i pareggi nel totale.</p>
+    <p class="statistics-note">Solo partite registrate e non annullate; i risultati del campionato compaiono dopo la conferma. Le percentuali includono i pareggi nel totale. La serie attuale conta le vittorie consecutive finali nei risultati filtrati; un pareggio o una sconfitta la interrompe.</p>
     <dl class="statistics-summary" aria-label="Riepilogo dei risultati">
-      ${[['Partite',summary.played],['Vittorie',summary.w],['Pareggi',summary.d],['Sconfitte',summary.l],['Vittorie %',summary.winRate===null?'—':number(summary.winRate)+'%'],['Differenza punti',(summary.diff>0?'+':'')+summary.diff],['Media punti fatti',number(summary.averageFor)],['Media punti subiti',number(summary.averageAgainst)]].map(([label,value])=>`<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
+      ${[['Partite',summary.played],['Vittorie',summary.w],['Pareggi',summary.d],['Sconfitte',summary.l],['Vittorie %',summary.winRate===null?'—':number(summary.winRate)+'%'],['Differenza punti',(summary.diff>0?'+':'')+summary.diff],['Media punti fatti',number(summary.averageFor)],['Media punti subiti',number(summary.averageAgainst)],['Serie di vittorie attuale',summary.winStreak]].map(([label,value])=>`<div class="${label==='Vittorie'?'statistics-win':label==='Pareggi'?'statistics-draw':label==='Serie di vittorie attuale'?'statistics-streak':''}"><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
     </dl>
     ${!results.length?empty('trophy','Nessuna partita','Non ci sono risultati personali per i filtri selezionati.'):`
     <section class="statistics-section"><h2>Andamento recente</h2><p>Ultime ${Math.min(results.length,10)} partite dei risultati filtrati, dalla meno recente.</p><ol class="statistics-form">${results.slice(-10).map(m=>`<li class="statistics-result result-${m.result}"><strong>${m.result==='V'?'Vittoria':m.result==='S'?'Sconfitta':'Pareggio'}</strong><span>${esc(dateLabel(m.date))}</span><span>${esc(names.get(m.opponent)||'Giocatore')}</span><b>${m.scored}–${m.conceded}</b></li>`).join('')}</ol></section>
     <section class="statistics-section"><h2>Confronti diretti</h2><div class="statistics-table-scroll" tabindex="0" role="region" aria-label="Confronti diretti, scorri per tutte le colonne"><table><thead><tr><th scope="col">Avversario</th><th scope="col">Partite</th><th scope="col">Vinte</th><th scope="col">Pari</th><th scope="col">Perse</th><th scope="col">Vittorie %</th><th scope="col">Diff. punti</th></tr></thead><tbody>${headToHead.map(r=>`<tr><th scope="row">${esc(names.get(r.id)||'Giocatore')}</th><td>${r.played}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${number(r.winRate)}%</td><td>${r.diff>0?'+':''}${r.diff}</td></tr>`).join('')}</tbody></table></div></section>
-    <section class="statistics-section"><h2>Storico dei risultati</h2><ul class="statistics-history">${[...results].reverse().map(m=>`<li><div><strong>${esc(names.get(m.opponent)||'Giocatore')}</strong><span>${esc(dateLabel(m.date))} · ${esc(m.leagueId?(leagues.get(m.leagueId)||'Campionato'):'Amichevole')}</span>${m.mission?`<span>${esc(m.mission)}</span>`:''}</div><div><strong>${m.scored}–${m.conceded}</strong><span>${m.result==='V'?'Vittoria':m.result==='S'?'Sconfitta':'Pareggio'}</span></div></li>`).join('')}</ul></section>`}
+    <section class="statistics-section"><h2>Storico dei risultati</h2><ul class="statistics-history">${[...results].reverse().map(m=>`<li class="result-${m.result}"><div><strong>${esc(names.get(m.opponent)||'Giocatore')}</strong><span>${esc(dateLabel(m.date))} · ${esc(m.leagueId?(leagues.get(m.leagueId)||'Campionato'):'Amichevole')}</span>${m.mission?`<span>${esc(m.mission)}</span>`:''}</div><div><strong>${m.scored}–${m.conceded}</strong><span>${m.result==='V'?'Vittoria':m.result==='S'?'Sconfitta':'Pareggio'}</span></div></li>`).join('')}</ul></section>`}
   </section>`;
   const form=main.querySelector('#statistics-filters');
   form.addEventListener('submit',event=>{

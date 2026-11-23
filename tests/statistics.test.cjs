@@ -27,6 +27,16 @@ test('No games and all draws have truthful rates and no division by zero',()=>{
   const c=model(),empty=c.summarizeResults([]);assert.equal(empty.winRate,null);assert.equal(empty.averageFor,null);assert.equal(empty.averageAgainst,null);
   const draw=c.summarizeResults(c.personalResults([matches[2]],'me'));assert.equal(draw.winRate,0);assert.equal(draw.d,1);
 });
+test('Current win streak counts only trailing wins in chronological filtered results',()=>{
+  const c=model();
+  const summarize=letters=>c.summarizeResults([...letters].map(result=>({result,scored:0,conceded:0}))).winStreak;
+  assert.equal(summarize(''),0);assert.equal(summarize('VVV'),3);
+  assert.equal(summarize('VVPVV'),2);assert.equal(summarize('VVSV'),1);
+  assert.equal(summarize('VVP'),0);assert.equal(summarize('VVS'),0);
+  const games=[...matches,{id:'four',a:'me',b:'other',date:'2026-04-02',scoreA:80,scoreB:60}];
+  assert.equal(c.summarizeResults(c.personalResults(games,'me')).winStreak,1);
+  assert.equal(c.summarizeResults(c.personalResults(games,'me',{type:'friendly'})).winStreak,2);
+});
 test('Page escapes identity, opponents and mission, and supports filter submission',()=>{
   const c=model();c.location={hash:'#statistiche'};c.URLSearchParams=URLSearchParams;
   c.esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');c.dateLabel=s=>s;c.empty=()=>'<p>Nessuna partita</p>';

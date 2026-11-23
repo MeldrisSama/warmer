@@ -69,7 +69,7 @@ window.SectorTheme = (() => {
       gold: readable(accent, bg),
       bonus: readable('#83c6ff', bg), keyword: readable('#b9d8d2', bg),
       warning: readable('#efc18e', bg), error: readable('#ff9a94', bg),
-      info: readable('#a6cede', bg),
+      info: readable('#a6cede', bg), victory: readable('#78cc93', bg),
       'medal-1': readable('#efd18c', bg), 'medal-2': readable('#cbd8dc', bg), 'medal-3': readable('#e1a882', bg)
     };
   }
