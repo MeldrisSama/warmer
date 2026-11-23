@@ -2,22 +2,28 @@
 param([string]$RepositoryDirectory, [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 if(-not $RepositoryDirectory){$RepositoryDirectory=Split-Path -Parent $PSScriptRoot}
+$RepositoryDirectory=[IO.Path]::GetFullPath($RepositoryDirectory)
+$gitScope='safe.directory='+$RepositoryDirectory.Replace('\','/')
 Push-Location -LiteralPath $RepositoryDirectory
 try {
-    if ((git branch --show-current) -ne 'feature/profilo-statistiche-ricerca') { throw 'Aprire il branch feature/profilo-statistiche-ricerca.' }
-    if (git status --porcelain) { throw 'Committare le modifiche prima della pubblicazione.' }
+    $branch=git -c $gitScope branch --show-current
+    if ($LASTEXITCODE -ne 0) { throw 'Impossibile leggere il branch del repository.' }
+    if ($branch -ne 'feature/profilo-statistiche-ricerca') { throw 'Aprire il branch feature/profilo-statistiche-ricerca.' }
+    $changes=git -c $gitScope status --porcelain
+    if ($LASTEXITCODE -ne 0) { throw 'Impossibile verificare lo stato del repository.' }
+    if ($changes) { throw 'Committare le modifiche prima della pubblicazione.' }
     if (-not (Test-Path -LiteralPath 'docs/profilo-statistiche-pr.md')) { throw 'Descrizione PR assente.' }
     if ($CheckOnly) { Write-Host 'Branch e checkout pulito verificati. Nessuna connessione o modifica remota.'; return }
-    git fetch origin
+    git -c $gitScope fetch origin
     if ($LASTEXITCODE -ne 0) { throw 'GitHub non raggiungibile: nessuna PR pubblicata.' }
-    git merge-base --is-ancestor origin/main HEAD
+    git -c $gitScope merge-base --is-ancestor origin/main HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Main contiene nuovi commit: integrarli, risolvere i conflitti, ripetere i test e rigenerare il pacchetto prima di pubblicare.' }
-    git push -u origin feature/profilo-statistiche-ricerca
+    git -c $gitScope push -u origin feature/profilo-statistiche-ricerca
     if ($LASTEXITCODE -ne 0) { throw 'Push GitHub non riuscito.' }
     # Write the credential protocol directly: Windows PowerShell pipelines may add a BOM.
     $credentialProcess=New-Object System.Diagnostics.Process
     $credentialProcess.StartInfo.FileName='git'
-    $credentialProcess.StartInfo.Arguments='credential fill'
+    $credentialProcess.StartInfo.Arguments='-c "'+$gitScope+'" credential fill'
     $credentialProcess.StartInfo.UseShellExecute=$false
     $credentialProcess.StartInfo.CreateNoWindow=$true
     $credentialProcess.StartInfo.RedirectStandardInput=$true
@@ -51,7 +57,8 @@ try {
         $prJson=gh pr view feature/profilo-statistiche-ricerca --repo MeldrisSama/warmer --json number,url,state,headRefOid,mergeable,mergeStateStatus
         if ($LASTEXITCODE -ne 0) { throw 'Verifica PR non riuscita.' }
         $pr=$prJson | ConvertFrom-Json
-        if ($pr.state -ne 'OPEN' -or $pr.headRefOid -ne (git rev-parse HEAD)) { throw 'La nuova PR non corrisponde al commit locale: non chiudo le precedenti.' }
+        $localHead=git -c $gitScope rev-parse HEAD
+        if ($LASTEXITCODE -ne 0 -or $pr.state -ne 'OPEN' -or $pr.headRefOid -ne $localHead) { throw 'La nuova PR non corrisponde al commit locale: non chiudo le precedenti.' }
         Write-Host "Nuova PR verificata: $($pr.url)"
         $oldPrs=@{28='feature/immagine-profilo';29='feature/lista-dal-roster';30='feature/ricerca-rapida';31='feature/schede-stampabili'}
         foreach ($number in @($oldPrs.Keys | Sort-Object)) {
