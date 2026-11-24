@@ -498,6 +498,16 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.equal((await alice('state')).user.avatar,url);
     sql("CREATE TRIGGER reject_avatar BEFORE UPDATE ON w40k_users BEGIN SELECT RAISE(ABORT, 'test failure'); END");
     try{await alice('avatarSave',{photo:null},503);assert.equal((await alice('state')).user.avatar,url);}finally{sql('DROP TRIGGER reject_avatar');}
+    const gif='data:image/gif;base64,R0lGODlhBgAGAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQAMgAAACwAAAAABgAGAAAIDAABCBxIsKDBgwgDAgAh+QQBMgABACwAAAAABgAGAIEAAP8AAAAAAAAAAAAIDAABCBxIsKDBgwgDAgA7';
+    const animated=Buffer.from(gif.split(',')[1],'base64');
+    await alice('avatarSave',{photo:gif,id:bobId});
+    const updated=(await alice('state')).user.avatar;
+    assert.notEqual(updated,url);
+    assert.equal((await bob('state')).user.avatar,undefined);
+    assert.deepEqual(await bob(updated.split('action=')[1]),animated);
+    const oversized=Buffer.from(animated);oversized.writeUInt16LE(257,6);
+    await alice('avatarSave',{photo:'data:image/gif;base64,'+oversized.toString('base64')},422);
+    await alice('avatarSave',{photo:png.replace('image/png','image/gif')},422);
     await alice('avatarSave',{photo:null});
     assert.equal((await alice('state')).user.avatar,undefined);
     await bob(url.split('action=')[1],undefined,404);

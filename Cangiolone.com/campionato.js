@@ -39,6 +39,10 @@ async function request(name, data) {
 }
 
 const player = id => escapeHtml(state.users.find(user => user.id === id)?.name || 'Giocatore');
+const playerLink = id => {
+  const hash = id === state.user.id ? '#profilo' : '#profilo?giocatore=' + encodeURIComponent(id);
+  return `<a class="player-link" href="./${escapeHtml(hash)}">${player(id)}</a>`;
+};
 const armyLabel = id => Object.values(state.armyGroups).find(group => group[state.armies[id]])?.[state.armies[id]] || '';
 const playerArmy = id => armyLabel(id) ? `<small class="player-army">${escapeHtml(armyLabel(id))}</small>` : '';
 const confirmed = fixture => fixture.result && !fixture.result.void;
@@ -111,7 +115,7 @@ function renderOverview(total, current) {
   if (next) {
     board.innerHTML = `
       <div class="board-top"><h2 class="eyebrow">Prossimo incontro</h2><span>Giornata ${next.round}</span></div>
-      <div class="matchup"><strong>${player(user.id)}</strong><span>vs</span><strong>${player(next.a === user.id ? next.b : next.a)}</strong></div>
+      <div class="matchup"><strong>${playerLink(user.id)}</strong><span>vs</span><strong>${playerLink(next.a === user.id ? next.b : next.a)}</strong></div>
       <div class="board-bottom">
         <span>${next.awaiting ? 'Risultato da confermare' : 'Da giocare'}</span>
         <a href="#giornate" class="jump" data-round="${next.round}" data-fixture="${next.id}">Apri l’incontro <span aria-hidden="true">↗</span></a>
@@ -142,7 +146,7 @@ function renderStandings() {
     <tbody>${standings.map(row => {
       const podium = matches.length && row.rank <= 3 ? ` podium podium-${row.rank}` : '';
       return `<tr class="${row.id === state.user.id ? 'you' : ''}${podium}">
-        <td class="placement"><span>${row.rank}</span></td><th scope="row">${escapeHtml(row.name)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}${playerArmy(row.id)}</th><td>${row.played}</td>
+        <td class="placement"><span>${row.rank}</span></td><th scope="row">${playerLink(row.id)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}${playerArmy(row.id)}</th><td>${row.played}</td>
         <td>${row.diff > 0 ? '+' : ''}${row.diff}</td><td>${row.points}</td></tr>`;
     }).join('')}</tbody>
     </table>
@@ -182,13 +186,14 @@ function renderRoster() {
 }
 
 function listPanel(fixture) {
-  if (!mine(fixture)) return fixture.listsReadable ? `<div class="fixture-block"><h3>Liste esercito</h3><div class="action-row">${[fixture.a,fixture.b].map(id=>`<button type="button" class="secondary" data-lineup="${id}">Lista di ${player(id)}</button>`).join('')}</div></div>` : '';
+  const listAction = id => `<div class="fixture-list-action">${playerLink(id)}<button type="button" class="secondary" data-lineup="${id}" aria-label="Leggi la lista di ${player(id)}">Leggi lista</button></div>`;
+  if (!mine(fixture)) return fixture.listsReadable ? `<div class="fixture-block"><h3>Liste esercito</h3><div class="action-row">${[fixture.a,fixture.b].map(listAction).join('')}</div></div>` : '';
   const { mine: submitted, opponent } = fixture.lineups;
   if (submitted && opponent) {
     const other = fixture.a === state.user.id ? fixture.b : fixture.a;
     return `<div class="fixture-block"><h3>Liste esercito</h3><p>Entrambe le liste sono state consegnate.</p>
       <div class="action-row"><button type="button" class="secondary" data-lineup="${state.user.id}">Leggi la tua lista</button>
-      <button type="button" class="secondary" data-lineup="${other}">Leggi la lista di ${player(other)}</button></div></div>`;
+      ${listAction(other)}</div></div>`;
   }
   if(state.rosters?.settings&&fixture.result)return '<div class="fixture-block"><h3>Liste esercito</h3><p>L’incontro è già confermato. Le consegne restano definitive.</p></div>';
   if (state.league.closed) return '<div class="fixture-block"><h3>Liste esercito</h3><p>Liste non rivelate.</p></div>';
@@ -220,7 +225,7 @@ function resultPanel(fixture) {
     const { by, scoreA, scoreB, date, mission, token } = fixture.pending;
     const own = by === state.user.id;
     return `<div class="fixture-block"><h3>Risultato da confermare</h3>
-      <p>${player(fixture.a)} <strong>${scoreA} – ${scoreB}</strong> ${player(fixture.b)} · ${formatDate(date)}
+      <p>${playerLink(fixture.a)} <strong>${scoreA} – ${scoreB}</strong> ${playerLink(fixture.b)} · ${formatDate(date)}
       ${mission ? ` · ${escapeHtml(mission)}` : ''}</p>
         <p>${state.league.paused ? 'La proposta resta in attesa fino alla ripresa.'
           : own ? 'In attesa della conferma dell’avversario.' : 'Verifica il punteggio proposto dall’avversario.'}</p>
@@ -234,8 +239,8 @@ function resultPanel(fixture) {
   if(state.rosters?.settings&&(!fixture.lineups?.mine||!fixture.lineups?.opponent))return '<div class="fixture-block"><h3>Risultato</h3><p>Consegnate entrambe le liste verificate prima di proporre il risultato.</p></div>';
   return `<div class="fixture-block"><h3>Proponi il risultato</h3>
     <form class="result-form">
-      <label>Punti · ${player(fixture.a)}<input type="number" name="scoreA" min="0" max="100" required></label>
-      <label>Punti · ${player(fixture.b)}<input type="number" name="scoreB" min="0" max="100" required></label>
+      <div>${playerLink(fixture.a)}<label>Punti<input type="number" name="scoreA" aria-label="Punti di ${player(fixture.a)}" min="0" max="100" required></label></div>
+      <div>${playerLink(fixture.b)}<label>Punti<input type="number" name="scoreB" aria-label="Punti di ${player(fixture.b)}" min="0" max="100" required></label></div>
       <label>Data della partita<input type="date" name="date" max="${state.today}" value="${state.today}" required></label>
       <label>Missione (facoltativa)<input name="mission" maxlength="120"></label>
       <p>L’avversario dovrà confermare il risultato.</p>
@@ -265,10 +270,10 @@ function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
     <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
   const status = fixture.result?.void ? 'Annullata' : state.league.closed ? 'Non disputata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
-  const contents = `<span class="pair"><strong>${player(fixture.a)}${playerArmy(fixture.a)}</strong><span>vs</span><strong>${player(fixture.b)}${playerArmy(fixture.b)}</strong></span>
+  const contents = `<span class="pair"><strong>${playerLink(fixture.a)}${playerArmy(fixture.a)}</strong><span>vs</span><strong>${playerLink(fixture.b)}${playerArmy(fixture.b)}</strong></span>
     <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
   if (!playable(fixture)) {
-    return `<div class="fixture row bye"><span>${player(fixture.a)}</span><span>Riposa</span></div>`;
+    return `<div class="fixture row bye"><span>${playerLink(fixture.a)}</span><span>Riposa</span></div>`;
   }
   if (!mine(fixture) && !fixture.listsReadable && !fixture.result?.photo) return `<div class="fixture row">${contents}</div>`;
   return `<details class="fixture" data-fixture="${fixture.id}"${fixture.id === openFixture ? ' open' : ''}>
@@ -517,8 +522,8 @@ $('round').addEventListener('click', async event => {
   lineupRequest?.abort();
   const controller = new AbortController();
   lineupRequest = controller;
-  $('lineup-title').textContent = button.dataset.lineup === state.user.id
-    ? 'La tua lista' : state.users.find(user => user.id === button.dataset.lineup)?.name || 'Lista avversario';
+  $('lineup-title').innerHTML = button.dataset.lineup === state.user.id
+    ? 'La tua lista' : playerLink(button.dataset.lineup);
   status.textContent = 'Caricamento della lista…';
   text.hidden = download.hidden = true;
   text.textContent = '';

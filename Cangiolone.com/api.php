@@ -458,11 +458,13 @@ try {
     if($action==='avatarSave') {
         $photo=$in['photo']??null;
         if($photo!==null) {
-            if(!is_string($photo) || strlen($photo)>66000 || !preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$#D',$photo,$parts)) fail('Immagine profilo non valida: massimo 48 KB.');
+            if(!is_string($photo) || strlen($photo)>349550 || !preg_match('#^data:image/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/=]+)$#D',$photo,$parts)) fail('Immagine profilo non valida.');
+            $gif=$parts[1]==='gif';
+            if(!$gif && strlen($photo)>66000) fail('Immagine profilo non valida: massimo 48 KB.');
             $bytes=base64_decode($parts[2],true);
-            if($bytes===false || strlen($bytes)>49152) fail('L’immagine profilo non può superare 48 KB.',413);
+            if($bytes===false || strlen($bytes)>($gif?262144:49152)) fail($gif?'La GIF non può superare 256 KB.':'L’immagine profilo non può superare 48 KB.',413);
             $info=@getimagesizefromstring($bytes);
-            if(!$info || $info[0]<1 || $info[1]<1 || $info[0]>256 || $info[1]>256 || ($info['mime']??'')!=='image/'.$parts[1]) fail('Usa un’immagine JPG, PNG o WebP fino a 256 × 256 pixel.');
+            if(!$info || $info[0]<1 || $info[1]<1 || $info[0]>256 || $info[1]>256 || ($info['mime']??'')!=='image/'.$parts[1]) fail('Usa un’immagine JPG, PNG, WebP o GIF fino a 256 × 256 pixel.');
         } elseif(!array_key_exists('photo',$in)) fail('Scegli un’immagine profilo.');
         foreach($db['users'] as &$user) if($user['id']===$me['id']) $user['avatar']=$photo;
         unset($user);save();result(['ok'=>true]);

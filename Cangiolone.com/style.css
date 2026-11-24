@@ -66,6 +66,13 @@
 
 #account a { display: block; margin-top: 3px; }
 .account-settings { margin-top: 24px; }
+.player-link { color: inherit; text-decoration: underline; text-underline-offset: .18em; overflow-wrap: anywhere; }
+.player-link:hover { color: var(--gold); }
+.profile-nav { gap: 12px; margin: 0 0 24px; justify-content: flex-start; }
+.profile-nav a { display: flex; align-items: center; min-height: 44px; }
+.profile-heading .profile-photo-trigger { position: relative; overflow: visible; }
+.profile-edit-icon { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); }
+.profile-edit-icon svg { width: 14px; height: 14px; }
 .email-banner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 16px; margin:0 0 16px; padding:10px 14px; background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--gold); font-size:14px; line-height:1.5; }
 .email-banner a { font-weight:bold; }
 /* Account entry and profile settings. */

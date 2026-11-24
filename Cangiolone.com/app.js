@@ -239,6 +239,13 @@ function name(id){
 
 }
 
+function playerLink(id){
+  const user=state.users.find(u=>u.id===id);
+  if(!user)return 'Giocatore';
+  const href=id===state.user.id?'#profilo':'#profilo?giocatore='+encodeURIComponent(id);
+  return `<a class="player-link" href="${esc(href)}">${esc(user.name)}</a>`;
+}
+
 
 
 function render(){
@@ -249,6 +256,15 @@ function render(){
   const emailBanner=document.querySelector('#email-banner');
   let p=page();
   if(p==='liste'){history.replaceState(history.state,'','#builder');p='builder';}
+  if(p==='statistiche'){
+    const params=new URLSearchParams(location.hash.split('?')[1]||'');
+    params.delete('giocatore');
+    params.set('sezione','statistiche');
+    history.replaceState(history.state,'','#profilo?'+params);
+    p='profilo';
+  }
+  const profileParams=p==='profilo'?new URLSearchParams(location.hash.split('?')[1]||''):null;
+  const profileId=profileParams?.get('giocatore');
   emailBanner.hidden=!(state.user && state.mailEnabled && !state.account?.email && !state.needsEmail
     && !['profilo','verify-email','reset-password'].includes(p));
   if(!emailBanner.hidden) {
@@ -276,12 +292,11 @@ function render(){
 
 
 
-  account.innerHTML=`<a href="#profilo" class="account-profile-link" aria-label="Apri il tuo profilo" title="Profilo" ${p==='profilo'?'aria-current="page"':''}>${profileImage(state.user)}</a>`;
+  account.innerHTML=`<a href="#profilo" class="account-profile-link" aria-label="Apri il tuo profilo" title="Profilo" ${profileParams&&(!profileId||profileId===state.user.id)?'aria-current="page"':''}>${profileImage(state.user)}</a>`;
 
   nav.innerHTML=[
 
     ['classifica','Classifica'],
-    ['statistiche','Statistiche'],
     ['campionati','Campionati'],
     ['partita','Nuova partita'],
 
@@ -325,9 +340,8 @@ function render(){
     builderPage();
 
   }else if(p==='profilo'){
-    profilePage();
-  }else if(p==='statistiche'){
-    statisticsPage();
+    if(profileId&&profileId!==state.user.id)publicProfilePage(profileId);
+    else profilePage(false,profileParams.get('sezione')==='statistiche');
   }else if(['verify-email','reset-password'].includes(p)&&state.mailEnabled){
     emailAccountPage(p);
   }else if(p==='campionati'){
@@ -384,11 +398,19 @@ function profileImage(user){
   return user.avatar?`<img class="profile-avatar" src="${esc(user.avatar)}" width="64" height="64" alt="">`:profileIcon();
 }
 
+function profileEditIcon(){
+  return '<span class="profile-edit-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m15 5 4 4M4 20l4-.8L20 7l-4-4L4 15z"/></svg></span>';
+}
+
 async function profilePhotoImage(file){
-  if(!file || !['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Scegli un’immagine JPG, PNG o WebP.');
+  if(!file || !['image/jpeg','image/png','image/webp','image/gif'].includes(file.type))throw Error('Scegli un’immagine JPG, PNG, WebP o GIF.');
   if(file.size>10*1024*1024)throw Error('Scegli un’immagine fino a 10 MB.');
+  const gif=file.type==='image/gif';
+  if(gif&&file.size>262144)throw Error('La GIF non può superare 256 KB.');
   const image=new Image();image.src=await fileToBase64(file);
-  await image.decode().catch(()=>{throw Error('Immagine non leggibile.');});return image;
+  await image.decode().catch(()=>{throw Error('Immagine non leggibile.');});
+  if(gif&&(image.naturalWidth>256||image.naturalHeight>256))throw Error('Usa una GIF fino a 256 × 256 pixel.');
+  return image;
 }
 function profileCropBounds(image,crop){
   const scale=Math.max(256/image.naturalWidth,256/image.naturalHeight)*Math.max(1,Math.min(4,crop.zoom));
@@ -401,7 +423,9 @@ function profileDrawCrop(canvas,image,crop){
   context.drawImage(image,(256-box.width)/2+box.x,(256-box.height)/2+box.y,box.width,box.height);
 }
 async function profilePhotoData(file,crop={zoom:1,x:0,y:0}){
-  const image=await profilePhotoImage(file),canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+  const image=await profilePhotoImage(file);
+  if(file.type==='image/gif')return image.src;
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
   profileDrawCrop(canvas,image,crop);return profileEncodePhoto(canvas);
 }
 function profileEncodePhoto(canvas){
@@ -411,17 +435,32 @@ function profileEncodePhoto(canvas){
 function openProfilePhoto(trigger){
   document.getElementById('profile-photo-dialog')?.close();
   const dialog=document.createElement('dialog');dialog.id='profile-photo-dialog';dialog.className='profile-photo-dialog';dialog.setAttribute('aria-labelledby','profile-photo-title');
-  dialog.innerHTML=`<div class="profile-photo-heading"><h2 id="profile-photo-title">Immagine profilo</h2><button type="button" data-photo-close>Chiudi</button></div><p role="alert" class="error-inline" hidden></p><label class="field">Scegli una foto<input type="file" accept="image/jpeg,image/png,image/webp" data-photo-file></label><div data-photo-editor hidden><p>Sposta la foto sotto il cerchio e regola lo zoom. Puoi usare anche i tasti freccia.</p><div class="profile-crop-stage"><canvas width="256" height="256" tabindex="0" aria-label="Ritaglio foto: trascina o usa i tasti freccia"></canvas><span class="profile-crop-guide" aria-hidden="true"></span></div><label class="field">Zoom<input type="range" min="1" max="4" step="0.05" value="1" data-photo-zoom></label><div class="actions"><button type="button" data-photo-reset>Ricentra</button><button type="button" class="primary" data-photo-save>Salva immagine</button></div></div><p class="muted">JPG, PNG o WebP fino a 10 MB. Salvataggio leggero: 256 × 256 pixel, fino a 48 KB.</p>${state.user.avatar?'<button type="button" data-photo-remove>Rimuovi immagine</button>':''}`;
+  dialog.innerHTML=`<div class="profile-photo-heading"><h2 id="profile-photo-title">Immagine profilo</h2><button type="button" data-photo-close>Chiudi</button></div><p role="alert" class="error-inline" hidden></p><label class="field">Scegli una foto<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-photo-file></label><div data-photo-editor hidden><p>Sposta la foto sotto il cerchio e regola lo zoom. Puoi usare anche i tasti freccia.</p><div class="profile-crop-stage"><canvas width="256" height="256" tabindex="0" aria-label="Ritaglio foto: trascina o usa i tasti freccia"></canvas><span class="profile-crop-guide" aria-hidden="true"></span></div><label class="field">Zoom<input type="range" min="1" max="4" step="0.05" value="1" data-photo-zoom></label><div class="actions"><button type="button" data-photo-reset>Ricentra</button><button type="button" class="primary" data-photo-save>Salva immagine</button></div></div><div data-gif-editor hidden><div class="profile-crop-stage"><img class="profile-avatar" data-gif-preview alt="Anteprima GIF"></div><button type="button" class="primary" data-gif-save>Salva GIF</button></div><p class="muted">JPG, PNG e WebP fino a 10 MB con ritaglio. GIF animate fino a 256 × 256 pixel e 256 KB.</p>${state.user.avatar?'<button type="button" data-photo-remove>Rimuovi immagine</button>':''}`;
   document.body.append(dialog);
   const error=dialog.querySelector('[role="alert"]'),input=dialog.querySelector('[data-photo-file]'),canvas=dialog.querySelector('canvas'),zoom=dialog.querySelector('[data-photo-zoom]');
-  let image=null,crop={zoom:1,x:0,y:0},drag=null,selection=0,busy=false;
+  const photoEditor=dialog.querySelector('[data-photo-editor]'),gifEditor=dialog.querySelector('[data-gif-editor]'),gifPreview=dialog.querySelector('[data-gif-preview]');
+  let gifSource=null,image=null,crop={zoom:1,x:0,y:0},drag=null,selection=0,busy=false;
   const redraw=()=>{if(image)profileDrawCrop(canvas,image,crop);},report=err=>{error.textContent=err.message;error.hidden=false;};
   dialog.querySelector('[data-photo-close]').onclick=()=>dialog.close();
   dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});
   dialog.addEventListener('close',()=>{selection++;dialog.remove();if(trigger?.isConnected)trigger.focus();},{once:true});
   input.onchange=async()=>{
-    const revision=++selection;image=null;dialog.querySelector('[data-photo-editor]').hidden=true;error.hidden=true;
-    try{const loaded=await profilePhotoImage(input.files[0]);if(revision!==selection||!dialog.open)return;image=loaded;crop={zoom:1,x:0,y:0};zoom.value=1;redraw();dialog.querySelector('[data-photo-editor]').hidden=false;}catch(err){if(revision===selection)report(err);}
+    const revision=++selection,file=input.files[0];
+    image=gifSource=drag=null;
+    photoEditor.hidden=gifEditor.hidden=error.hidden=true;
+    gifPreview.removeAttribute('src');
+    if(!file)return;
+    try{
+      const loaded=await profilePhotoImage(file);
+      if(revision!==selection||!dialog.open)return;
+      if(file.type==='image/gif'){
+        gifPreview.src=gifSource=loaded.src;
+        gifEditor.hidden=false;
+      }else{
+        image=loaded;crop={zoom:1,x:0,y:0};zoom.value=1;redraw();
+        photoEditor.hidden=false;
+      }
+    }catch(err){if(revision===selection)report(err);}
   };
   zoom.oninput=()=>{crop.zoom=Number(zoom.value);redraw();};
   canvas.onpointerdown=event=>{if(!image)return;event.preventDefault();drag={id:event.pointerId,x:event.clientX,y:event.clientY};canvas.setPointerCapture(event.pointerId);canvas.focus();};
@@ -436,14 +475,29 @@ function openProfilePhoto(trigger){
     finally{busy=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
   };
   dialog.querySelector('[data-photo-save]').onclick=()=>{if(image)try{save(profileEncodePhoto(canvas));}catch(err){report(err);}};
+  dialog.querySelector('[data-gif-save]').onclick=()=>{if(gifSource)save(gifSource);};
   const remove=dialog.querySelector('[data-photo-remove]');if(remove)remove.onclick=()=>save(null);
   dialog.showModal();
 }
 
-function profilePage(onboarding=false){
+function publicProfilePage(id){
+  const player=state.users.find(user=>user.id===id);
+  if(!player){
+    main.innerHTML='<section class="panel profile-page"><h1>Giocatore non trovato</h1><p><a href="#classifica">Torna alla classifica</a></p></section>';
+    return;
+  }
+  main.innerHTML=`<section class="panel profile-page">
+    <div class="profile-heading"><span class="profile-symbol">${profileImage(player)}</span><div><p class="profile-eyebrow">Profilo giocatore</p><h1>${esc(player.name)}</h1>${player.admin?'<p class="profile-username">Amministratore</p>':''}</div></div>
+    <section class="statistics-page"><h2>Statistiche pubbliche</h2>${statisticsSummary(summarizeResults(personalResults(state.matches,player.id)))}</section>
+  </section>`;
+}
+
+function profilePage(onboarding=false,showStatistics=false){
   const account=state.account||{},showEmailForm=state.mailEnabled&&(!account.email||Boolean(account.pendingEmail));
   main.innerHTML=`<section class="panel profile-page">
-    <div class="profile-heading">${onboarding?'<span class="profile-symbol" aria-hidden="true">'+profileImage(state.user)+'</span>':'<button type="button" id="profile-photo" class="profile-symbol profile-photo-trigger" aria-label="Modifica immagine profilo" aria-haspopup="dialog" title="Modifica immagine profilo">'+profileImage(state.user)+'</button>'}<div><p class="profile-eyebrow">Il tuo account</p><h1>${onboarding?'Aggiungi la tua email':esc(state.user.name)}</h1><p class="profile-username">${esc(state.user.username||'')}${state.user.admin?' · Amministratore':''}</p></div></div>
+    <div class="profile-heading">${onboarding?'<span class="profile-symbol" aria-hidden="true">'+profileImage(state.user)+'</span>':'<button type="button" id="profile-photo" class="profile-symbol profile-photo-trigger" aria-label="Modifica immagine profilo" aria-haspopup="dialog" title="Modifica immagine profilo">'+profileImage(state.user)+profileEditIcon()+'</button>'}<div><p class="profile-eyebrow">Il tuo account</p><h1>${onboarding?'Aggiungi la tua email':esc(state.user.name)}</h1><p class="profile-username">${esc(state.user.username||'')}${state.user.admin?' · Amministratore':''}</p></div></div>
+    ${onboarding?'':`<nav aria-label="Menu profilo" class="profile-nav"><a href="#profilo" ${showStatistics?'':'aria-current="page" class="active"'}>Account</a><a href="#profilo?sezione=statistiche" ${showStatistics?'aria-current="page" class="active"':''}>Statistiche</a></nav>`}
+    ${showStatistics?'<div id="profile-statistics"></div>':`
     ${onboarding?'<p class="intro">Ti invieremo un link di verifica. Potrai usare l’indirizzo per accedere e recuperare la password.</p>':''}
     ${account.email?`<div class="profile-identity"><span>${esc(account.email)}</span><span class="profile-verified">Email verificata</span></div>`:''}
     <div class="profile-grid">
@@ -459,8 +513,10 @@ function profilePage(onboarding=false){
     </section>`:''}
     ${onboarding?'':'<section class="account-settings profile-card profile-appearance" id="profile-appearance"></section><section class="account-settings profile-card"><details class="profile-password"><summary>Cambia password</summary><form id="profile-password"><p class="error-inline" role="alert" hidden></p><label class="field">Password attuale<input type="password" name="current" required autocomplete="current-password"></label><label class="field">Nuova password<input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label><button class="primary" type="submit">Aggiorna la password</button></form></details></section>'}
     </div>
-    <div class="profile-footer"><button id="logout" type="button" data-theme-menu="Esci">Esci dall’account</button></div>
+    <div class="profile-footer"><button id="logout" type="button" data-theme-menu="Esci">Esci dall’account</button></div>`}
   </section>`;
+  if(!onboarding)main.querySelector('#profile-photo').onclick=event=>openProfilePhoto(event.currentTarget);
+  if(showStatistics){statisticsPage(main.querySelector('#profile-statistics'));return;}
   if(!onboarding)window.SectorTheme.mount(main.querySelector('#profile-appearance'));
   if(showEmailForm)bindForm('profile-email',async form=>{
     const response=await api('emailSet',Object.fromEntries(new FormData(form)));
@@ -470,7 +526,6 @@ function profilePage(onboarding=false){
     if(onboarding&&openLoginDestination())return;
     notify(state.account.pendingEmail?'Link di verifica inviato.':'L’indirizzo è già verificato.');
   });
-  if(!onboarding)main.querySelector('#profile-photo').onclick=event=>openProfilePhoto(event.currentTarget);
   if(!onboarding)bindForm('profile-password',async form=>{await api('passwordChange',Object.fromEntries(new FormData(form)));form.reset();notify('Password aggiornata.');});
   main.querySelector('#logout').onclick=async event=>{
     if(typeof builderDiscard==='function'&&!builderDiscard())return;
@@ -484,14 +539,17 @@ function openArmyLists(lists,title){
   const reader=document.createElement('dialog');
   reader.id='army-list-reader';reader.className='army-list-reader';
   reader.setAttribute('aria-labelledby','army-reader-title');
-  reader.innerHTML=`<div class="reader-head"><h2 id="army-reader-title">${esc(title)}</h2><button type="button" data-close>Chiudi</button></div><label>Lista<select aria-label="Scegli la lista">${lists.map((list,index)=>`<option value="${index}">${esc(name(list.player))} · ${esc(list.title)}</option>`).join('')}</select></label><p role="status"></p><pre tabindex="0" aria-label="Testo della lista" hidden></pre><a hidden>Scarica TXT</a>`;
+  reader.innerHTML=`<div class="reader-head"><h2 id="army-reader-title">${esc(title)}</h2><button type="button" data-close>Chiudi</button></div><label>Lista<select aria-label="Scegli la lista">${lists.map((list,index)=>`<option value="${index}">${esc(name(list.player))} · ${esc(list.title)}</option>`).join('')}</select></label><p data-list-player></p><p role="status"></p><pre tabindex="0" aria-label="Testo della lista" hidden></pre><a data-list-download hidden>Scarica TXT</a>`;
   document.body.append(reader);
-  const select=reader.querySelector('select'),status=reader.querySelector('[role="status"]'),text=reader.querySelector('pre'),download=reader.querySelector('a');
+  const select=reader.querySelector('select'),status=reader.querySelector('[role="status"]'),text=reader.querySelector('pre'),download=reader.querySelector('[data-list-download]');
+  const owner=reader.querySelector('[data-list-player]');
+  owner.addEventListener('click',event=>{if(event.target.closest('a'))reader.close();});
   let request;
   async function load(){
     request?.abort();const controller=new AbortController();request=controller;
     text.textContent='';text.hidden=download.hidden=true;
     const list=lists[Number(select.value)];
+    owner.innerHTML=list?playerLink(list.player):'';
     if(!list){status.textContent='Nessuna lista condivisa disponibile.';return;}
     status.textContent='Caricamento della lista…';
     try{
@@ -512,7 +570,7 @@ function recentMatchRow(match){
   const photo=match.photo?`<button class="small-button" data-photo="${esc(match.photo)}" type="button" aria-label="Vedi foto della partita tra ${esc(name(match.a))} e ${esc(name(match.b))}">Foto</button>`:'<span class="muted" aria-label="Nessuna foto">—</span>';
   const canChange=!match.leagueLocked&&(state.user.admin||match.by===state.user.id);
   const lists=(state.readableLists||[]).some(list=>list.match===match.id)?`<button class="small-button" type="button" data-match-lists="${esc(match.id)}">Liste</button>`:'';
-  return `<tr class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${esc(name(match.a))}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${esc(name(match.b))}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${lists}${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
+  return `<tr class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${playerLink(match.a)}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${playerLink(match.b)}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${lists}${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
 }
 
 
@@ -1118,7 +1176,7 @@ function standings(){
 
                       <td>
 
-                        ${u.avatar?'<img class="standings-avatar" src="'+esc(u.avatar)+'" width="28" height="28" alt="" loading="lazy">':''}${esc(u.name)}
+                        ${u.avatar?'<img class="standings-avatar" src="'+esc(u.avatar)+'" width="28" height="28" alt="" loading="lazy">':''}${playerLink(u.id)}
 
                         ${
 
@@ -1664,7 +1722,7 @@ function matchPage(){
 
 
 
-          <label class="field">
+          <div><label class="field">
 
             Giocatore A
 
@@ -1676,11 +1734,11 @@ function matchPage(){
 
             </select>
 
-          </label>
+          </label><span data-match-player="a"></span></div>
 
 
 
-          <label class="field">
+          <div><label class="field">
 
             Giocatore B
 
@@ -1692,7 +1750,7 @@ function matchPage(){
 
             </select>
 
-          </label>
+          </label><span data-match-player="b"></span></div>
 
 
 
@@ -1871,12 +1929,16 @@ function matchPage(){
         o.value===f.elements.a.value;
 
     }
+    for(const key of ['a','b']){
+      const id=f.elements[key].value;
+      f.querySelector(`[data-match-player="${key}"]`).innerHTML=id?playerLink(id):'';
+    }
 
   };
 
 
 
-  f.elements.a.onchange=sync;
+  f.elements.a.onchange=f.elements.b.onchange=sync;
 
 
 
