@@ -34,7 +34,7 @@ function statisticsSummary(summary){
     </dl>`;
 }
 
-function statisticsPage(target){
+function statisticsPage(target=main){
   const params=new URLSearchParams(location.hash.split('?')[1]||'');
   const filters=Object.fromEntries(['from','to','opponent','type','league'].map(key=>[key,params.get(key)||'']));
   const results=personalResults(state.matches,state.user.id,filters),summary=summarizeResults(results);
