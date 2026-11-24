@@ -399,7 +399,7 @@ function profileImage(user){
 }
 
 function profileEditIcon(){
-  return '<span class="profile-edit-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m15 5 4 4M4 20l4-.8L20 7l-4-4L4 15z"/></svg></span>';
+  return '<span class="profile-edit-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 20 1-4.5L16.3 4.2a1.4 1.4 0 0 1 2 0l1.5 1.5a1.4 1.4 0 0 1 0 2L8.5 19 4 20zM14.8 5.7l3.5 3.5"/></svg></span>';
 }
 
 async function profilePhotoImage(file){
