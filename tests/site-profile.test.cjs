@@ -39,6 +39,35 @@ test('Old Lists links open the builder and keep its navigation active',()=>{
   vm.runInContext(`render();`,c);assert.equal(opened,true);assert.equal(c.location.hash,'#builder');assert.match(c.nodes.get('#nav').innerHTML,/href="#builder"[^>]*aria-current="page"/);
 });
 
+test('Personal statistics live under Profile and old filtered URLs still resolve',()=>{
+  const c=context();let target;c.statisticsPage=node=>{target=node;};
+  c.location.hash='#statistiche?type=friendly';
+  vm.runInContext('render()',c);
+  assert.match(c.location.hash,/^#profilo\?/);
+  const params=new URLSearchParams(c.location.hash.split('?')[1]);
+  assert.equal(params.get('sezione'),'statistiche');assert.equal(params.get('type'),'friendly');
+  assert.equal(target,c.nodes.get('#profile-statistics'));
+  assert.match(c.mainNode.innerHTML,/class="profile-edit-icon"/);
+  assert.match(c.mainNode.innerHTML,/>Statistiche<\/a>/);
+  assert.doesNotMatch(c.nodes.get('#nav').innerHTML,/>Statistiche</);
+});
+
+test('A player link opens the correct read-only profile and computes statistics for that player',()=>{
+  const c=context();
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../Cangiolone.com/statistics.js'),'utf8'),c);
+  vm.runInContext(`state.users[1]={id:'other',name:'<Opponent>',username:'private-login',avatar:'api.php?action=avatar&id=other'};
+    state.matches=[{id:'m',a:'owner',b:'other',date:'2026-11-23',scoreA:40,scoreB:80}];`,c);
+  const link=vm.runInContext("playerLink('other')",c);
+  assert.match(link,/href="#profilo\?giocatore=other">&lt;Opponent&gt;/);
+  c.location.hash='#profilo?giocatore=other';vm.runInContext('render()',c);
+  assert.match(c.mainNode.innerHTML,/Statistiche pubbliche/);
+  assert.match(c.mainNode.innerHTML,/<dt>Vittorie<\/dt><dd>1<\/dd>/);
+  assert.match(c.mainNode.innerHTML,/class="profile-avatar"/);
+  assert.doesNotMatch(c.mainNode.innerHTML,/private-login|verified@example|profile-photo-trigger|id="logout"|statistics-filters/);
+  c.location.hash='#profilo?giocatore=missing';vm.runInContext('render()',c);
+  assert.match(c.mainNode.innerHTML,/Giocatore non trovato/);
+});
+
 test('Recent matches have separate photo and action cells with no flex table cells',()=>{
   const c=context();c.match={id:'match',a:'owner',b:'other',by:'owner',date:'2026-11-19',scoreA:90,scoreB:80,mission:'Take and Hold',photo:'api.php?action=photo&id=match',void:false};
   let html=vm.runInContext('recentMatchRow(match)',c);assert.equal((html.match(/<td[ >]/g)||[]).length,7);assert.match(html,/<td class="match-photo"><button[^>]*data-photo=/);assert.match(html,/<td><div class="match-actions">/);assert.doesNotMatch(html,/<td class="match-actions"/);assert.match(html,/Annulla/);
@@ -62,7 +91,8 @@ test('Standings have no per-player Lists button and a completed match opens its 
 
 test('League observers can read revealed lists without receiving participant controls',()=>{
   const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
-  const c=vm.createContext({state:{user:{id:'observer'},league:{}},mine:f=>f.lineups!==null,player:id=>id,confirmed:()=>false,playable:()=>true,playerArmy:()=>'',openFixture:null});
+  const c=vm.createContext({state:{user:{id:'observer'},users:[{id:'a',name:'a'},{id:'b',name:'b'}],league:{}},mine:f=>f.lineups!==null,escapeHtml:s=>s,confirmed:()=>false,playable:()=>true,playerArmy:()=>'',openFixture:null});
+  vm.runInContext(source.slice(source.indexOf('const player ='),source.indexOf('};',source.indexOf('const playerLink ='))+2),c);
   vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function photoPanel('),source.indexOf('function renderRounds(')),c);
   c.fixture={id:'fixture',a:'one',b:'two',lineups:null,listsReadable:true};
   let html=vm.runInContext('fixtureRow(fixture)',c);assert.match(html,/data-lineup="one"/);assert.match(html,/data-lineup="two"/);assert.doesNotMatch(html,/<form|leaguePropose|leagueConfirm/);

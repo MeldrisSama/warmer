@@ -38,12 +38,15 @@ test('Current win streak counts only trailing wins in chronological filtered res
   assert.equal(c.summarizeResults(c.personalResults(games,'me',{type:'friendly'})).winStreak,2);
 });
 test('Page escapes identity, opponents and mission, and supports filter submission',()=>{
-  const c=model();c.location={hash:'#statistiche'};c.URLSearchParams=URLSearchParams;
+  const c=model();c.location={hash:'#profilo?sezione=statistiche'};c.URLSearchParams=URLSearchParams;
   c.esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');c.dateLabel=s=>s;c.empty=()=>'<p>Nessuna partita</p>';
-  const listeners={},form={elements:Object.fromEntries(['from','to','type','league'].map(k=>[k,{value:'',addEventListener(){},setCustomValidity(){},reportValidity(){}}])),addEventListener:(k,fn)=>listeners[k]=fn};
+  const listeners={},form={elements:Object.fromEntries(['from','to','type','league','opponent'].map(k=>[k,{value:'',addEventListener(){},setCustomValidity(){},reportValidity(){}}])),querySelector:()=>({}),addEventListener:(k,fn)=>listeners[k]=fn};
   c.main={innerHTML:'',querySelector:()=>form};
   c.state={user:{id:'me',name:'<script>bad</script>'},users:[{id:'other',name:'<img src=x>'}],leagues:[{id:'league',name:'<svg>'}],matches:[{...matches[0],mission:'<iframe>'}]};
-  c.statisticsPage();assert.doesNotMatch(c.main.innerHTML,/<script>|<img src=x>|<iframe>/);assert.match(c.main.innerHTML,/&lt;iframe>/);assert.match(c.main.innerHTML,/Confronti diretti/);
+  const app=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/app.js'),'utf8');
+  vm.runInContext(app.slice(app.indexOf('function playerLink('),app.indexOf('function render()')),c);
+  c.statisticsPage(c.main);assert.doesNotMatch(c.main.innerHTML,/<script>|<img src=x>|<iframe>/);assert.match(c.main.innerHTML,/&lt;iframe>/);assert.match(c.main.innerHTML,/Confronti diretti/);
+  assert.match(c.main.innerHTML,/href="#profilo\?giocatore=other"/);
   c.FormData=class{*[Symbol.iterator](){yield ['from','2026-01-01'];yield ['type','friendly'];}};
-  listeners.submit({preventDefault(){}});assert.equal(c.location.hash,'statistiche?from=2026-01-01&type=friendly');
+  listeners.submit({preventDefault(){}});assert.equal(c.location.hash,'profilo?sezione=statistiche&from=2026-01-01&type=friendly');
 });
