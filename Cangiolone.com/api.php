@@ -189,6 +189,7 @@ require __DIR__.'/storage.php';
 
 require __DIR__.'/mail-model.php';
 require __DIR__.'/league.php';
+require __DIR__.'/calendar-model.php';
 try { $mail=sectorMailConfig(); }
 catch(Throwable $error) { error_log('Warhammer mail configuration invalid'); $mail=null; }
 require __DIR__.'/builder-model.php';
@@ -197,10 +198,11 @@ $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
 $leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow'];
 $leagueWrite=in_array($action,$leagueWrites,true);
+$calendarWrite=in_array($action,CALENDAR_WRITES,true);
 try {
     $storage=new SectorStorage($config['database']);
-    if(($leagueWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
-    $scope=($leagueWrite || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
+    if(($leagueWrite || $calendarWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    $scope=($leagueWrite || $calendarWrite || $action==='calendar' || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
     $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
 }
@@ -278,6 +280,11 @@ if($action==='state') {
     $needsEmail=$mail!==null && ($_SESSION['askEmail']??false) && $profile['email']===null && $profile['pending_email']===null;
     result(['mailEnabled'=>$mail!==null,'needsEmail'=>$needsEmail,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'readableLists'=>$readableLists,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
+if($action==='calendar') {
+    if(!$me) fail('Accedi per consultare il calendario.',401);
+    if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
+    result(calendarState($db,$me));
+}
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
@@ -341,6 +348,7 @@ if($action==='download') {
 if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText','leagueRosterPreview'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
+
     if(isset($_GET['offlineOwner'])&&$_GET['offlineOwner']!==$me['id'])fail('Accedi con l’account delle liste offline.',401);
     try {
         builderSchema($storage->builderConnection(),$storage->builderDriver());
@@ -454,6 +462,12 @@ try {
         result(['ok'=>true]);
     }
     if(!$me) fail('Accedi per continuare.',401);
+
+    if($calendarWrite) {
+        $id=updateCalendar($action,$in,$me,$db);
+        save();
+        result(['ok'=>true,'id'=>$id]);
+    }
 
     if($action==='avatarSave') {
         $photo=$in['photo']??null;
@@ -649,3 +663,4 @@ try {
     fail('Azione non trovata.',404);
 
 } catch(Throwable $e) { error_log('Warhammer archive operation failed: '.$e->getMessage()); fail('Salvataggio non riuscito. Riprova; se il problema continua contatta l’amministratore.',503); }
+

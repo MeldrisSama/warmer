@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 // PHP's development server does not read the IIS access rules.
 $path=rawurldecode(parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH));
-if($path==='/statistics.js') return false;
+if(in_array($path,['/statistics.js','/calendar.js','/calendar.css'],true)) return false;
 if($path==='/' || $path==='/index.php') {
     require __DIR__.'/index.php';
     return true;
@@ -28,3 +28,4 @@ if(preg_match('~^/assets/factions/[a-z_]+\.svg$~D',$path)&&is_file(__DIR__.$path
 if(preg_match('~^/assets/pwa/(?:icon-(192|512)|logo-192)\.png$~D',$path)&&is_file(__DIR__.$path))return false;
 http_response_code(404);
 return true;
+

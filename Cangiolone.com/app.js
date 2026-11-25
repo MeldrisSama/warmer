@@ -299,6 +299,7 @@ function render(){
     ['home','Home'],
     ['storico','Partite'],
     ['campionati','Campionati'],
+    ['calendario','Calendario'],
     ['giocatori','Giocatori']
 
   ].map(
@@ -347,6 +348,8 @@ function render(){
     emailAccountPage(p);
   }else if(p==='campionati'){
     leaguesPage();
+  }else if(p==='calendario'){
+    calendarPage();
   }else if(p==='giocatori'){
     playersPage();
   }else if(p==='storico'){
@@ -2112,3 +2115,4 @@ refresh().catch(
   }
 
 );
+

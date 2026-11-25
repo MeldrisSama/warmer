@@ -602,8 +602,9 @@ request('builderArmies').then(data=>{
 request('league').then(data => {
   state = data;
   render();
-  const fixture = state?.fixtures.find(item => item.id === leagueQuery.get('fixture') && mine(item));
+  const fixture = state?.fixtures.find(item => item.id === leagueQuery.get('fixture'));
   if (fixture) openLeagueFixture(fixture.id, fixture.round);
 }).catch(() => {
   $('season-actions').textContent = 'Campionato non disponibile. Ricarica la pagina per riprovare.';
 });
+

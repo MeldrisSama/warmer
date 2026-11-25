@@ -56,12 +56,12 @@ final class SectorStorage {
 
     private bool $sqliteWrite=false;
     private ?string $mysqlLock=null;
-    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id','league_roster_settings'=>'id','league_rosters'=>'id','league_roster_lineups'=>'id'];
+    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id','league_roster_settings'=>'id','league_rosters'=>'id','league_roster_lineups'=>'id','calendar_events'=>'id'];
     private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
 
-    private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
+    private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used'],'calendar_events'=>['cancelled']];
 
-    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round'],'league_rosters'=>['version']];
+    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round'],'league_rosters'=>['version'],'calendar_events'=>['version']];
     public function __construct(array $config) {
 
         $this->driver=$config['driver']??'mysql';
@@ -114,6 +114,7 @@ final class SectorStorage {
             'mail_accounts'=>'`id` VARCHAR(24) PRIMARY KEY, `email` VARCHAR(254) UNIQUE, `pending_email` VARCHAR(254), `verify_hash` VARCHAR(64), `verify_until` BIGINT NOT NULL, `reset_hash` VARCHAR(64), `reset_until` BIGINT NOT NULL, `version` INT NOT NULL',
             'mail_jobs'=>'`id` VARCHAR(64) PRIMARY KEY, `recipient` VARCHAR(254), `payload` MEDIUMTEXT, `expires` BIGINT NOT NULL, `next_attempt` BIGINT NOT NULL, `attempts` INT NOT NULL',
             'schema_migrations'=>'`id` VARCHAR(64) PRIMARY KEY',
+            'calendar_events'=>'`id` VARCHAR(24) PRIMARY KEY, `date` VARCHAR(10) NOT NULL, `time` VARCHAR(5) NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `owner` VARCHAR(24) NOT NULL, `fixture` VARCHAR(24) UNIQUE, `location` VARCHAR(160) NOT NULL, `notes` TEXT NOT NULL, `cancelled` INT NOT NULL, `version` INT NOT NULL, `created` VARCHAR(40) NOT NULL',
             'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL',
             'league_roster_settings'=>'`id` VARCHAR(24) PRIMARY KEY, `payload` TEXT NOT NULL',
             'league_rosters'=>'`id` VARCHAR(24) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `version` INT NOT NULL, `created` VARCHAR(40) NOT NULL, `payload` MEDIUMTEXT NOT NULL',
@@ -307,3 +308,4 @@ final class SectorStorage {
     }
 
 }
+
