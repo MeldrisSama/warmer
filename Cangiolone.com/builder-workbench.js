@@ -1,7 +1,25 @@
 'use strict';
 
 const workbench={mode:'build',pane:'roster',detailTab:'profiles',selected:null,preview:null,dirty:false,revision:0,search:'',catalogFaction:null,filters:{legends:true,allies:true,titanic:true},categoryOpen:{},hiddenErrors:[],activeEffects:{},exportFormat:'gw',scrollPositions:{}};
-const wbUnits=()=>new Map((builderUi.catalog?.units||[]).map(u=>[u.id,u]));
+function wbUnits(){
+  const units=new Map((builderUi.catalog?.units||[]).map(unit=>[unit.id,unit]));
+  const army=builderUi.army;
+  if(!army?.detachmentIds?.length||beIsPool())return units;
+  const faction=wbFaction();
+  if(!faction)return units;
+  const warlord=units.get(army.entries.find(entry=>entry.warlord)?.unitId);
+  const targets=wbDetachments().flatMap(detachment=>beBattlelineTargets(wbDescription(detachment),warlord));
+  if(!targets.length)return units;
+  for(const id of faction.unitIds){
+    const unit=units.get(id);
+    if(unit&&beHasBattlelineGrant(unit,targets)){
+      const keywords=/\bBattleline\b/i.test(unit.keywords)?unit.keywords:[unit.keywords,'BATTLELINE'].filter(Boolean).join(', ');
+      const maxCopies=Math.max(6,unit.maxCopies);
+      if(keywords!==unit.keywords||maxCopies!==unit.maxCopies)units.set(id,{...unit,keywords,maxCopies});
+    }
+  }
+  return units;
+}
 const wbEntry=id=>builderUi.army.entries.find(e=>e.entryId===id);
 const wbFaction=()=>builderUi.catalog.factions.find(f=>f.id===builderUi.army.factionId);
 const wbText=value=>esc(String(value??'').replace(/<br\s*\/?>|<\/p>|<\/li>/gi,'\n').replace(/<[^>]*>/g,''));
@@ -10,6 +28,7 @@ const wbDescription=row=>row.description||(builderUi.catalog.texts||[]).find(t=>
 const wbPlus=value=>/^\d+$/.test(String(value))?value+'+':value;
 const wbCategories=['Epic Hero','Character','Battleline','Infantry','Mounted/Beast','Vehicle','Other'];
 const wbMobileCategories=['Epic Hero','Character','Battleline','Infantry','Mounted','Vehicle','Other'];
+const wbCatalogOrder=new Intl.Collator('en',{sensitivity:'base',numeric:true});
 const wbIsPhone=()=>typeof matchMedia==='function'&&matchMedia('(max-width:850px)').matches;
 function wbMobileCategory(unit){
   if(!unit)return 'Other';
@@ -22,8 +41,8 @@ function wbMobileHeader(totals){
   return `<div class="wb-mobile-header">${detail?'<button data-wb-return-roster type="button" aria-label="Torna all’armata">←</button>':''}<div class="wb-mobile-title"><strong>${esc(a.name)}</strong><small>${totals.total} / ${a.limit} pt · ${workbench.mode==='play'?'Play':esc(wbFaction().name)}</small></div><button data-wb-mobile-save class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvo…':'Salva'}</button><button data-wb-mobile-menu aria-label="Menu lista" aria-haspopup="dialog">☰</button></div>`;
 }
 function wbMobileCatalogList(category='',search=''){
-  const units=wbUnits(),native=new Set(wbFaction().unitIds),term=search.trim().toLocaleLowerCase();
-  const rows=beCatalogIds().map(id=>units.get(id)).filter(u=>u&&(workbench.filters.legends||!u.legends)&&(workbench.filters.allies||native.has(u.id))&&(workbench.filters.titanic||!/(?:^|,\s*)Titanic(?:,|$)/i.test(u.keywords))&&(!category||wbMobileCategory(u)===category)&&(u.name+' '+u.keywords).toLocaleLowerCase().includes(term));
+  const native=new Set(wbFaction().unitIds),term=search.trim();
+  const rows=wbCatalogUnits(native,term).filter(unit=>!category||wbMobileCategory(unit)===category);
   return wbMobileCategories.filter(c=>rows.some(u=>wbMobileCategory(u)===c)).map(c=>`<details class="wb-category" ${category||term?'open':''}><summary>${esc(c)} <small>${rows.filter(u=>wbMobileCategory(u)===c).length}</small></summary>${rows.filter(u=>wbMobileCategory(u)===c).map(u=>`<div class="wb-catalog-row"><div class="wb-unit-name">${esc(u.name)}<small>${u.points[0]?.points??'?'} pt${!native.has(u.id)?' · Alleato: '+esc(wbAllyLabel(u)):''}${u.legends?' · Legends':''} · ${builderUi.army.entries.filter(e=>e.unitId===u.id).length} in lista</small></div><button type="button" data-wb-mobile-add="${esc(u.id)}" aria-label="Aggiungi ${esc(u.name)}">+</button></div>`).join('')}</details>`).join('')||'<p>Nessuna unità trovata.</p>';
 }
 function wbOpenMobileCatalog(category='',trigger){
@@ -64,9 +83,17 @@ function wbCategory(unit){
   return 'Other';
 }
 function wbCatalogList(){
-  const units=wbUnits(),native=new Set(wbFaction().unitIds),category=u=>native.has(u.id)?wbCategory(u):'Other';
-  const filtered=beCatalogIds().map(id=>units.get(id)).filter(u=>u&&(workbench.filters.legends||!u.legends)&&(workbench.filters.allies||native.has(u.id))&&(workbench.filters.titanic||!/(?:^|,\s*)Titanic(?:,|$)/i.test(u.keywords))&&(u.name+' '+u.category+' '+u.keywords).toLocaleLowerCase().includes(workbench.search.toLocaleLowerCase()));
+  const native=new Set(wbFaction().unitIds),category=u=>native.has(u.id)?wbCategory(u):'Other';
+  const filtered=wbCatalogUnits(native,workbench.search);
   return wbCategories.filter(c=>filtered.some(u=>category(u)===c)).map(c=>`<details ${workbench.search.trim()||workbench.categoryOpen[builderUi.army.factionId+':'+c]?'open':''} class="wb-category" data-wb-category="${esc(c)}"><summary>${esc(c)} <small>${filtered.filter(u=>category(u)===c).length}</small></summary>${filtered.filter(u=>category(u)===c).map(u=>`<div class="wb-catalog-row"><button data-wb-preview="${esc(u.id)}" class="wb-unit-name">${esc(u.name)}<small>${u.points[0]?.points??'?'} pt${u.legends?' · Legends':''}${!native.has(u.id)?' · Alleato: '+esc(wbAllyLabel(u)):''} · ${builderUi.army.entries.filter(e=>e.unitId===u.id).length} in lista</small></button><button data-wb-add="${esc(u.id)}" aria-label="Aggiungi ${esc(u.name)}">+</button></div>`).join('')}</details>`).join('')||'<p>Nessuna unità trovata.</p>';
+}
+function wbCatalogUnits(native,search){
+  const units=wbUnits(),term=search.toLocaleLowerCase();
+  return beCatalogIds().map(id=>units.get(id)).filter(unit=>unit&&
+    (workbench.filters.legends||!unit.legends)&&(workbench.filters.allies||native.has(unit.id))&&
+    (workbench.filters.titanic||!/(?:^|,\s*)Titanic(?:,|$)/i.test(unit.keywords))&&
+    (unit.name+' '+unit.category+' '+unit.keywords).toLocaleLowerCase().includes(term))
+    .sort((a,b)=>wbCatalogOrder.compare(a.name,b.name));
 }
 function wbSearch(value){
   workbench.search=value;
@@ -236,6 +263,11 @@ function builderWorkbenchTotals(){
     if(e.attachedTo&&!u.leads.includes(wbEntry(e.attachedTo)?.unitId))issues.push(`${u.name}: attachment da verificare.`);
   }
   const errors=[...wbSupportErrors(),...beAllyErrors(),...a.entries.flatMap(beGearErrors)];issues.push(...errors);
+  const attachedRoots=new Set(a.entries.map(entry=>entry.attachedTo).filter(Boolean));
+  if([...attachedRoots].some(id=>beGroupPowerCount(id)>1)){
+    const message='Un gruppo attached può avere un solo Enhancement o Upgrade.';
+    issues.push(message);errors.push(message);
+  }
   if(total>a.limit)issues.push('La lista supera il limite di punti.');
   for(const uid of new Set(a.entries.map(e=>e.unitId))){const u=units.get(uid);if(!u)continue;const max=a.limit<=1000?Math.max(1,Math.floor(u.maxCopies*2/3)):u.maxCopies;if(a.entries.filter(e=>e.unitId===uid).length>max)issues.push(`Troppe copie di ${u.name} (limite ${max}).`);}
   const dp=wbFaction().detachments.filter(d=>a.detachmentIds.includes(d.id)).reduce((sum,d)=>sum+Number(d.dp||0),0);
@@ -421,7 +453,10 @@ function wbUnitControls(u,e){
     ${wbSizes(u).length>1?wbNumber('Miniature','models',e.models,wbSizes(u)[0],wbSizes(u).at(-1)):`<p class="wb-muted">${e.models} modelli</p>`}
     ${/\bCharacter\b/i.test(u.keywords)?`<label class="wb-check"><input data-wb-field="warlord" type="checkbox" ${e.warlord?'checked':''}> Warlord</label>`:e.warlord?'<button id="wb-clear-warlord">Rimuovi Warlord non valido</button>':''}
     </div>
-    ${canAttach||e.attachedTo?`<label>Associa a un’unità<select data-wb-field="attachedTo"><option value="">${u.support?'Da associare':'Unità indipendente'}</option>${unresolved?`<option value="${esc(e.attachedTo)}" selected>Associazione precedente da verificare</option>`:''}${targets.map(x=>`<option value="${esc(x.entryId)}" ${e.attachedTo===x.entryId?'selected':''}>${esc(wbInstanceName(x))}</option>`).join('')}</select></label>${!targets.length?'<p class="wb-muted">Nessuna destinazione compatibile disponibile nella lista.</p>':''}${unresolved?'<p class="wb-warning">L’associazione salvata richiede verifica. Puoi rimuoverla o scegliere una destinazione compatibile.</p>':''}`:''}
+    ${canAttach||e.attachedTo?`<label>Associa a un’unità<select data-wb-field="attachedTo"><option value="">${u.support?'Da associare':'Unità indipendente'}</option>${unresolved?`<option value="${esc(e.attachedTo)}" selected>Associazione precedente da verificare</option>`:''}${targets.map(x=>{
+      const conflict=beAttachmentPowerConflict(e,x.entryId);
+      return `<option value="${esc(x.entryId)}" ${e.attachedTo===x.entryId?'selected':conflict?'disabled':''}>${esc(wbInstanceName(x))}${conflict?' · Potenziamento già presente':''}</option>`;
+    }).join('')}</select></label>${!targets.length?'<p class="wb-muted">Nessuna destinazione compatibile disponibile nella lista.</p>':''}${unresolved?'<p class="wb-warning">L’associazione salvata richiede verifica. Puoi rimuoverla o scegliere una destinazione compatibile.</p>':''}`:''}
     ${beCompositionHtml(u,e)}<div class="wb-loadout">${beLoadoutHtml(u,e)}
     ${u.weapons.filter(w=>w.name&&(!w.enhancement_id||e.enhancementIds.includes(w.enhancement_id))&&((u.options.length>0&&(!e.loadoutSelections||!beManagedWeapon(u.loadoutRecipe,w.line)))||w.enhancement_id)).filter(w=>beWeaponModes(u,w.line)[0]?.line===w.line).map(w=>{const n=e.weaponCounts[w.line]||0;return `<div class="wb-weapon"><span>${wbText(w.name)}<small>${wbText(w.type)} · ${wbText(wbDescription(w))}</small></span>${w.enhancement_id?`<span>1 · ${u.enhancements.find(x=>x.id===w.enhancement_id)?.upgrade==='true'?'Upgrade':'Enhancement'}</span>`:`<div class="wb-quantity" role="group" aria-label="Quantità ${esc(w.name)}"><button id="wb-weapon-${esc(w.line)}-minus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="-1" aria-label="Diminuisci ${esc(w.name)}" ${n===0?'disabled':''} type="button">−</button><output aria-label="Quantità ${esc(w.name)}">${n}</output><button id="wb-weapon-${esc(w.line)}-plus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="1" aria-label="Aumenta ${esc(w.name)}" ${n>=beWeaponLimit(u,e,w.line)?'disabled':''} type="button">+</button></div>`}</div>`;}).join('')}
     </div>${upgrades?`<section class="wb-upgrades">${upgrades}</section>`:''}
@@ -506,11 +541,21 @@ function wbBind(container=null){
   on('#wb-faction','change',el=>{if(a.entries.length&&!confirm('Cambiare fazione mantenendo le unità attuali come selezioni da verificare?')){el.value=a.factionId;return;}a.factionId=el.value;a.detachmentIds=[];a.disposition='';workbench.catalogFaction=el.value;wbChanged();});
   on('#wb-disposition','change',el=>{a.disposition=el.value;wbChanged();});
   on('#wb-detachments','click',wbOpenDetachments);
-  on('[data-wb-field]','change',el=>{const e=wbEntry(workbench.selected),field=el.dataset.wbField;if(!e)return;if(field==='models'){const n=Number(el.value);if(Number.isInteger(n)&&n>=1&&n<=200)beResize(e,n);}else if(field==='manualPoints'){const n=Number(el.value);if(el.value==='')e.manualPoints=null;else if(Number.isInteger(n)&&n>=0&&n<=20000)e.manualPoints=n;}else if(field==='warlord'){a.entries.forEach(x=>x.warlord=false);e.warlord=el.checked;}else if(field==='attachedTo'){if(el.value&&!wbAttachmentTargets(e).some(x=>x.entryId===el.value)){notify('Questa unità non è una destinazione compatibile.',true);return;}e.attachedTo=el.value||null;}else e.notes=el.value;wbChanged();});
+  on('[data-wb-field]','change',el=>{const e=wbEntry(workbench.selected),field=el.dataset.wbField;if(!e)return;if(field==='models'){const n=Number(el.value);if(Number.isInteger(n)&&n>=1&&n<=200)beResize(e,n);}else if(field==='manualPoints'){const n=Number(el.value);if(el.value==='')e.manualPoints=null;else if(Number.isInteger(n)&&n>=0&&n<=20000)e.manualPoints=n;}else if(field==='warlord'){a.entries.forEach(x=>x.warlord=false);e.warlord=el.checked;}else if(field==='attachedTo'){
+    if(el.value&&!wbAttachmentTargets(e).some(x=>x.entryId===el.value)){el.value=e.attachedTo||'';notify('Questa unità non è una destinazione compatibile.',true);return;}
+    if(el.value&&beAttachmentPowerConflict(e,el.value)){el.value=e.attachedTo||'';notify('Un gruppo attached può avere un solo Enhancement o Upgrade.',true);return;}
+    e.attachedTo=el.value||null;
+  }else e.notes=el.value;wbChanged();});
   on('[data-wb-weapon-step]','click',el=>wbChangeWeapon(el.dataset.wbWeaponLine,Number(el.dataset.wbWeaponStep)));
   on('[data-wb-choice-radio]','change',el=>{if(beChangeChoice(wbEntry(workbench.selected),el.dataset.wbChoiceRadio,el.value,1))wbChanged();else builderWorkbenchRender();});
   on('[data-wb-pool-option]','change',el=>{const e=wbEntry(workbench.selected),option=bePoolOptions(wbUnits().get(e.unitId),e).find(w=>w.id===el.dataset.wbPoolOption),n=Number(el.value);if(!option||!Number.isInteger(n)||n<0||n>option.maximum){builderWorkbenchRender();return;}e.rosterPaidOptions??={};e.rosterPaidOptions[option.id]=n;wbChanged();});
-  on('[data-wb-enhancement]','change',el=>{const e=wbEntry(workbench.selected),id=el.dataset.wbEnhancement;e.enhancementIds=el.checked?[...e.enhancementIds,id]:e.enhancementIds.filter(x=>x!==id);beSyncEnhancements(wbUnits().get(e.unitId),e);wbChanged();});
+  on('[data-wb-enhancement]','change',el=>{
+    const entry=wbEntry(workbench.selected),unit=wbUnits().get(entry.unitId),id=el.dataset.wbEnhancement;
+    const item=unit.enhancements.find(x=>x.id===id);
+    if(el.checked&&(!item||!beCanAddPower(unit,entry,item))){el.checked=entry.enhancementIds.includes(id);return;}
+    entry.enhancementIds=el.checked?[...entry.enhancementIds,id]:entry.enhancementIds.filter(x=>x!==id);
+    beSyncEnhancements(unit,entry);wbChanged();
+  });
   on('[data-wb-enhancement-model]','change',el=>{const e=wbEntry(workbench.selected);e.enhancementModels??={};if(el.value)e.enhancementModels[el.dataset.wbEnhancementModel]=el.value;else delete e.enhancementModels[el.dataset.wbEnhancementModel];wbChanged();});
   on('#wb-save','click',wbSave);on('#wb-copy-active','click',beCopyActive);
   on('#wb-new','click',builderCreate);

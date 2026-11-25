@@ -81,6 +81,74 @@ test('Categories use keyword precedence instead of composite source role labels'
     c.unit={category,keywords:''};assert.equal(vm.runInContext('wbCategory(unit)',c),expected);
   }
 });
+test('Detachment Battleline moves units in both catalogs, unlocks copies and is reversible',()=>{
+  const c=context();c.esc=value=>String(value??'');
+  vm.runInContext(`
+    const squad=fixture.units[0],army=builderUi.army;
+    squad.name='Outrider Squad';squad.keywords='Mounted';squad.category='Mounted';squad.maxCopies=3;
+    for(const [id,name] of [['zebra','Zebra Squad'],['alpha','Alpha Squad']]){
+      fixture.units.push({...squad,id,name});wbFaction().unitIds.push(id);
+    }
+    wbFaction().detachments[0].description='Friendly Outrider Squad units have BATTLELINE.';
+    workbench.search='squad';
+    wbAdd('squad');
+  `,c);
+  for(const expression of ['wbCatalogList()', 'wbMobileCatalogList("Mounted","squad")']){
+    const html=vm.runInContext(expression,c);
+    assert.ok(html.indexOf('Alpha Squad')<html.indexOf('Outrider Squad')&&html.indexOf('Outrider Squad')<html.indexOf('Zebra Squad'));
+  }
+  assert.match(vm.runInContext('builderWorkbenchTotals().issues.join(" ")',c),/Troppe copie/);
+  vm.runInContext("army.detachmentIds=['first'];",c);
+  const desktop=vm.runInContext('wbCatalogList()',c);
+  assert.match(desktop,/<summary>Battleline[^<]*<small>1<\/small>[\s\S]*?Outrider Squad/);
+  assert.match(vm.runInContext('wbMobileCatalogList("Battleline")',c),/Outrider Squad/);
+  assert.doesNotMatch(vm.runInContext('wbMobileCatalogList("Mounted")',c),/Outrider Squad/);
+  assert.match(vm.runInContext("wbProfiles(wbUnits().get('squad'))",c),/wb-keywords[^>]*>Mounted, BATTLELINE/);
+  assert.doesNotMatch(vm.runInContext('builderWorkbenchTotals().issues.join(" ")',c),/Troppe copie/);
+  assert.equal(vm.runInContext('squad.keywords',c),'Mounted');
+  vm.runInContext('army.detachmentIds=[];',c);
+  assert.equal(vm.runInContext("wbCategory(wbUnits().get('squad'))",c),'Mounted/Beast');
+  assert.match(vm.runInContext('builderWorkbenchTotals().issues.join(" ")',c),/Troppe copie/);
+});
+test('Battleline bullet grants require the named Warlord keywords and ignore references',()=>{
+  const c=context();
+  const description='• If a friendly MILITARUM TEMPESTUS OFFICER model is your WARLORD, friendly TEMPESTUS SCIONS units have:\n\n• BATTLELINE.';
+  assert.deepEqual(Array.from(c.beBattlelineTargets(description,null)),[]);
+  assert.deepEqual(Array.from(c.beBattlelineTargets(description,{keywords:'Officer, Character, Militarum Tempestus'})),['tempestus scions']);
+  assert.deepEqual(Array.from(c.beBattlelineTargets('When a friendly BATTLELINE unit shoots, add 1.',null)),[]);
+});
+test('Character upgrades and a second power in an attached group are blocked in Build and Play',()=>{
+  const c=context();c.esc=value=>String(value??'');c.notify=()=>{};
+  vm.runInContext(`
+    const [body,,,leader]=builderUi.army.entries;
+    const bodyUnit=wbUnits().get(body.unitId),heroUnit=wbUnits().get(leader.unitId);
+    heroUnit.category='Character Epic Hero';
+    heroUnit.models=[{line:'1',name:'Leader',OC:'1'}];
+    const effectsJson=JSON.stringify([{field:'OC',operation:'add',value:1,scope:'unit',source:'Unit upgrade'}]);
+    const upgrade={id:'upgrade',name:'Unit upgrade',upgrade:'true',cost:'10',effectsJson};
+    const enhancement={id:'enhancement',name:'Leader enhancement',cost:'10'};
+    bodyUnit.enhancements=[upgrade];heroUnit.enhancements=[upgrade,enhancement];
+  `,c);
+  assert.doesNotMatch(vm.runInContext('beEnhancementsHtml(heroUnit,leader)',c),/data-wb-enhancement="upgrade"/);
+  assert.equal(vm.runInContext('beCanAddPower(heroUnit,leader,upgrade)',c),false);
+  vm.runInContext("body.enhancementIds=['upgrade'];",c);
+  assert.equal(vm.runInContext('beCanAddPower(heroUnit,leader,enhancement)',c),false);
+  assert.match(vm.runInContext('beEnhancementsHtml(heroUnit,leader)',c),/data-wb-enhancement="enhancement"[^>]*disabled/);
+  assert.equal(vm.runInContext('builderWorkbenchTotals().errors.length',c),0);
+  assert.equal(vm.runInContext('beEffects(heroUnit,leader).unit.models[0].OC',c),'2');
+  vm.runInContext('leader.attachedTo=null;',c);
+  assert.equal(vm.runInContext('beEffects(heroUnit,leader).unit.models[0].OC',c),'1');
+  vm.runInContext('leader.attachedTo=body.entryId;',c);
+  vm.runInContext("leader.enhancementIds=['enhancement'];",c);
+  assert.equal(vm.runInContext('beAttachmentPowerConflict(leader,body.entryId)',c),true);
+  assert.match(vm.runInContext('builderWorkbenchTotals().errors.join(" ")',c),/gruppo attached/);
+  assert.equal(vm.runInContext("wbSetMode('play')",c),false);
+  vm.runInContext("body.enhancementIds=[];leader.enhancementIds=['upgrade'];",c);
+  assert.match(vm.runInContext('builderWorkbenchTotals().errors.join(" ")',c),/Epic Hero non può ricevere un Upgrade/);
+  assert.match(vm.runInContext('beEnhancementsHtml(heroUnit,leader)',c),/checked[^>]*>[\s\S]*Da rimuovere/);
+  vm.runInContext('leader.enhancementIds=[];',c);
+  assert.equal(vm.runInContext("wbSetMode('play')",c),true);
+});
 test('Incursion allows a single 3 DP detachment and keeps the popup selection coherent',()=>{
   const c=context();
   vm.runInContext(`builderUi.army.limit=1000;builderUi.army.dpLimit=2;wbFaction().detachments.push({id:'large',name:'Large',dp:3,force_disposition:'Take and Hold'});`,c);
