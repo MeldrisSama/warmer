@@ -200,7 +200,7 @@ $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);
     if(($leagueWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
-    $scope=($leagueWrite || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
+    $scope=($leagueWrite || $action==='league' || $action==='calendar' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
     $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
 }
@@ -277,6 +277,19 @@ if($action==='state') {
     $profile=mailProfile($db,$me['id']);
     $needsEmail=$mail!==null && ($_SESSION['askEmail']??false) && $profile['email']===null && $profile['pending_email']===null;
     result(['mailEnabled'=>$mail!==null,'needsEmail'=>$needsEmail,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'readableLists'=>$readableLists,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
+}
+if($action==='calendar') {
+    if(!$me) fail('Accedi per consultare il calendario.',401);
+    if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
+    $fixtures=[];
+    foreach(leagueSummaries($db,$me['id']) as $league) {
+        foreach(leagueState($db,$me,$league['id'])['fixtures'] as $fixture) {
+            // Only public fixture metadata: never expose pending proposals or private lineups.
+            $fixtures[]=array_intersect_key($fixture,array_flip(['id','round','a','b','result','awaiting']))
+                +['leagueId'=>$league['id']];
+        }
+    }
+    result(['leagues'=>leagueSummaries($db,$me['id']),'fixtures'=>$fixtures]);
 }
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
@@ -649,3 +662,4 @@ try {
     fail('Azione non trovata.',404);
 
 } catch(Throwable $e) { error_log('Warhammer archive operation failed: '.$e->getMessage()); fail('Salvataggio non riuscito. Riprova; se il problema continua contatta l’amministratore.',503); }
+
