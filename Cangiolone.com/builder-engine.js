@@ -134,6 +134,42 @@ function beCharacterModels(unit){
   return unit.models.filter(m=>/\bCharacter\b/i.test(m.keywords??unit.keywords??''));
 }
 function beIsUpgrade(unit,id){return unit.enhancements.find(x=>x.id===id)?.upgrade==='true';}
+function beUpgradeAllowed(unit){
+  return !/\b(?:Character|Epic Hero)\b/i.test(unit.category+' '+unit.keywords);
+}
+function beGroupPowerCount(rootId,excludeId){
+  return builderUi.army.entries.reduce((count,member)=>
+    member.entryId!==excludeId&&(member.attachedTo||member.entryId)===rootId?count+member.enhancementIds.length:count,0);
+}
+function beCanAddPower(unit,entry,item){
+  return (item.upgrade!=='true'||beUpgradeAllowed(unit))&&
+    (!item.detachment_id||builderUi.army.detachmentIds.includes(item.detachment_id))&&
+    !beGroupPowerCount(entry.attachedTo||entry.entryId);
+}
+function beAttachmentPowerConflict(entry,targetId){
+  return entry.enhancementIds.length>0&&beGroupPowerCount(targetId,entry.entryId)>0;
+}
+// Only explicit army-building grants affect categories and copy limits.
+function beBattlelineTargets(description,warlord){
+  const warlordWords=(warlord?.keywords||'').toLowerCase().match(/[a-z]+/g)||[];
+  const lines=description.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  return lines.flatMap((line,index)=>{
+    const text=line.replace(/^•\s*/, '');
+    const direct=text.match(/^(?:If you select this Detachment,\s*)?(?:Friendly\s+)?(.+?) (?:units|models)(?: from your army)? (?:gain|have) (?:the )?Battleline(?: keyword)?(?=[.,;]|$| and\b)/i);
+    if(direct)return direct[1].split(/\s+and\s+|\s*\/\s*/i);
+    const block=text.match(/^(?:If a friendly (.+?) model is your Warlord,\s*)?Friendly (.+?) units have:$/i);
+    if(!block||(block[1]&&!block[1].toLowerCase().split(/\s+/).every(word=>warlordWords.includes(word))))return [];
+    for(const bullet of lines.slice(index+1)){
+      if(/^•\s+Battleline\.$/i.test(bullet))return block[2].split(/\s+and\s+|\s*\/\s*/i);
+      if(!/^•\s+[A-Z][A-Z -]*\.$/.test(bullet))break;
+    }
+    return [];
+  }).map(target=>target.toLowerCase());
+}
+function beHasBattlelineGrant(unit,targets){
+  const names=[unit.name,...unit.keywords.split(',')].map(name=>name.trim().toLowerCase());
+  return targets.some(target=>names.includes(target)||names[0]===target+'s');
+}
 function beSyncEnhancements(unit,entry){
   entry.enhancementModels??={};
   for(const id of Object.keys(entry.enhancementModels))if(!entry.enhancementIds.includes(id)||beIsUpgrade(unit,id))delete entry.enhancementModels[id];
@@ -158,6 +194,8 @@ function beGearErrors(entry){
   if(entry.warlord&&!/\bCharacter\b/i.test(unit.keywords))errors.push(`${unit.name}: solo un Character può essere Warlord.`);
   if(wbMustWarlord(unit)&&!entry.warlord)errors.push(`${unit.name}: questa unità deve essere il Warlord.`);
   if(entry.attachedTo){const target=wbEntry(entry.attachedTo);if(!target||target.attachedTo||!unit.leads.includes(target.unitId))errors.push(`${unit.name}: associazione a un'unità non valida.`);}
+  if(!beUpgradeAllowed(unit)&&entry.enhancementIds.some(id=>beIsUpgrade(unit,id)))errors.push(`${unit.name}: un Character o Epic Hero non può ricevere un Upgrade.`);
+  if(entry.enhancementIds.length>1)errors.push(`${unit.name}: ogni unità può avere un solo Enhancement o Upgrade.`);
   if(entry.models>1)for(const id of entry.enhancementIds)if(!beIsUpgrade(unit,id)&&unit.weapons.some(w=>w.enhancement_id===id)&&!entry.enhancementModels?.[id])errors.push(`${unit.name}: scegli il modello portatore del potenziamento.`);
   return errors;
 }
@@ -246,8 +284,17 @@ function beLoadoutHtml(unit,entry){
   return `${recipe.links?.length?'<p class="wb-muted">Il team armi aggiunge e rimuove insieme tiratore e servente.</p>':''}${recipe.groups.filter(g=>g.choices.length>1).map(g=>beLoadoutGroupHtml(unit,entry,g)).join('')}${recipe.optionsCovered<recipe.optionsTotal?'<p class="wb-warning">Alcune restrizioni richiedono verifica nel testo delle opzioni.</p>':''}<div class="builder-actions"><button id="wb-default-save">Salva come mio default</button><button id="wb-standard">Dotazione standard</button><button id="wb-manual">Configurazione manuale</button>${builderUi.defaults.some(d=>d.unitId===unit.id)?'<button id="wb-default-delete">Rimuovi mio default</button>':''}</div>`;
 }
 function beEnhancementsHtml(unit,entry){
-  const allowed=unit.enhancements.filter(x=>!x.detachment_id||builderUi.army.detachmentIds.includes(x.detachment_id)||entry.enhancementIds.includes(x.id));
-  return ['Enhancement','Upgrade'].map(kind=>{const rows=allowed.filter(x=>(x.upgrade==='true'?'Upgrade':'Enhancement')===kind);return rows.length?`<h4>${kind}</h4>${rows.map(x=>`<label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${entry.enhancementIds.includes(x.id)?'checked':''} ${entry.enhancementIds.length&&!entry.enhancementIds.includes(x.id)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt</span></label>${x.upgrade!=='true'&&entry.enhancementIds.includes(x.id)&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${beCharacterModels(unit).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`).join('')}`:'';}).join('');
+  const allowed=unit.enhancements.filter(x=>entry.enhancementIds.includes(x.id)||
+    (x.upgrade!=='true'||beUpgradeAllowed(unit))&&(!x.detachment_id||builderUi.army.detachmentIds.includes(x.detachment_id)));
+  const locked=beGroupPowerCount(entry.attachedTo||entry.entryId,entry.entryId)>0;
+  const list=['Enhancement','Upgrade'].map(kind=>{
+    const rows=allowed.filter(x=>(x.upgrade==='true'?'Upgrade':'Enhancement')===kind);
+    return rows.length?`<h4>${kind}</h4>${rows.map(x=>{
+      const selected=entry.enhancementIds.includes(x.id);
+      return `<label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${selected?'checked':''} ${!selected&&(locked||entry.enhancementIds.length)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt${x.upgrade==='true'&&!beUpgradeAllowed(unit)?' · Da rimuovere':''}</span></label>${x.upgrade!=='true'&&selected&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${beCharacterModels(unit).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`;
+    }).join('')}`:'';
+  }).join('');
+  return list&&locked?`<p class="wb-muted">Il gruppo attached ha già un Enhancement o Upgrade.</p>${list}`:list;
 }
 function beAllyRules(){
   if(beIsPool())return wbFaction().allies||[];
@@ -270,7 +317,7 @@ function beEffects(unit,entry){
   const parent=entry.attachedTo?wbEntry(entry.attachedTo):null,root=parent&&!parent.attachedTo?parent:entry,members=wbGroup(root),sources=[],derived=builderClone(unit),seen=new Set(),candidates=[];
   derived.models=beModelVariants(unit,entry);
   for(const member of members){
-    const from=wbUnits().get(member.unitId),enhancements=from.enhancements.filter(x=>member.enhancementIds.includes(x.id));
+    const from=wbUnits().get(member.unitId),enhancements=from.enhancements.filter(x=>member.enhancementIds.includes(x.id)&&(x.upgrade!=='true'||beUpgradeAllowed(from)));
     const rules=[...(from.effects||[]),...enhancements.flatMap(x=>{try{return JSON.parse(x.effectsJson||'[]').map(effect=>({...effect,...(x.upgrade==='true'&&effect.scope==='bearer'?{scope:'unit'}:{}),_bearerModel:x.upgrade==='true'?undefined:from.models.find(m=>m.line===member.enhancementModels?.[x.id])?.name}));}catch{return [];}})];
     for(const effect of rules){
       if(effect.gear&&!beHasGear(from,member,effect.gear))continue;

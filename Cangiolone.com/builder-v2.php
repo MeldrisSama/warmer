@@ -20,6 +20,36 @@ function builderCharacterModels(array $unit): array {
     if(($unit['id']??'')==='000002748'||($unit['name']??'')==='Ravenwing Command Squad')return array_values(array_filter($unit['models'],static fn($m)=>strcasecmp($m['name'],'Ravenwing Champion')===0));
     return array_values(array_filter($unit['models'],static fn($m)=>preg_match('/\bCharacter\b/i',$m['keywords']??$unit['keywords']??'')));
 }
+function builderUpgradeAllowed(array $unit): bool {
+    return !preg_match('/\b(?:Character|Epic Hero)\b/i',$unit['category'].' '.$unit['keywords']);
+}
+// Mirrors the subset of explicit Battleline grants used by the offline workbench.
+function builderBattlelineTargets(string $description, ?array $warlord): array {
+    preg_match_all('/[a-z]+/i',strtolower($warlord['keywords']??''),$words);
+    $lines=array_values(array_filter(array_map('trim',preg_split('/\r?\n/',$description))));
+    $targets=[];
+    foreach($lines as $index=>$line) {
+        $text=preg_replace('/^•\s*/u','',$line);
+        if(preg_match('/^(?:If you select this Detachment,\s*)?(?:Friendly\s+)?(.+?) (?:units|models)(?: from your army)? (?:gain|have) (?:the )?Battleline(?: keyword)?(?=[.,;]|$| and\b)/i',$text,$direct)) {
+            $targets[]=$direct[1];
+            continue;
+        }
+        if(!preg_match('/^(?:If a friendly (.+?) model is your Warlord,\s*)?Friendly (.+?) units have:$/i',$text,$block))continue;
+        if($block[1]!==''&&array_diff(preg_split('/\s+/',strtolower($block[1])),$words[0]))continue;
+        for($next=$index+1;isset($lines[$next]);$next++) {
+            $bullet=$lines[$next];
+            if(preg_match('/^•\s+Battleline\.$/iu',$bullet)){$targets[]=$block[2];break;}
+            if(!preg_match('/^•\s+[A-Z][A-Z -]*\.$/u',$bullet))break;
+        }
+    }
+    return preg_split('/\s+and\s+|\s*\/\s*/i',strtolower(implode('/',$targets)),-1,PREG_SPLIT_NO_EMPTY);
+}
+function builderHasBattlelineGrant(array $unit, array $targets): bool {
+    $name=strtolower(trim($unit['name']));
+    $names=[$name,...array_map('trim',explode(',',strtolower($unit['keywords'])))];
+    foreach($targets as $target) if(in_array($target,$names,true)||$name===$target.'s')return true;
+    return false;
+}
 function builderNormalizeV2(array $raw): array {
     if (($raw['edition']??null)!=='11') builderInvalid('Il nuovo catalogo richiede la 11ª edizione.');
     $out=['schemaVersion'=>2,'edition'=>'11','version'=>builderString($raw['version']??null,'versione',60),'source'=>builderString($raw['source']??null,'fonte',100),'license'=>'Uso locale'];
@@ -114,6 +144,17 @@ function builderValidateV2(array $catalog, array $in): array {
     if ($disposition!=='' && !in_array($disposition,$dispositions,true)) builderInvalid('Force Disposition non disponibile nei distaccamenti scelti.');
     $entries=$in['entries']??null;
     if (!is_array($entries) || !array_is_list($entries) || count($entries)>200) builderInvalid('Unità non valide.');
+    $warlord=null;
+    foreach($entries as $entry) if(is_array($entry)&&($entry['warlord']??false)===true&&is_string($entry['unitId']??null)) {
+        $warlord=$units[$entry['unitId']]??null;
+        break;
+    }
+    $battleline=[];
+    foreach($detachmentIds as $id) {
+        $d=$detachments[$id];
+        $description=($d['description']??'')?:($ruleTexts[$d['descriptionRef']??'']??'');
+        array_push($battleline,...builderBattlelineTargets($description,$warlord));
+    }
     $clean=[]; $seen=[]; $counts=[]; $total=0; $issues=[]; $errors=[]; $warlords=0;$prices=[];
     foreach ($entries as $entry) {
         if (!is_array($entry)) builderInvalid('Unità non valida.');
@@ -145,7 +186,16 @@ function builderValidateV2(array $catalog, array $in): array {
         $enhancements=$entry['enhancementIds']??[];
         if (!is_array($enhancements) || !array_is_list($enhancements) || count($enhancements)>20 || count(array_unique($enhancements,SORT_REGULAR))!==count($enhancements)) builderInvalid('Potenziamenti non validi.');
         $knownEnhancements=array_column($u['enhancements'],null,'id');
-        foreach ($enhancements as $id) { builderId($id,'potenziamento'); if (!isset($knownEnhancements[$id])) builderInvalid('Potenziamento sconosciuto.'); $total+=(int)$knownEnhancements[$id]['cost'];$entryPrice+=(int)$knownEnhancements[$id]['cost']; }
+        foreach ($enhancements as $id) {
+            builderId($id,'potenziamento');
+            if (!isset($knownEnhancements[$id])) builderInvalid('Potenziamento sconosciuto.');
+            $enhancement=$knownEnhancements[$id];
+            if(($enhancement['upgrade']??'')==='true'&&!builderUpgradeAllowed($u)){
+                $message=$u['name'].': un Character o Epic Hero non può ricevere un Upgrade.';
+                $issues[]=$message;$errors[]=$message;
+            }
+            $total+=(int)$enhancement['cost'];$entryPrice+=(int)$enhancement['cost'];
+        }
         foreach ($wc as $line=>$quantity) if ($quantity>0&&!empty($knownWeapons[$line]['enhancement_id'])&&!in_array($knownWeapons[$line]['enhancement_id'],$enhancements,true)) builderInvalid('Arma dedicata senza il potenziamento richiesto.');
         foreach ($knownWeapons as $line=>$weapon) {
             if (!empty($weapon['enhancement_id'])) {if (in_array($weapon['enhancement_id'],$enhancements,true))$wc[$line]=1;}
@@ -198,15 +248,25 @@ function builderValidateV2(array $catalog, array $in): array {
         if (($enhancement['upgrade']??'false')==='true') {$seenUpgrades[$id]=($seenUpgrades[$id]??0)+1;if($seenUpgrades[$id]===1)$enhancementCount++;if($seenUpgrades[$id]>3)$issues[]='Massimo tre copie dello stesso Upgrade.';}
         else {$enhancementCount++;if(isset($seenEnhancements[$id]))$issues[]='Lo stesso Enhancement non può essere assegnato due volte.';$seenEnhancements[$id]=true;}
     }
-    $groupEnhancements=[];
+    $groupEnhancements=[];$attachedRoots=[];
     foreach ($clean as $entry) {
         $root=$entry['attachedTo']??$entry['entryId'];$groupEnhancements[$root]=($groupEnhancements[$root]??0)+count($entry['enhancementIds']);
-        if (count($entry['enhancementIds'])>1) $issues[]='Ogni unità può avere un solo Enhancement o Upgrade.';
+        if($entry['attachedTo']!==null)$attachedRoots[$root]=true;
+        if(count($entry['enhancementIds'])>1){
+            $message=$units[$entry['unitId']]['name'].': ogni unità può avere un solo Enhancement o Upgrade.';
+            $issues[]=$message;$errors[]=$message;
+        }
     }
-    foreach ($groupEnhancements as $count) if ($count>1) $issues[]='Un gruppo attached non può avere più di un Enhancement o Upgrade.';
+    foreach($attachedRoots as $root=>$_) if($groupEnhancements[$root]>1){
+        $message='Un gruppo attached può avere un solo Enhancement o Upgrade.';
+        $issues[]=$message;$errors[]=$message;
+        break;
+    }
     if ($enhancementCount>($limit<=1000?2:4)) $issues[]='Limite potenziamenti superato.';
     foreach ($counts as $id=>$count) {
-        $max=$limit<=1000?max(1,(int)floor($units[$id]['maxCopies']*2/3)):$units[$id]['maxCopies'];
+        $max=$units[$id]['maxCopies'];
+        if($battleline&&in_array($id,$faction['unitIds'],true)&&builderHasBattlelineGrant($units[$id],$battleline))$max=max(6,$max);
+        if($limit<=1000)$max=max(1,(int)floor($max*2/3));
         if ($count>$max) $issues[]='Troppe copie di '.$units[$id]['name'].'.';
     }
     return ['points'=>$total,'limit'=>$limit,'dpLimit'=>$dpLimit,'valid'=>false,'issues'=>$issues,'errors'=>$errors,'manualReview'=>true,'entries'=>$clean,'factionId'=>$factionId,'detachmentId'=>$detachmentIds[0]??'none','detachmentIds'=>$detachmentIds,'disposition'=>$disposition];
