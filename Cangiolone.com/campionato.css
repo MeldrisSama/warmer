@@ -268,6 +268,20 @@ details[open] .expand { transform: rotate(45deg); }
 .fixture-block p { color: var(--muted); margin-block: 6px 12px; }
 .inline-form, .action-row { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .fixture-list-action { display: grid; justify-items: start; gap: 4px; }
+.tournament-advance { display: grid; gap: 12px; margin-block: 16px; }
+.tournament-advance > button { justify-self: start; }
+.tournament-options { min-width: 0; border: 1px solid var(--rule); padding: 10px 14px 14px; }
+.tournament-options p { margin-block: 4px 10px; }
+.tournament-options label { margin-block: 4px; }
+.tournament-byes { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.tournament-byes label { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 44px; overflow-wrap: anywhere; }
+.tournament-byes input { width: 18px; min-height: 18px; margin: 0; }
+.tournament-bracket section + section { margin-top: 20px; }
+.tournament-bracket ol { margin: 8px 0 0; padding: 0; list-style: none; }
+.tournament-bracket li { border-top: 1px solid var(--rule); padding: 10px 0; overflow-wrap: anywhere; }
+.tournament-bracket li > strong { margin-inline: 6px; white-space: nowrap; }
+.bracket-advance { display: block; color: var(--gold-light); }
+.bracket-winner { color: var(--gold-light); }
 .inline-form label { flex: 1 1 160px; }
 .inline-form .notify-option { display: flex; flex-basis: 100%; align-items: center; gap: 8px; min-height: 44px; }
 .notify-option input { width: 18px; min-height: 18px; }

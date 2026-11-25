@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/league-tournament.php';
 
 const LEAGUE_LIFECYCLE_ACTIONS=['leagueClose','leagueReopen','leaguePause','leagueResume'];
 
@@ -83,6 +84,7 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         $lineups=$submitted[$fixture['id']]??[];
         $fixtures[]=[
             'id'=>$fixture['id'],'round'=>$fixture['round'],'a'=>$fixture['a'],'b'=>$fixture['b'],
+            'slot'=>$fixture['slot'],'winner'=>$fixture['winner'],
             'result'=>$match ? array_intersect_key($match,array_flip(['scoreA','scoreB','date','mission','void']))+['photo'=>empty($match['photo']) ? null : 'api.php?action=photo&id='.rawurlencode($match['id'])] : null,
             'pending'=>$mine ? $pending : null,
             'awaiting'=>$pending!==null,
@@ -93,16 +95,29 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
             ] : null
         ];
     }
-    usort($fixtures,fn($a,$b)=>$a['round']<=>$b['round'] ?: strcmp($a['id'],$b['id']));
+    usort($fixtures,fn($a,$b)=>$a['round']<=>$b['round'] ?: $a['slot']<=>$b['slot'] ?: strcmp($a['id'],$b['id']));
     $members=array_filter($db['league_members'],fn($entry)=>$entry['league_id']===($league['id']??null));
+    $players=$league ? leaguePlayers($db,$league['id']) : [];
+    $tournament=null;
+    if($league && leagueFormat($league)!=='round_robin') {
+        $draw=tournamentFixtures($db,$league['id']);
+        $round=tournamentRoundState($draw,$matches);
+        $swiss=leagueFormat($league)==='swiss';
+        $tournament=['round'=>$round['number'],'ready'=>$round['ready'],
+            'final'=>$swiss ? $round['number']===$league['round_limit'] : count($round['fixtures'])===1,
+            'ties'=>$swiss ? [] : $round['ties'],
+            'standings'=>$swiss ? tournamentSwissStandings($players,$draw,$matches) : [],
+            'champion'=>!$swiss && $league['finished']!==null ? ($round['fixtures'][0]['winner']??null) : null];
+    }
     return [
         'league'=>$league,'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],
         'today'=>date('Y-m-d'),'users'=>array_map('publicUser',$db['users']),
-        'players'=>$league ? leaguePlayers($db,$league['id']) : [],
+        'players'=>$players,
         'armies'=>array_column(array_values($members),'army','player'),
         'armyGroups'=>LEAGUE_ARMIES,
         'rosters'=>leagueRosterState($db,$league,$myId),
-        'fixtures'=>$fixtures
+        'fixtures'=>$fixtures,
+        'tournament'=>$tournament
     ];
 }
 
@@ -158,10 +173,12 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
     if($action==='leagueOpen') {
         if(!$me['admin']) fail('Solo l’amministratore può aprire le iscrizioni.',403);
         $name=field($in,'name',100);
+        $format=$in['format']??'round_robin';
+        if(!in_array($format,LEAGUE_FORMATS,true)) fail('Scegli un formato disponibile.');
         $id=field($in,'request',24,false) ?: ident();
         if(!preg_match('/^[a-f0-9]{24}$/D',$id)) fail('Richiesta non valida.');
         foreach($db['league'] as $league) if($league['id']===$id) {
-            if($league['name']!==$name) fail('Richiesta già usata. Ricarica la pagina.',409);
+            if($league['name']!==$name || leagueFormat($league)!==$format) fail('Richiesta già usata. Ricarica la pagina.',409);
             return $id;
         }
         if(isset($in['rosterLimit']) || isset($in['matchLimit'])) {
@@ -170,7 +187,8 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
             if($matchLimit>$rosterLimit) builderInvalid('Il limite della partita non può superare quello del roster.');
             $db['league_roster_settings'][]=['id'=>$id,'payload'=>json_encode(['rosterLimit'=>$rosterLimit,'matchLimit'=>$matchLimit,'windowOpen'=>false],JSON_THROW_ON_ERROR)];
         }
-        $league=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null,'paused'=>null];
+        $league=['id'=>$id,'name'=>$name,'start'=>null,'closed'=>null,'paused'=>null,
+            'format'=>$format,'round_limit'=>0,'finished'=>null];
         $db['league'][]=$league;
         if(($in['notify']??false)===true) {
             if($mail===null) fail('Servizio email non disponibile.',503);
@@ -182,7 +200,7 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
     $fixtureIndex=null;
     $id=field($in,'league',24,false) ?: null;
     $lifecycle=in_array($action,LEAGUE_LIFECYCLE_ACTIONS,true);
-    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart','leagueAnnounce','leagueRosterSave','leagueRosterWindow'],true)) {
+    if(!$lifecycle && !in_array($action,['leagueJoin','leagueStart','leagueAdvance','leagueAnnounce','leagueRosterSave','leagueRosterWindow'],true)) {
         $fixtureIndex=leagueFixture($db['league_fixtures'],field($in,'fixture',24),$player);
         $fixtureLeague=$db['league_fixtures'][$fixtureIndex]['league_id'];
         if($id!==null && $id!==$fixtureLeague) fail('Incontro non trovato.',404);
@@ -206,6 +224,7 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
             $league['closed']??=date(DATE_ATOM);
             $league['paused']=null;
         } elseif($action==='leagueReopen') {
+            if($league['finished']!==null) fail('Il risultato finale del torneo è già stato pubblicato.',409);
             $league['closed']=null;
         } else {
             if($league['closed']!==null) fail('Riapri il campionato prima di cambiarne lo stato.',409);
@@ -250,8 +269,21 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
         if(count($players)<2) fail('Servono almeno due iscritti.');
         if($rosterSettings) foreach($players as $entrant) if(!leagueRosterVersions($db,$league['id'],$entrant)) fail('Tutti gli iscritti devono consegnare il roster prima dell’avvio.',409);
         shuffle($players);
-        foreach(leagueSchedule($players) as $fixture) $db['league_fixtures'][]=$fixture+['league_id'=>$league['id']];
+        $format=leagueFormat($league);
+        if($format==='swiss') {
+            $maxRounds=count($players)-1+count($players)%2;
+            $rounds=$in['rounds']??min(3,$maxRounds);
+            if(!is_int($rounds) || $rounds<1 || $rounds>$maxRounds) fail('Scegli un numero di turni compatibile con gli iscritti.');
+            $league['round_limit']=$rounds;
+        }
+        $schedule=$format==='round_robin' ? leagueSchedule($players) : tournamentFirstRound($format,$players,$in['byes']??[]);
+        foreach($schedule as $fixture) $db['league_fixtures'][]=$fixture+['league_id'=>$league['id']];
         $league['start']=date('Y-m-d');
+        return null;
+    }
+    if($action==='leagueAdvance') {
+        if(!$me['admin']) fail('Solo l’amministratore può pubblicare il turno o il risultato finale.',403);
+        tournamentAdvance($db,$league,$in);
         return null;
     }
 
@@ -313,15 +345,22 @@ function updateLeague(string $action, array $in, array $me, array &$db, ?array $
 }
 
 function leagueMatchLocks(array $db): array {
-    $seasons=[];
+    $seasons=[];$progress=[];$rounds=[];
     foreach($db['league'] as $league) {
         if($league['closed']!==null) $seasons[$league['id']]='Il risultato appartiene a un campionato concluso.';
         elseif($league['paused']!==null) $seasons[$league['id']]='Il risultato appartiene a un campionato in pausa.';
+        if(leagueFormat($league)!=='round_robin') $progress[$league['id']]=true;
+    }
+    foreach($db['league_fixtures'] as $fixture) {
+        $id=$fixture['league_id'];
+        if(isset($progress[$id])) $rounds[$id]=max($rounds[$id]??0,$fixture['round']);
     }
     $matches=[];
     foreach($db['league_fixtures'] as $fixture) {
         if($fixture['match_id']!==null && isset($seasons[$fixture['league_id']])) {
             $matches[$fixture['match_id']]=$seasons[$fixture['league_id']];
+        } elseif($fixture['match_id']!==null && $fixture['round']<($rounds[$fixture['league_id']]??0)) {
+            $matches[$fixture['match_id']]='Il risultato è già stato usato per il turno successivo del torneo.';
         }
     }
     return $matches;

@@ -195,7 +195,7 @@ require __DIR__.'/builder-model.php';
 require __DIR__.'/league-roster.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAdvance','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 try {
     $storage=new SectorStorage($config['database']);

@@ -54,7 +54,7 @@ require_once __DIR__.'/assets.php';
         <div class="section-head">
           <h2 id="round-heading">Calendario</h2>
           <div class="round-pick">
-            <label for="round-picker">Giornata</label>
+            <label for="round-picker" id="round-picker-label">Giornata</label>
             <select id="round-picker"></select>
           </div>
         </div>

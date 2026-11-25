@@ -61,7 +61,7 @@ final class SectorStorage {
 
     private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
 
-    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round'],'league_rosters'=>['version']];
+    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league'=>['round_limit'],'league_fixtures'=>['round','slot'],'league_rosters'=>['version']];
     public function __construct(array $config) {
 
         $this->driver=$config['driver']??'mysql';
@@ -108,13 +108,13 @@ final class SectorStorage {
             'invites'=>'`hash` VARCHAR(64) PRIMARY KEY, `expires` BIGINT NOT NULL, `used` INT NOT NULL',
 
             'attempts'=>'`ip` VARCHAR(64) PRIMARY KEY, `count` INT NOT NULL, `until` BIGINT NOT NULL',
-            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10), `closed` VARCHAR(40), `paused` VARCHAR(40)',
+            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10), `closed` VARCHAR(40), `paused` VARCHAR(40), `format` VARCHAR(16) NOT NULL DEFAULT \'round_robin\', `round_limit` INT NOT NULL DEFAULT 0, `finished` VARCHAR(40)',
             'league_entries'=>'`player` VARCHAR(24) PRIMARY KEY, `joined` VARCHAR(40) NOT NULL',
             'league_members'=>'`id` VARCHAR(49) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `joined` VARCHAR(40) NOT NULL, `army` VARCHAR(64)',
             'mail_accounts'=>'`id` VARCHAR(24) PRIMARY KEY, `email` VARCHAR(254) UNIQUE, `pending_email` VARCHAR(254), `verify_hash` VARCHAR(64), `verify_until` BIGINT NOT NULL, `reset_hash` VARCHAR(64), `reset_until` BIGINT NOT NULL, `version` INT NOT NULL',
             'mail_jobs'=>'`id` VARCHAR(64) PRIMARY KEY, `recipient` VARCHAR(254), `payload` MEDIUMTEXT, `expires` BIGINT NOT NULL, `next_attempt` BIGINT NOT NULL, `attempts` INT NOT NULL',
             'schema_migrations'=>'`id` VARCHAR(64) PRIMARY KEY',
-            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL',
+            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL, `slot` INT NOT NULL DEFAULT 0, `winner` VARCHAR(24)',
             'league_roster_settings'=>'`id` VARCHAR(24) PRIMARY KEY, `payload` TEXT NOT NULL',
             'league_rosters'=>'`id` VARCHAR(24) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `version` INT NOT NULL, `created` VARCHAR(40) NOT NULL, `payload` MEDIUMTEXT NOT NULL',
             'league_roster_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `roster_id` VARCHAR(24) NOT NULL, `payload` MEDIUMTEXT NOT NULL',
@@ -131,7 +131,7 @@ final class SectorStorage {
     }
 
     private function migrateLeagues(): void {
-        $marker='league-army';
+        $marker='league-tournaments';
         $check=$this->pdo->prepare('SELECT 1 FROM w40k_schema_migrations WHERE id=?');
         $check->execute([$marker]);
         if($check->fetchColumn()) return;
@@ -142,7 +142,14 @@ final class SectorStorage {
             $check->execute([$marker]);
             if(!$check->fetchColumn()) {
                 // MySQL DDL commits implicitly; check each column so a retry can resume.
-                foreach([['league','closed','VARCHAR(40)'],['league_fixtures','league_id','VARCHAR(24)'],['league','paused','VARCHAR(40)'],['league_members','army','VARCHAR(64)']] as [$name,$column,$type]) {
+                $columnsToAdd=[
+                    ['league','closed','VARCHAR(40)'],['league_fixtures','league_id','VARCHAR(24)'],
+                    ['league','paused','VARCHAR(40)'],['league_members','army','VARCHAR(64)'],
+                    ['league','format',"VARCHAR(16) NOT NULL DEFAULT 'round_robin'"],
+                    ['league','round_limit','INT NOT NULL DEFAULT 0'],['league','finished','VARCHAR(40)'],
+                    ['league_fixtures','slot','INT NOT NULL DEFAULT 0'],['league_fixtures','winner','VARCHAR(24)']
+                ];
+                foreach($columnsToAdd as [$name,$column,$type]) {
                     $table='w40k_'.$name;
                     $columns=$sqlite ? $this->pdo->query('PRAGMA table_info('.$table.')') : $this->pdo->query('SHOW COLUMNS FROM `'.$table.'`');
                     if(!in_array($column,array_column($columns->fetchAll(),$sqlite?'name':'Field'),true)) {

@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-tournament.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -44,6 +44,11 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
 
   await t.test('Storage persists typed data, rolls back failures and safely reads wiki settings', () => {
     const result = spawnSync(php, [join(__dirname, 'storage.php'), directory], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  await t.test('Tournament draws, byes and advancement preserve results and reject invalid rounds', () => {
+    const result = spawnSync(php, [join(__dirname, 'league-tournament.php')], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
 
@@ -250,7 +255,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'statistics.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-tournament.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'statistics.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await cp(join(root,'Cangiolone.com/assets'),join(application,'assets'),{recursive:true});

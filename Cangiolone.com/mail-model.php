@@ -187,7 +187,9 @@ function notifyLeague(array &$db, ?array $mail, array $league, array $users, str
 
 function queueRoundReport(array &$db, ?array $mail, array $league, int $round): void {
     if($mail===null) return;
-    $fixtures=array_filter($db['league_fixtures'],fn($f)=>$f['league_id']===$league['id'] && $f['b']!==null);
+    $format=leagueFormat($league);
+    $allFixtures=array_filter($db['league_fixtures'],fn($f)=>$f['league_id']===$league['id']);
+    $fixtures=array_filter($allFixtures,fn($f)=>$f['b']!==null);
     $roundFixtures=array_filter($fixtures,fn($f)=>$f['round']===$round);
     foreach($roundFixtures as $fixture) if($fixture['match_id']===null) return;
 
@@ -199,6 +201,7 @@ function queueRoundReport(array &$db, ?array $mail, array $league, int $round): 
     foreach($fixtures as $fixture) {
         $match=$matches[$fixture['match_id']]??null;
         if(!$match || $match['void']) {
+            if($format!=='round_robin' && $fixture['round']===$round) return;
             if($fixture['round']===$round && $match) $results[]=['Annullata',$users[$fixture['a']]['name'],$users[$fixture['b']]['name']];
             continue;
         }
@@ -209,15 +212,22 @@ function queueRoundReport(array &$db, ?array $mail, array $league, int $round): 
         $scores[$b]['diff']-=$diff;
         if($fixture['round']===$round) $results[]=[$match['scoreA'].' – '.$match['scoreB'],$users[$a]['name'],$users[$b]['name']];
     }
+    if($format==='swiss') foreach($allFixtures as $fixture) {
+        if($fixture['round']===$round && $fixture['b']===null) $results[]=['Riposo',$users[$fixture['a']]['name'],'—'];
+    }
     uasort($scores,fn($a,$b)=>$b['points']<=>$a['points'] ?: $b['diff']<=>$a['diff']);
     $standings=[];
-    foreach($scores as $id=>$score) $standings[]=[$users[$id]['name'],$score['points'],$score['diff']];
+    if($format==='round_robin') foreach($scores as $id=>$score) $standings[]=[$users[$id]['name'],$score['points'],$score['diff']];
+    if($format==='swiss') foreach(tournamentSwissStandings($players,$allFixtures,$matches) as $row) {
+        $standings[]=[$users[$row['id']]['name'],$row['points'],$row['diff']];
+    }
     $report=['results'=>array_map(fn($r)=>[$r[1],$r[0],$r[2]],$results),'standings'=>$standings];
     foreach($players as $user) {
         $recipient=$db['mail_accounts'][$user]['email']??null;
         if($recipient===null) continue;
         queueSectorMail($db,'round:'.$league['id'].':'.$round.':'.$user,$recipient,
-            'Giornata '.$round.' — risultati e classifica',$league['name'],'Apri il campionato',
+            ($format==='round_robin'?'Giornata ':'Turno ').$round.($format==='knockout'?' — risultati':' — risultati e classifica'),
+            $league['name'],$format==='round_robin'?'Apri il campionato':'Apri il torneo',
             mailLink($mail,'campionato.php?id='.$league['id']),null,$report);
     }
 }

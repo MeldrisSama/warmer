@@ -1046,7 +1046,7 @@ function leaguesPage(){
   ];
   main.innerHTML=`<section class="panel league-directory">
     <div class="heading"><h1>Campionati</h1>
-      ${state.user.admin ? '<a class="button primary" href="campionato.php?new=1">Crea campionato</a>' : ''}
+      ${state.user.admin ? '<a class="button primary" href="campionato.php?new=1">Crea campionato o torneo</a>' : ''}
     </div>
     ${state.leagues.length ? groups.map(([title,filter])=>{
       const leagues=state.leagues.filter(filter);
@@ -1054,7 +1054,7 @@ function leaguesPage(){
       return `<section class="league-group"><h2>${title}</h2><ul>
         ${leagues.map(league=>`<li><a href="${leagueLink(league)}">
           <strong>${esc(league.name)}</strong>
-          <small>${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
+          <small>${league.format==='swiss'?'Svizzero · ':league.format==='knockout'?'Eliminazione diretta · ':''}${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
           <span aria-hidden="true">→</span>
         </a></li>`).join('')}
       </ul></section>`;
