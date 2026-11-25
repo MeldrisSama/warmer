@@ -297,13 +297,9 @@ function render(){
   nav.innerHTML=[
 
     ['home','Home'],
-    ['giocatori','Giocatori'],
     ['storico','Partite'],
     ['campionati','Campionati'],
-    ['partita','Nuova partita'],
-
-
-    ['builder','Army Builder']
+    ['giocatori','Giocatori']
 
   ].map(
 
@@ -319,7 +315,10 @@ function render(){
 
       }>${label}</a>`
 
-  ).join('');
+  ).join('')+`<details class="nav-tools" ${p==='builder'?'open':''}>
+    <summary ${p==='builder'?'aria-current="page"':''}>Strumenti</summary>
+    <div class="nav-tools-menu"><a href="#builder" data-theme-menu="Army Builder" ${p==='builder'?'class="active" aria-current="page"':''}>Army Builder</a></div>
+  </details>`;
 
   nav.querySelector('a[href="#builder"]')?.addEventListener('click',event=>builderNavigate(event));
 
@@ -1078,7 +1077,7 @@ function playersPage(){
 
 function homePage(){
   const matches=[...state.matches].filter(match=>!match.void).sort((a,b)=>b.date.localeCompare(a.date)||b.created.localeCompare(a.created)).slice(0,5);
-  main.innerHTML=`${leagueBanner()}<div id="next-fixture"></div><section class="panel"><div class="heading"><h1>Ultime dal settore</h1><a href="#storico">Tutte le partite</a></div>
+  main.innerHTML=`<div class="home-actions"><a class="button primary home-new-match" href="#partita">+ Nuova partita</a></div>${leagueBanner()}<div id="next-fixture"></div><section class="panel"><div class="heading"><h1>Ultime dal settore</h1><a href="#storico">Tutte le partite</a></div>
     <h2>Ultimi risultati</h2>${matches.length?`<ul class="recent-results">${matches.map(match=>`<li><span class="muted">${dateLabel(match.date)}</span><span>${playerLink(match.a)} <strong>${match.scoreA} – ${match.scoreB}</strong> ${playerLink(match.b)}</span><small>${esc(match.leagueId?state.leagues.find(league=>league.id===match.leagueId)?.name||'Campionato':'Partita libera')}</small></li>`).join('')}</ul>`:empty('battle','Nessuna partita disputata','Le ultime battaglie appariranno qui.')}
   </section>`;
   const league=state.leagues.find(item=>item.joined&&item.start&&!item.closed&&!item.paused);
