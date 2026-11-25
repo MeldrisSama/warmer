@@ -185,6 +185,22 @@ function renderRoster() {
     ${state.user.admin&&state.league.start&&!state.league.closed&&!state.league.paused?`<form class="action-row"><input name="open" type="hidden" value="${settings.windowOpen?'false':'true'}">${action('leagueRosterWindow',settings.windowOpen?'Chiudi finestra roster':'Apri finestra roster','secondary')}</form>`:''}`;
 }
 
+function schedulePanel(fixture) {
+  if(!mine(fixture)||fixture.result||state.league.closed||state.league.paused)return '';
+  const schedule=fixture.schedule,proposal=fixture.scheduleProposal||{version:0,pending:null};
+  const pending=proposal.pending,own=pending?.by===state.user.id;
+  const active=schedule&&!schedule.cancelled;
+  return '<div class="fixture-block fixture-schedule"><h3>Quando giochiamo?</h3>'+
+    (active?'<p>Data concordata: <strong>'+escapeHtml(formatDate(schedule.date))+(schedule.time?' · '+escapeHtml(schedule.time):'')+'</strong> · <a href="index.php#calendario">Apri calendario</a></p>':'<p>Concorda la data prima di preparare le liste. Non è necessario averle già consegnate.</p>')+
+    (pending?'<p><strong>Proposta di '+player(pending.by)+': '+escapeHtml(formatDate(pending.event.date))+(pending.event.time?' · '+escapeHtml(pending.event.time):'')+'</strong></p><p>La data comparirà nel calendario dopo l’approvazione dell’altro giocatore.</p>'+
+      '<form class="action-row"><input type="hidden" name="proposalVersion" value="'+proposal.version+'">'+
+      (own?action('calendarWithdraw','Ritira proposta','secondary'):action('calendarApprove','Approva data')+action('calendarReject','Rifiuta data','secondary'))+'</form>':'')+
+    (!pending||own?'<form class="schedule-form"><input type="hidden" name="id" value="'+escapeHtml(schedule?.id||'')+'"><input type="hidden" name="version" value="'+(schedule?.version||0)+'"><input type="hidden" name="proposalVersion" value="'+proposal.version+'">'+
+      '<label>Data proposta<input type="date" name="date" min="'+state.today+'" max="2100-12-31" value="'+escapeHtml(pending?.event.date||schedule?.date||state.today)+'" required></label>'+
+      '<label>Orario italiano (facoltativo)<input type="time" name="time" value="'+escapeHtml(pending?.event.time||schedule?.time||'')+'"></label>'+
+      action('calendarSave',pending?'Aggiorna proposta':'Proponi data','secondary')+'</form>':'')+'</div>';
+}
+
 function listPanel(fixture) {
   const listAction = id => `<div class="fixture-list-action">${playerLink(id)}<button type="button" class="secondary" data-lineup="${id}" aria-label="Leggi la lista di ${player(id)}">Leggi lista</button></div>`;
   if (!mine(fixture)) return fixture.listsReadable ? `<div class="fixture-block"><h3>Liste esercito</h3><div class="action-row">${[fixture.a,fixture.b].map(listAction).join('')}</div></div>` : '';
@@ -278,7 +294,7 @@ function fixtureRow(fixture) {
   if (!mine(fixture) && !fixture.listsReadable && !fixture.result?.photo) return `<div class="fixture row">${contents}</div>`;
   return `<details class="fixture" data-fixture="${fixture.id}"${fixture.id === openFixture ? ' open' : ''}>
     <summary class="row">${contents}<span class="expand" aria-hidden="true">+</span></summary>
-    ${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}${photoPanel(fixture)}
+    ${schedulePanel(fixture)}${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}${photoPanel(fixture)}
   </details>`;
 }
 
@@ -358,6 +374,10 @@ function render() {
 }
 
 const notices = {
+  calendarSave: 'Data proposta. In attesa dell’approvazione dell’avversario.',
+  calendarApprove: 'Data approvata e pubblicata nel calendario.',
+  calendarReject: 'Proposta rifiutata.',
+  calendarWithdraw: 'Proposta ritirata.',
   leagueRosterSave: 'Nuova versione del roster consegnata.',
   leagueRosterWindow: 'Finestra dei roster aggiornata.',
   leaguePhoto: 'Foto della partita salvata.',
@@ -395,6 +415,11 @@ document.addEventListener('submit', async event => {
   buttons.forEach(control => control.disabled = true);
   form.setAttribute('aria-busy', 'true');
   const data = Object.fromEntries(new FormData(form));
+  if(name.startsWith('calendar')){
+    if(name==='calendarSave'&&!data.id)data.id=window.crypto.randomUUID().replaceAll('-','').slice(0,24);
+    if('version' in data)data.version=Number(data.version);
+    data.proposalVersion=Number(data.proposalVersion);
+  }
   if (state.league) data.league = state.league.id;
   if (name === 'leagueOpen') {
     openingToken ??= window.crypto.randomUUID().replaceAll('-', '').slice(0, 24);

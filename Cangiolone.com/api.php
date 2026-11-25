@@ -189,6 +189,7 @@ require __DIR__.'/storage.php';
 
 require __DIR__.'/mail-model.php';
 require __DIR__.'/league.php';
+require_once __DIR__.'/calendar-model.php';
 try { $mail=sectorMailConfig(); }
 catch(Throwable $error) { error_log('Warhammer mail configuration invalid'); $mail=null; }
 require __DIR__.'/builder-model.php';
@@ -197,10 +198,11 @@ $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
 $leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow'];
 $leagueWrite=in_array($action,$leagueWrites,true);
+$calendarWrite=in_array($action,CALENDAR_WRITES,true);
 try {
     $storage=new SectorStorage($config['database']);
-    if(($leagueWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
-    $scope=($leagueWrite || $action==='league' || $action==='calendar' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
+    if(($leagueWrite || $calendarWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
+    $scope=($leagueWrite || $calendarWrite || $action==='calendar' || $action==='calendarDownload' || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
     $db=$storage->load($scope);
     $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
 }
@@ -278,18 +280,29 @@ if($action==='state') {
     $needsEmail=$mail!==null && ($_SESSION['askEmail']??false) && $profile['email']===null && $profile['pending_email']===null;
     result(['mailEnabled'=>$mail!==null,'needsEmail'=>$needsEmail,'account'=>['email'=>$profile['email'],'pendingEmail'=>$profile['pending_email']],'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],'users'=>array_map('publicUser',$db['users']),'matches'=>$matches,'league'=>$leagues[0]??null,'leagues'=>$leagues,'readableLists'=>$readableLists,'lists'=>array_map(fn($l)=>array_diff_key($l,['text'=>1]),$db['lists'])]);
 }
+if($action==='calendarDownload') {
+    if(!$me)fail('Accedi per leggere la lista.',401);
+    if($_SERVER['REQUEST_METHOD']!=='GET')fail('Metodo non consentito.',405);
+    $eventId=$_GET['id']??'';$player=$_GET['player']??'';
+    if(!is_string($eventId)||!is_string($player))fail('Lista non trovata.',404);
+    $index=array_search($eventId,array_column($db['calendar_events'],'id'),true);
+    if($index===false)fail('Programmazione non trovata.',404);
+    $event=$db['calendar_events'][$index];
+    if($event['cancelled']||!in_array($player,[$event['a'],$event['b']],true))fail('Lista non disponibile.',404);
+    if(!calendarLineupState($db,$event,$me)['readable'])fail('Le liste sono visibili dopo entrambe le consegne.',403);
+    if($event['fixture']!==null) {
+        $_GET['fixture']=$event['fixture'];$_GET['player']=$player;
+        leagueDownload($storage,$db,$me['id']);
+    }
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="lista-programmazione-'.$player.'.txt"');
+    echo $storage->calendarLineupText($eventId.':'.$player);
+    exit;
+}
 if($action==='calendar') {
     if(!$me) fail('Accedi per consultare il calendario.',401);
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
-    $fixtures=[];
-    foreach(leagueSummaries($db,$me['id']) as $league) {
-        foreach(leagueState($db,$me,$league['id'])['fixtures'] as $fixture) {
-            // Only public fixture metadata: never expose pending proposals or private lineups.
-            $fixtures[]=array_intersect_key($fixture,array_flip(['id','round','a','b','result','awaiting']))
-                +['leagueId'=>$league['id']];
-        }
-    }
-    result(['leagues'=>leagueSummaries($db,$me['id']),'fixtures'=>$fixtures]);
+    result(calendarState($db,$me));
 }
 if($action==='league' || $action==='leagueDownload') {
     if(!$me) fail('Accedi per consultare il campionato.',401);
@@ -354,6 +367,7 @@ if($action==='download') {
 if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText','leagueRosterPreview'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
+
     if(isset($_GET['offlineOwner'])&&$_GET['offlineOwner']!==$me['id'])fail('Accedi con l’account delle liste offline.',401);
     try {
         builderSchema($storage->builderConnection(),$storage->builderDriver());
@@ -467,6 +481,30 @@ try {
         result(['ok'=>true]);
     }
     if(!$me) fail('Accedi per continuare.',401);
+
+    if($action==='calendarLineup') {
+        $index=array_search(field($in,'id',24),array_column($db['calendar_events'],'id'),true);
+        if($index===false)fail('Programmazione non trovata.',404);
+        $event=$db['calendar_events'][$index];
+        if($event['cancelled'])fail('La programmazione è annullata.',409);
+        if(!in_array($me['id'],[$event['a'],$event['b']],true))fail('Puoi consegnare solo la tua lista.',403);
+        if(!is_int($in['version']??null)||$in['version']!==$event['version'])fail('La programmazione è cambiata. Aggiorna la pagina.',409);
+        if($event['fixture']!==null) {
+            $action='leagueLineup';$calendarWrite=false;$leagueWrite=true;
+            $in['fixture']=$event['fixture'];
+            [$fixture]=calendarFixtureData($db,$event['fixture']);
+            $in['league']=$fixture['league_id'];
+        } elseif(!empty($in['builderArmyId'])) {
+            if(!empty($in['filename'])||!is_string($in['text']??'')||trim($in['text']??'')!=='')fail('Scegli una sola fonte per la lista.');
+            try {$in['text']=builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));}
+            catch(BuilderInputError $e){fail($e->getMessage());}
+        }
+    }
+    if($calendarWrite) {
+        $id=updateCalendar($action,$in,$me,$db);
+        save();
+        result(['ok'=>true,'id'=>$id]);
+    }
 
     if($action==='avatarSave') {
         $photo=$in['photo']??null;

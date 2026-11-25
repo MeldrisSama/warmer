@@ -56,12 +56,12 @@ final class SectorStorage {
 
     private bool $sqliteWrite=false;
     private ?string $mysqlLock=null;
-    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id','league_roster_settings'=>'id','league_rosters'=>'id','league_roster_lineups'=>'id'];
+    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id','league_roster_settings'=>'id','league_rosters'=>'id','league_roster_lineups'=>'id','calendar_events'=>'id','calendar_proposals'=>'id','calendar_lineups'=>'id'];
     private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
 
-    private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
+    private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used'],'calendar_events'=>['cancelled'],'calendar_lineups'=>['active']];
 
-    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round'],'league_rosters'=>['version']];
+    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league_fixtures'=>['round'],'league_rosters'=>['version'],'calendar_events'=>['version'],'calendar_proposals'=>['version']];
     public function __construct(array $config) {
 
         $this->driver=$config['driver']??'mysql';
@@ -114,6 +114,9 @@ final class SectorStorage {
             'mail_accounts'=>'`id` VARCHAR(24) PRIMARY KEY, `email` VARCHAR(254) UNIQUE, `pending_email` VARCHAR(254), `verify_hash` VARCHAR(64), `verify_until` BIGINT NOT NULL, `reset_hash` VARCHAR(64), `reset_until` BIGINT NOT NULL, `version` INT NOT NULL',
             'mail_jobs'=>'`id` VARCHAR(64) PRIMARY KEY, `recipient` VARCHAR(254), `payload` MEDIUMTEXT, `expires` BIGINT NOT NULL, `next_attempt` BIGINT NOT NULL, `attempts` INT NOT NULL',
             'schema_migrations'=>'`id` VARCHAR(64) PRIMARY KEY',
+            'calendar_proposals'=>'`id` VARCHAR(24) PRIMARY KEY, `payload` TEXT, `version` INT NOT NULL',
+            'calendar_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `event` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `text` MEDIUMTEXT NOT NULL, `active` INT NOT NULL',
+            'calendar_events'=>'`id` VARCHAR(24) PRIMARY KEY, `date` VARCHAR(10) NOT NULL, `time` VARCHAR(5) NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `owner` VARCHAR(24) NOT NULL, `fixture` VARCHAR(24) UNIQUE, `location` VARCHAR(160) NOT NULL, `notes` TEXT NOT NULL, `cancelled` INT NOT NULL, `version` INT NOT NULL, `created` VARCHAR(40) NOT NULL',
             'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL',
             'league_roster_settings'=>'`id` VARCHAR(24) PRIMARY KEY, `payload` TEXT NOT NULL',
             'league_rosters'=>'`id` VARCHAR(24) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `version` INT NOT NULL, `created` VARCHAR(40) NOT NULL, `payload` MEDIUMTEXT NOT NULL',
@@ -202,7 +205,11 @@ final class SectorStorage {
         foreach($keys+['mail_accounts'=>'id'] as $table=>$key) {
             $data[$table]=[];
 
-            $columns=$table==='league_lineups' ? '`id`, `fixture`, `player`' : '*';
+            $columns=match($table) {
+                'league_lineups'=>'`id`, `fixture`, `player`',
+                'calendar_lineups'=>'*',
+                default=>'*'
+            };
             foreach($this->pdo->query('SELECT '.$columns.' FROM `w40k_'.$table.'`') as $row) {
                 foreach(self::BOOLS[$table]??[] as $c) $row[$c]=(bool)$row[$c];
 
@@ -248,6 +255,14 @@ final class SectorStorage {
         $statement->execute([$id]);
         $text=$statement->fetchColumn();
         if(!is_string($text)) throw new RuntimeException('League lineup missing');
+        return $text;
+    }
+
+    public function calendarLineupText(string $id): string {
+        $statement=$this->pdo->prepare('SELECT `text` FROM w40k_calendar_lineups WHERE id=? AND active=1');
+        $statement->execute([$id]);
+        $text=$statement->fetchColumn();
+        if(!is_string($text)) throw new RuntimeException('Calendar lineup missing');
         return $text;
     }
 
@@ -307,3 +322,4 @@ final class SectorStorage {
     }
 
 }
+
