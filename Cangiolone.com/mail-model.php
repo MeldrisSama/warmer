@@ -210,7 +210,8 @@ function queueRoundReport(array &$db, ?array $mail, array $league, int $round): 
         $scores[$b]['points']+=$diff<0?3:($diff===0?1:0);
         $scores[$a]['diff']+=$diff;
         $scores[$b]['diff']-=$diff;
-        if($fixture['round']===$round) $results[]=[$match['scoreA'].' – '.$match['scoreB'],$users[$a]['name'],$users[$b]['name']];
+        $leg=$format==='knockout_legs' ? (($fixture['leg']===2?'Ritorno':'Andata').' · ') : '';
+        if($fixture['round']===$round) $results[]=[$leg.$match['scoreA'].' – '.$match['scoreB'],$users[$a]['name'],$users[$b]['name']];
     }
     if($format==='swiss') foreach($allFixtures as $fixture) {
         if($fixture['round']===$round && $fixture['b']===null) $results[]=['Riposo',$users[$fixture['a']]['name'],'—'];
@@ -218,15 +219,16 @@ function queueRoundReport(array &$db, ?array $mail, array $league, int $round): 
     uasort($scores,fn($a,$b)=>$b['points']<=>$a['points'] ?: $b['diff']<=>$a['diff']);
     $standings=[];
     if($format==='round_robin') foreach($scores as $id=>$score) $standings[]=[$users[$id]['name'],$score['points'],$score['diff']];
+    $records=[];
     if($format==='swiss') foreach(tournamentSwissStandings($players,$allFixtures,$matches) as $row) {
-        $standings[]=[$users[$row['id']]['name'],$row['points'],$row['diff']];
+        $records[]=[$users[$row['id']]['name'],implode('–',[$row['wins'],$row['draws'],$row['losses']]),$row['diff']];
     }
-    $report=['results'=>array_map(fn($r)=>[$r[1],$r[0],$r[2]],$results),'standings'=>$standings];
+    $report=['results'=>array_map(fn($r)=>[$r[1],$r[0],$r[2]],$results),'standings'=>$standings,'records'=>$records];
     foreach($players as $user) {
         $recipient=$db['mail_accounts'][$user]['email']??null;
         if($recipient===null) continue;
         queueSectorMail($db,'round:'.$league['id'].':'.$round.':'.$user,$recipient,
-            ($format==='round_robin'?'Giornata ':'Turno ').$round.($format==='knockout'?' — risultati':' — risultati e classifica'),
+            ($format==='round_robin'?'Giornata ':'Turno ').$round.($standings||$records?' — risultati e classifica':' — risultati'),
             $league['name'],$format==='round_robin'?'Apri il campionato':'Apri il torneo',
             mailLink($mail,'campionato.php?id='.$league['id']),null,$report);
     }

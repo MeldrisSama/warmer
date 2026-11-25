@@ -84,7 +84,7 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         $lineups=$submitted[$fixture['id']]??[];
         $fixtures[]=[
             'id'=>$fixture['id'],'round'=>$fixture['round'],'a'=>$fixture['a'],'b'=>$fixture['b'],
-            'slot'=>$fixture['slot'],'winner'=>$fixture['winner'],
+            'slot'=>$fixture['slot'],'leg'=>$fixture['leg'],'winner'=>$fixture['winner'],
             'result'=>$match ? array_intersect_key($match,array_flip(['scoreA','scoreB','date','mission','void']))+['photo'=>empty($match['photo']) ? null : 'api.php?action=photo&id='.rawurlencode($match['id'])] : null,
             'pending'=>$mine ? $pending : null,
             'awaiting'=>$pending!==null,
@@ -95,19 +95,20 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
             ] : null
         ];
     }
-    usort($fixtures,fn($a,$b)=>$a['round']<=>$b['round'] ?: $a['slot']<=>$b['slot'] ?: strcmp($a['id'],$b['id']));
+    usort($fixtures,fn($a,$b)=>$a['round']<=>$b['round'] ?: $a['slot']<=>$b['slot'] ?: $a['leg']<=>$b['leg'] ?: strcmp($a['id'],$b['id']));
     $members=array_filter($db['league_members'],fn($entry)=>$entry['league_id']===($league['id']??null));
     $players=$league ? leaguePlayers($db,$league['id']) : [];
     $tournament=null;
     if($league && leagueFormat($league)!=='round_robin') {
         $draw=tournamentFixtures($db,$league['id']);
-        $round=tournamentRoundState($draw,$matches);
         $swiss=leagueFormat($league)==='swiss';
+        $round=tournamentRoundState($draw,$matches,!$swiss);
         $tournament=['round'=>$round['number'],'ready'=>$round['ready'],
-            'final'=>$swiss ? $round['number']===$league['round_limit'] : count($round['fixtures'])===1,
+            'final'=>$swiss ? $round['number']===$league['round_limit'] : count($round['series'])===1,
             'ties'=>$swiss ? [] : $round['ties'],
             'standings'=>$swiss ? tournamentSwissStandings($players,$draw,$matches) : [],
-            'champion'=>!$swiss && $league['finished']!==null ? ($round['fixtures'][0]['winner']??null) : null];
+            'bracket'=>$swiss ? [] : tournamentBracket($draw,$matches),
+            'champion'=>!$swiss && $league['finished']!==null ? ($round['series'][0]['winner']??null) : null];
     }
     return [
         'league'=>$league,'user'=>publicUser($me),'csrf'=>$_SESSION['csrf'],

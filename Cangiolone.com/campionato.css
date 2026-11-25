@@ -276,11 +276,24 @@ details[open] .expand { transform: rotate(45deg); }
 .tournament-byes { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .tournament-byes label { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 44px; overflow-wrap: anywhere; }
 .tournament-byes input { width: 18px; min-height: 18px; margin: 0; }
-.tournament-bracket section + section { margin-top: 20px; }
-.tournament-bracket ol { margin: 8px 0 0; padding: 0; list-style: none; }
-.tournament-bracket li { border-top: 1px solid var(--rule); padding: 10px 0; overflow-wrap: anywhere; }
-.tournament-bracket li > strong { margin-inline: 6px; white-space: nowrap; }
-.bracket-advance { display: block; color: var(--gold-light); }
+.league-grid.bracket-layout { grid-template-columns: minmax(0,1fr); }
+.bracket-layout .league-tabs { order: -2; }
+.league-grid.bracket-layout #classifica { order: -1; width: 100%; min-width: 0; }
+.bracket-scroll { overflow-x: auto; padding-block-end: 12px; }
+.tournament-bracket { display: flex; width: max-content; min-width: 100%; }
+.bracket-stage { display: grid; grid-template-rows: 36px 1fr; flex: 1 0 clamp(176px,22vw,230px); }
+.bracket-stage h3 { margin: 0; font-size: 1.125rem; }
+.bracket-stage ol { display: grid; grid-auto-rows: minmax(148px,1fr); margin: 0; padding: 0; list-style: none; }
+.bracket-card { align-self: center; display: grid; gap: 6px; margin-block: 8px; padding: 10px 12px; border: 1px solid var(--rule); overflow-wrap: anywhere; }
+.bracket-card.is-pending { color: var(--muted); border-style: dashed; }
+.bracket-card small { color: var(--muted); }
+.bracket-player { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.bracket-player.advances { color: var(--gold-light); font-weight: bold; }
+.bracket-matches { display: flex; flex-wrap: wrap; gap: 0 8px; border-top: 1px solid var(--rule); }
+.bracket-matches a { display: inline-flex; align-items: center; min-height: 44px; color: var(--gold-light); font-size: .8125rem; }
+.bracket-links { position: relative; flex: 0 0 clamp(24px,3vw,40px); margin-top: 36px; }
+.bracket-links svg { position: absolute; width: 100%; height: 100%; }
+.bracket-links path { fill: none; stroke: var(--gold-light); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
 .bracket-winner { color: var(--gold-light); }
 .inline-form label { flex: 1 1 160px; }
 .inline-form .notify-option { display: flex; flex-basis: 100%; align-items: center; gap: 8px; min-height: 44px; }

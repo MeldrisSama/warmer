@@ -1054,7 +1054,7 @@ function leaguesPage(){
       return `<section class="league-group"><h2>${title}</h2><ul>
         ${leagues.map(league=>`<li><a href="${leagueLink(league)}">
           <strong>${esc(league.name)}</strong>
-          <small>${league.format==='swiss'?'Svizzero · ':league.format==='knockout'?'Eliminazione diretta · ':''}${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
+          <small>${({swiss:'Svizzero · ',knockout:'Eliminazione diretta · ',knockout_legs:'Andata e ritorno · '})[league.format]||''}${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
           <span aria-hidden="true">→</span>
         </a></li>`).join('')}
       </ul></section>`;

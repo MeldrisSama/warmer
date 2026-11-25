@@ -48,30 +48,31 @@ const playerArmy = id => armyLabel(id) ? `<small class="player-army">${escapeHtm
 const confirmed = fixture => fixture.result && !fixture.result.void;
 const playable = fixture => fixture.b !== null;
 const mine = fixture => fixture.lineups !== null;
-const formats = { round_robin: 'Girone unico di sola andata', knockout: 'Eliminazione diretta', swiss: 'Torneo svizzero' };
-const knockout = () => state.league?.format === 'knockout';
+const formats = { round_robin: 'Girone unico di sola andata', knockout: 'Eliminazione diretta', knockout_legs: 'Eliminazione diretta · andata e ritorno', swiss: 'Torneo svizzero' };
+const knockout = () => ['knockout','knockout_legs'].includes(state.league?.format);
+const twoLegs = () => state.league?.format === 'knockout_legs';
 
 function roundLabel(round) {
   if (knockout()) {
-    const matches = state.fixtures.filter(fixture => fixture.round === round).length;
-    return ({ 1: 'Finale', 2: 'Semifinali', 4: 'Quarti', 8: 'Ottavi' })[matches] || `Turno dei ${matches * 2}`;
+    const previous = state.tournament.bracket[round-2];
+    const players = previous ? previous.series.length || previous.feeds.length : state.players.length;
+    if (players===2) return 'Finale';
+    if (players===4) return 'Semifinali';
+    if (players===8) return 'Quarti';
+    if (players===16) return 'Ottavi';
+    return `Turno a ${players}`;
   }
   return `${state.tournament ? 'Turno' : 'Giornata'} ${round}`;
 }
 
 function initialDrawFields(players) {
   if (!state.tournament) return '';
-  let size = players.length + players.length % 2;
-  if (knockout()) {
-    size = 2;
-    while (size < players.length) size *= 2;
-  }
-  const byes = size - players.length;
+  const byes = players.length % 2;
   const maxRounds = players.length - 1 + players.length % 2;
   const entrants = state.users.filter(user => players.includes(user.id)).sort((a,b) => a.name.localeCompare(b.name,'it'));
   return `${knockout() ? '' : `<label>Numero di turni<input type="number" name="rounds" min="1" max="${maxRounds}" value="${Math.min(3,maxRounds)}" required></label>`}
     ${byes ? `<fieldset class="tournament-options" data-max-byes="${byes}"><legend>Riposi del primo turno · ${byes}</legend>
-      <p>Scegli fino a ${byes} ${byes===1?'giocatore':'giocatori'}. I riposi rimasti saranno sorteggiati.</p>
+      <p>Scegli chi riposa o lascia che venga sorteggiato.</p>
       <div class="tournament-byes">${entrants.map(user => `<label><input type="checkbox" name="byes" value="${escapeHtml(user.id)}"> ${escapeHtml(user.name)}</label>`).join('')}</div>
     </fieldset>` : ''}`;
 }
@@ -161,7 +162,7 @@ function renderOverview(total, current) {
 
   if (next) {
     board.innerHTML = `
-      <div class="board-top"><h2 class="eyebrow">Prossimo incontro</h2><span>${roundLabel(next.round)}</span></div>
+      <div class="board-top"><h2 class="eyebrow">Prossimo incontro</h2><span>${roundLabel(next.round)}${twoLegs() ? (next.leg===2?' · Ritorno':' · Andata') : ''}</span></div>
       <div class="matchup"><strong>${playerLink(user.id)}</strong><span>vs</span><strong>${playerLink(next.a === user.id ? next.b : next.a)}</strong></div>
       <div class="board-bottom">
         <span>${next.awaiting ? 'Risultato da confermare' : 'Da giocare'}</span>
@@ -189,7 +190,8 @@ function renderStandings() {
   const matches = state.fixtures.filter(confirmed).map(fixture => ({
     a: fixture.a, b: fixture.b, ...fixture.result
   }));
-  const standings = state.tournament?.standings || rankStandings(entrants, matches);
+  const swiss = state.league.format==='swiss';
+  const standings = swiss ? state.tournament.standings : rankStandings(entrants, matches);
   if (!standings.length) {
     const empty = state.league.closed || state.league.paused ? 'Nessun iscritto.' : 'In attesa delle prime iscrizioni.';
     $('league-standings').innerHTML = `<p class="fine-print">${empty}</p>`;
@@ -197,29 +199,62 @@ function renderStandings() {
   }
   $('league-standings').innerHTML = `<table>
     <thead><tr><th scope="col">#</th><th scope="col">Giocatore</th>
-      <th scope="col"><abbr title="Partite giocate">PG</abbr></th>
+      <th scope="col">${swiss?'<abbr title="Vittorie, pareggi, sconfitte">V–P–S</abbr>':'<abbr title="Partite giocate">PG</abbr>'}</th>
       <th scope="col"><abbr title="Differenza punti vittoria">Diff.</abbr></th>
-      <th scope="col">Punti</th></tr></thead>
+      ${swiss?'':'<th scope="col">Punti</th>'}</tr></thead>
     <tbody>${standings.map(row => {
       const podium = matches.length && row.rank <= 3 ? ` podium podium-${row.rank}` : '';
       return `<tr class="${row.id === state.user.id ? 'you' : ''}${podium}">
-        <td class="placement"><span>${row.rank}</span></td><th scope="row">${playerLink(row.id)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}${row.byes ? ` <small>Riposi: ${row.byes}</small>` : ''}${playerArmy(row.id)}</th><td>${row.played}</td>
-        <td>${row.diff > 0 ? '+' : ''}${row.diff}</td><td>${row.points}</td></tr>`;
+        <td class="placement"><span>${row.rank}</span></td><th scope="row">${playerLink(row.id)}${row.id === state.user.id ? ' <small>Tu</small>' : ''}${playerArmy(row.id)}</th>
+        <td>${swiss?`${row.wins}–${row.draws}–${row.losses}`:row.played}</td>
+        <td>${row.diff > 0 ? '+' : ''}${row.diff}</td>${swiss?'':`<td>${row.points}</td>`}</tr>`;
     }).join('')}</tbody>
     </table>
-    <p class="fine-print">Vittoria 3 · Pareggio 1 · Sconfitta 0${state.tournament?' · Riposo 3':''}. A parità di punti conta la differenza punti vittoria.</p>`;
+    <p class="fine-print">${swiss?'Ordine per vittorie e poi pareggi. A parità di record conta la differenza punti vittoria.':'Vittoria 3 · Pareggio 1 · Sconfitta 0. A parità di punti conta la differenza punti vittoria.'}</p>`;
+}
+
+function bracketLinks(feeds, previousCount) {
+  const center=(slot,count)=>(slot+0.5)*1000/count;
+  return `<div class="bracket-links" aria-hidden="true"><svg viewBox="0 0 40 1000" preserveAspectRatio="none" focusable="false">
+    ${feeds.flatMap((sources,to)=>sources.map(from=>{
+      const start=center(from,previousCount),end=center(to,feeds.length);
+      return `<path d="M0 ${start} H20 V${end} H40" />`;
+    })).join('')}
+  </svg></div>`;
+}
+
+function bracketCard(series, feeds, round, slot, previous) {
+  const label=`<small class="bracket-match-label">Incontro ${slot+1}${twoLegs()&&series?.total?' · Totale':''}</small>`;
+  if(!series) return `<li class="bracket-card is-pending">
+    ${label}${feeds.map(source=>{
+      const prior=previous.series[source];
+      const qualifier=prior?.winner || (prior?.b===null ? prior.a : null);
+      return `<span>${qualifier?playerLink(qualifier):`Vincitore incontro ${source+1}`}</span>`;
+    }).join('')}
+    ${feeds.length===1?'<small>Passaggio automatico</small>':''}</li>`;
+  const entry=(id,index)=>`<span class="bracket-player${series.winner===id?' advances':''}">${playerLink(id)}${series.total?`<strong>${series.total[index]}</strong>`:''}</span>`;
+  const legs=series.b===null?'':series.ids.map((id,index)=>`<a href="#giornate" data-round="${round}" data-fixture="${id}">
+    ${twoLegs()?(index===0?'Andata':'Ritorno'):'Apri partita'}${twoLegs()&&series.scores[index]?` · ${series.scores[index].join('–')}`:''}</a>`).join('');
+  return `<li class="bracket-card">${label}${entry(series.a,0)}
+    ${series.b===null?'<small>Passaggio automatico</small>':entry(series.b,1)}
+    ${legs?`<span class="bracket-matches">${legs}</span>`:''}</li>`;
 }
 
 function renderBracket() {
-  const rounds = [...new Set(state.fixtures.map(fixture => fixture.round))];
-  const champion = state.tournament?.champion;
-  $('league-standings').innerHTML = rounds.length ? `${champion ? `<p class="bracket-winner">Vincitore · ${playerLink(champion)}</p>` : ''}
-    <div class="tournament-bracket">${rounds.map(round => `<section><h3>${roundLabel(round)}</h3><ol>
-      ${state.fixtures.filter(fixture => fixture.round===round).map(({a,b,result,winner}) => `<li>
-        ${playerLink(a)} ${b===null ? '<small>Passa il turno</small>' : `${result && !result.void ? `<strong>${result.scoreA} – ${result.scoreB}</strong>` : '<small>vs</small>'} ${playerLink(b)}`}
-        ${winner && b!==null ? `<small class="bracket-advance">${state.tournament.final && round===state.tournament.round ? 'Vince' : 'Passa'} ${player(winner)}</small>` : ''}
-      </li>`).join('')}
-    </ol></section>`).join('')}</div>` : '<p class="fine-print">Il tabellone sarà visibile dopo la chiusura delle iscrizioni.</p>';
+  const {bracket,champion}=state.tournament;
+  const results=$('league-standings');
+  const scroll=results.querySelector('.bracket-scroll')?.scrollLeft || 0;
+  const count=stage=>stage.series.length || stage.feeds.length;
+  results.innerHTML = bracket.length ? `${champion ? `<p class="bracket-winner">Vincitore · ${playerLink(champion)}</p>` : ''}
+    <div class="bracket-scroll" tabindex="0" role="region" aria-label="Tabellone dei turni, scorrimento orizzontale">
+    <div class="tournament-bracket">${bracket.map((stage,index)=>{
+      const {round,series,feeds}=stage;
+      return `${index?bracketLinks(feeds,count(bracket[index-1])):''}
+        <section class="bracket-stage"><h3>${roundLabel(round)}</h3><ol>
+          ${Array.from({length:count(stage)},(_,slot)=>bracketCard(series[slot],feeds[slot],round,slot,bracket[index-1])).join('')}
+        </ol></section>`;
+    }).join('')}</div></div>` : '<p class="fine-print">Il tabellone sarà visibile dopo la chiusura delle iscrizioni.</p>';
+  if(scroll) results.querySelector('.bracket-scroll').scrollLeft=scroll;
 }
 
 function rosterFormFields(signup=false) {
@@ -339,12 +374,13 @@ function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
     <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
   const status = fixture.result?.void ? 'Annullata' : state.league.closed ? 'Non disputata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
+  const leg = state.league.format==='knockout_legs' ? `<small>${fixture.leg===2?'Ritorno':'Andata'}</small>` : '';
   const contents = `<span class="pair"><strong>${playerLink(fixture.a)}${playerArmy(fixture.a)}</strong><span>vs</span><strong>${playerLink(fixture.b)}${playerArmy(fixture.b)}</strong></span>
-    <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
+    <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${leg}${score || status}</span>`;
   if (!playable(fixture)) {
-    return `<div class="fixture row bye"><span>${playerLink(fixture.a)}</span><span>${state.league.format==='knockout'?'Passa il turno':'Riposa'}</span></div>`;
+    return `<div class="fixture row bye"><span>${playerLink(fixture.a)}</span><span>${['knockout','knockout_legs'].includes(state.league.format)?'Passa il turno':'Riposa'}</span></div>`;
   }
-  if (!mine(fixture) && !fixture.listsReadable && !fixture.result?.photo) return `<div class="fixture row">${contents}</div>`;
+  if (!mine(fixture) && !fixture.listsReadable && !fixture.result?.photo) return `<div class="fixture row" data-fixture="${fixture.id}" tabindex="-1">${contents}</div>`;
   return `<details class="fixture" data-fixture="${fixture.id}"${fixture.id === openFixture ? ' open' : ''}>
     <summary class="row">${contents}<span class="expand" aria-hidden="true">+</span></summary>
     ${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}${photoPanel(fixture)}
@@ -419,6 +455,7 @@ function render() {
   }
   $('league-content').hidden = !state.league;
   if (state.league) {
+    if(knockout()) $('league-content').classList.add('bracket-layout');
     const standingsTitle = knockout() ? 'Tabellone' : 'Classifica';
     $('standings-heading').textContent = standingsTitle;
     $('tab-classifica').textContent = standingsTitle;
@@ -608,18 +645,21 @@ narrowLayout.addEventListener('change', () => selectLeagueTab(leagueView));
 function openLeagueFixture(id, round) {
   const fixture = $('round').querySelector(`[data-fixture="${id}"]`);
   if (!fixture) return;
-  fixture.open = true;
+  const summary=fixture.querySelector('summary');
+  if(summary)fixture.open = true;
   if (narrowLayout.matches) showLeagueView('giornate');
   goToRound(round);
-  fixture.querySelector('summary').focus();
+  (summary||fixture).focus();
 }
 
-$('season-board').addEventListener('click', event => {
+function openRoundLink(event) {
   const link = event.target.closest('[data-round]');
   if (!link) return;
   event.preventDefault();
   openLeagueFixture(link.dataset.fixture, Number(link.dataset.round));
-});
+}
+$('season-board').addEventListener('click',openRoundLink);
+$('league-standings').addEventListener('click',openRoundLink);
 
 $('round').addEventListener('click', async event => {
   const button = event.target.closest('[data-lineup]');

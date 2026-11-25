@@ -17,8 +17,8 @@ function rejects(callable $run, int $status): void {
 for($count=2;$count<=40;$count++) {
     $players=array_map(fn($index)=>'p'.$index,range(1,$count));
     $bracket=tournamentFirstRound('knockout',$players,[]);
-    $places=tournamentBracketSize($count);
-    check(count($bracket)===intdiv($places,2),'Wrong first knockout round size');
+    check(count($bracket)===intdiv($count+1,2),'Wrong first knockout round size');
+    check(count(array_filter($bracket,fn($f)=>$f['b']===null))===$count%2,'Wrong number of initial byes');
     $seen=[];
     foreach($bracket as $fixture) {
         $seen[]=$fixture['a'];
@@ -32,9 +32,9 @@ $players=['a','b','c','d','e'];
 rejects(fn()=>tournamentFirstRound('knockout',$players,['a','a']),422);
 rejects(fn()=>tournamentFirstRound('knockout',$players,['outsider']),422);
 rejects(fn()=>tournamentFirstRound('swiss',$players,['a','b']),422);
-$bracket=tournamentFirstRound('knockout',$players,['c','e']);
+$bracket=tournamentFirstRound('knockout',$players,['e']);
 $byes=array_column(array_filter($bracket,fn($fixture)=>$fixture['b']===null),'a');
-check(count($byes)===3 && in_array('c',$byes,true) && in_array('e',$byes,true),'Chosen and drawn byes must all be assigned');
+check($byes===['e'],'Only the chosen player should receive a bye');
 $league=['id'=>'knock','format'=>'knockout','start'=>'2026-11-25','closed'=>null,'paused'=>null,'finished'=>null];
 $db=['league'=>[$league],'league_fixtures'=>array_map(fn($f)=>$f+['league_id'=>'knock'],$bracket),'matches'=>[]];
 $active=&$db['league'][0];
@@ -43,18 +43,20 @@ $played=array_key_first(array_filter($db['league_fixtures'],fn($f)=>$f['b']!==nu
 $fixture=$db['league_fixtures'][$played];
 $db['league_fixtures'][$played]['match_id']='tie';
 $db['matches'][]=['id'=>'tie','void'=>false,'scoreA'=>55,'scoreB'=>55];
+$db['league_fixtures'][1]['match_id']='second';
+$db['matches'][]=['id'=>'second','void'=>false,'scoreA'=>60,'scoreB'=>40];
 rejects(fn()=>tournamentAdvance($db,$active,['round'=>1]),422);
 rejects(fn()=>tournamentAdvance($db,$active,['round'=>1,'winners'=>[$fixture['id']=>'outsider']]),422);
 tournamentAdvance($db,$active,['round'=>1,'winners'=>[$fixture['id']=>$fixture['b']]]);
 $semifinals=array_values(array_filter(tournamentFixtures($db,'knock'),fn($f)=>$f['round']===2));
-check(count($semifinals)===2,'Semifinals missing');
+check(count($semifinals)===2 && $semifinals[0]['b']===null && $semifinals[0]['a']!==$byes[0],'Three qualifiers require a single bye for a different player');
 $qualified=array_merge(array_column($semifinals,'a'),array_column($semifinals,'b'));
 check(in_array($fixture['b'],$qualified,true) && !in_array($fixture['a'],$qualified,true),'Tiebreak not used for advancement');
 check($db['matches'][0]['scoreA']===55 && $db['matches'][0]['scoreB']===55,'Tiebreak must preserve the played score');
 check(isset(leagueMatchLocks($db)['tie']),'The preceding round must be locked');
 rejects(fn()=>tournamentAdvance($db,$active,['round'=>1]),409);
 for($round=2;$round<=3;$round++) {
-    foreach($db['league_fixtures'] as &$f) if($f['round']===$round) {
+    foreach($db['league_fixtures'] as &$f) if($f['round']===$round && $f['b']!==null) {
         $f['match_id']='match-'.$f['id'];
         $db['matches'][]=['id'=>$f['match_id'],'void'=>false,'scoreA'=>10,'scoreB'=>20];
     }
@@ -63,6 +65,23 @@ for($round=2;$round<=3;$round++) {
 }
 $final=array_values(array_filter(tournamentFixtures($db,'knock'),fn($f)=>$f['round']===3))[0];
 check($active['finished']!==null && $active['closed']!==null && $final['winner']===$final['b'],'Final winner and closure must persist');
+
+$draw=tournamentFirstRound('knockout_legs',['a','b','c'],['c']);
+check(count($draw)===3 && $draw[0]['leg']===1 && $draw[1]['leg']===2 && $draw[1]['a']===$draw[0]['b'],'Two legs must reverse seats and share a slot');
+check($draw[2]['b']===null && $draw[2]['leg']===1,'A bye does not have a return leg');
+$legLeague=['id'=>'legs','format'=>'knockout_legs','start'=>'2026-11-25','closed'=>null,'paused'=>null,'finished'=>null];
+$legDb=['league_fixtures'=>array_map(fn($f)=>$f+['league_id'=>'legs'],$draw),'matches'=>[['id'=>'out','void'=>false,'scoreA'=>60,'scoreB'=>50]]];
+$legDb['league_fixtures'][0]['match_id']='out';
+rejects(fn()=>tournamentAdvance($legDb,$legLeague,['round'=>1]),409);
+$legDb['league_fixtures'][1]['match_id']='return';
+$legDb['matches'][]=['id'=>'return','void'=>false,'scoreA'=>60,'scoreB'=>50];
+rejects(fn()=>tournamentAdvance($legDb,$legLeague,['round'=>1]),422);
+$legDb['matches'][1]['scoreA']=55;
+$draw=tournamentFixtures($legDb,'legs');
+$view=tournamentBracket($draw,array_column($legDb['matches'],null,'id'));
+check($view[0]['series'][0]['total']===[110,105] && $view[1]['feeds']===[[0,1]],'Bracket totals and connections must match the draw');
+tournamentAdvance($legDb,$legLeague,['round'=>1]);
+check($legDb['league_fixtures'][0]['winner']==='a' && $legDb['league_fixtures'][1]['winner']==='a','Advance the aggregate winner, not the last result');
 
 $fixtures=tournamentFirstRound('swiss',$players,['e']);
 $swissByes=array_values(array_filter($fixtures,fn($f)=>$f['b']===null));
@@ -86,7 +105,14 @@ for($round=1;$round<=3;$round++) {
     unset($f);
     $standings=tournamentSwissStandings($players,$fixtures,$matches);
     $bye=array_column($standings,null,'id')['e'];
-    if($round===1) check($bye['points']===3 && $bye['played']===0 && $bye['diff']===0,'Swiss bye affects only tournament points');
+    if($round===1) check($bye['wins']===0 && $bye['draws']===0 && $bye['losses']===0 && $bye['diff']===0 && !isset($bye['points']),'Swiss byes do not affect the competitive record');
     if($round<3) array_push($fixtures,...tournamentSwissRound($round+1,$standings,$fixtures));
 }
+$ranked=tournamentSwissStandings(['a','b','c','d'],[
+    ['a'=>'a','b'=>'b','match_id'=>'large'],['a'=>'c','b'=>'d','match_id'=>'small']
+],[
+    'large'=>['void'=>false,'scoreA'=>50,'scoreB'=>30],
+    'small'=>['void'=>false,'scoreA'=>40,'scoreB'=>30]
+]);
+check(array_column($ranked,'id')===['a','c','d','b'],'Point differential must break a tie on the match record');
 echo "Tournament model passed\n";
