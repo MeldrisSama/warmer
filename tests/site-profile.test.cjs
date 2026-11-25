@@ -34,6 +34,15 @@ test('The header opens Profile through an icon, logout stays inside it, and List
   assert.match(account,/class="account-profile-link"/);assert.match(account,/<svg/);assert.match(account,/href="#profilo"/);assert.doesNotMatch(account,/id="logout"/);assert.doesNotMatch(nav,/#liste|>Liste</);assert.match(nav,/#builder/);
 });
 
+test('Home exposes the match action and keeps the builder under tools',()=>{
+  const c=context();c.location.hash='#home';vm.runInContext('render()',c);
+  const nav=c.nodes.get('#nav').innerHTML;
+  assert.match(c.mainNode.innerHTML,/href="#partita"[^>]*>\+ Nuova partita/);
+  assert.match(nav,/<summary[^>]*>Strumenti<\/summary>/);
+  assert.match(nav,/<div class="nav-tools-menu"><a href="#builder"/);
+  assert.doesNotMatch(nav,/href="#partita"/);
+});
+
 test('Old Lists links open the builder and keep its navigation active',()=>{
   const c=context();let opened=false;c.builderPage=()=>{opened=true;};c.location.hash='#liste';
   vm.runInContext(`render();`,c);assert.equal(opened,true);assert.equal(c.location.hash,'#builder');assert.match(c.nodes.get('#nav').innerHTML,/href="#builder"[^>]*aria-current="page"/);
@@ -78,11 +87,11 @@ test('Profile and match text remain escaped',()=>{
   const c=context();vm.runInContext(`state.user.name='<img src=x onerror=alert(1)>';state.account.email='<verified@example.test>';profilePage();`,c);assert.doesNotMatch(c.mainNode.innerHTML,/<img src=x/);assert.match(c.mainNode.innerHTML,/&lt;verified@example\.test&gt;/);
 });
 
-test('Standings have no per-player Lists button and a completed match opens its own lists',()=>{
-  const c=context();c.rankStandings=()=>[{id:'owner',name:'Player',rank:1,played:1,w:1,d:0,l:0,diff:10,points:3}];
-  vm.runInContext(`state.lists=[{id:'legacy',owner:'owner',name:'Legacy'}];standings();`,c);
+test('Player directory has no per-player Lists button and a completed match opens its own lists',()=>{
+  const c=context();
+  vm.runInContext(`state.lists=[{id:'legacy',owner:'owner',name:'Legacy'}];playersPage();`,c);
   assert.doesNotMatch(c.mainNode.innerHTML,/data-player-lists=/);
-  vm.runInContext(`state.readableLists=[{player:'owner',match:'confirmed',title:'League',url:'api.php?action=leagueDownload'}];standings();`,c);
+  vm.runInContext(`state.readableLists=[{player:'owner',match:'confirmed',title:'League',url:'api.php?action=leagueDownload'}];playersPage();`,c);
   assert.doesNotMatch(c.mainNode.innerHTML,/data-player-lists=/);
   c.match={id:'confirmed',a:'owner',b:'other',by:'owner',date:'2026-11-19',scoreA:90,scoreB:80,leagueLocked:true};
   assert.match(vm.runInContext('recentMatchRow(match)',c),/data-match-lists="confirmed"/);
