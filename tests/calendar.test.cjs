@@ -49,17 +49,37 @@ test('Calendario: filtri, posti liberi, date di campionato ed escaping',async()=
   assert.match(nodes.get('#calendar-unscheduled').innerHTML,/data-calendar-proposal="calendarApprove"/);
   assert.doesNotMatch(nodes.get('#calendar-agenda').innerHTML,/data-calendar-edit="league-event"/);
 });
-test('La pagina del campionato propone la data prima delle liste e distingue chi deve approvare',async()=>{
+test('La pagina del campionato propone la data prima dei punti anche senza liste e distingue chi deve approvare',async()=>{
   const source=await fs.readFile(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
   const context=vm.createContext({state:{user:{id:'alice'},league:{},today:'2026-11-25'},mine:()=>true,
-    player:id=>id,escapeHtml:String,formatDate:String,action:(name,label)=>'<button value="'+name+'">'+label+'</button>'});
+    player:id=>id,playerLink:id=>id,escapeHtml:String,formatDate:String,action:(name,label)=>'<button value="'+name+'">'+label+'</button>'});
   vm.runInContext(source.slice(source.indexOf('function schedulePanel('),source.indexOf('function listPanel(')),context);
   const f={a:'alice',b:'bob',scheduleProposal:{version:1,pending:{by:'alice',event:{date:'2026-12-01',time:'20:00'}}}};
   let html=context.schedulePanel(f);
   assert.match(html,/calendarWithdraw/);assert.doesNotMatch(html,/value="calendarApprove"/);
   context.state.user.id='bob';html=context.schedulePanel(f);
   assert.match(html,/calendarApprove/);assert.match(html,/calendarReject/);assert.doesNotMatch(html,/calendarWithdraw/);
-  assert.ok(source.indexOf('${schedulePanel(fixture)}')<source.indexOf('${listPanel(fixture)}'));
+  vm.runInContext(source.slice(source.indexOf('function resultPanel('),source.indexOf('function photoPanel(')),context);
+  const editable={a:'alice',b:'bob',lineups:{mine:false,opponent:false},scheduleProposal:{version:0,pending:null}};
+  html=context.resultPanel(editable);
+  assert.match(html,/Data futura proposta/);
+  assert.match(html,/Data effettiva della partita/);
+  assert.equal((html.match(/fixture-schedule"/g)||[]).length,1);
+  assert.ok(html.indexOf('Data futura proposta')<html.indexOf('name="scoreA"'));
+  context.state.rosters={settings:{rosterLimit:3000}};
+  html=context.resultPanel(editable);
+  assert.match(html,/Data futura proposta/);
+  assert.doesNotMatch(html,/name="scoreA"/);
+});
+test('Programma data apre l’incontro e porta il focus alla data futura',async()=>{
+  const source=await fs.readFile(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
+  let handler,opened,focused=false,prevented=false;
+  const context=vm.createContext({$:()=>({addEventListener:(_event,listener)=>handler=listener}),
+    state:{fixtures:[{id:'fixture',round:2}]},openLeagueFixture:(id,round)=>opened=[id,round]});
+  vm.runInContext(source.slice(source.indexOf("$('round').addEventListener('click'"),source.indexOf("$('lineup-close').addEventListener")),context);
+  const button={dataset:{scheduleFixture:'fixture'},closest:()=>({querySelector:()=>({focus:()=>focused=true})})};
+  await handler({target:{closest:()=>button},preventDefault:()=>prevented=true});
+  assert.deepEqual(opened,['fixture',2]);assert.equal(focused,true);assert.equal(prevented,true);
 });
 test('Calendario API con sessioni reali e SQLite isolato via CGI',{timeout:60000},async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'warmer-calendar-'));

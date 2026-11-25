@@ -190,13 +190,13 @@ function schedulePanel(fixture) {
   const schedule=fixture.schedule,proposal=fixture.scheduleProposal||{version:0,pending:null};
   const pending=proposal.pending,own=pending?.by===state.user.id;
   const active=schedule&&!schedule.cancelled;
-  return '<div class="fixture-block fixture-schedule"><h3>Quando giochiamo?</h3>'+
+  return '<div class="fixture-block fixture-schedule"><h3>Programma la partita</h3>'+
     (active?'<p>Data concordata: <strong>'+escapeHtml(formatDate(schedule.date))+(schedule.time?' · '+escapeHtml(schedule.time):'')+'</strong> · <a href="index.php#calendario">Apri calendario</a></p>':'<p>Concorda la data prima di preparare le liste. Non è necessario averle già consegnate.</p>')+
     (pending?'<p><strong>Proposta di '+player(pending.by)+': '+escapeHtml(formatDate(pending.event.date))+(pending.event.time?' · '+escapeHtml(pending.event.time):'')+'</strong></p><p>La data comparirà nel calendario dopo l’approvazione dell’altro giocatore.</p>'+
       '<form class="action-row"><input type="hidden" name="proposalVersion" value="'+proposal.version+'">'+
       (own?action('calendarWithdraw','Ritira proposta','secondary'):action('calendarApprove','Approva data')+action('calendarReject','Rifiuta data','secondary'))+'</form>':'')+
     (!pending||own?'<form class="schedule-form"><input type="hidden" name="id" value="'+escapeHtml(schedule?.id||'')+'"><input type="hidden" name="version" value="'+(schedule?.version||0)+'"><input type="hidden" name="proposalVersion" value="'+proposal.version+'">'+
-      '<label>Data proposta<input type="date" name="date" min="'+state.today+'" max="2100-12-31" value="'+escapeHtml(pending?.event.date||schedule?.date||state.today)+'" required></label>'+
+      '<label>Data futura proposta<input type="date" name="date" min="'+state.today+'" max="2100-12-31" value="'+escapeHtml(pending?.event.date||schedule?.date||state.today)+'" required></label>'+
       '<label>Orario italiano (facoltativo)<input type="time" name="time" value="'+escapeHtml(pending?.event.time||schedule?.time||'')+'"></label>'+
       action('calendarSave',pending?'Aggiorna proposta':'Proponi data','secondary')+'</form>':'')+'</div>';
 }
@@ -231,6 +231,7 @@ function listPanel(fixture) {
 }
 
 function resultPanel(fixture) {
+  const schedule=schedulePanel(fixture);
   if (fixture.result) {
     return `<div class="fixture-block"><h3>Risultato</h3>
       <p>${fixture.result.void ? 'Partita annullata' : 'Risultato confermato'} · ${formatDate(fixture.result.date)}
@@ -240,7 +241,7 @@ function resultPanel(fixture) {
   if (fixture.pending) {
     const { by, scoreA, scoreB, date, mission, token } = fixture.pending;
     const own = by === state.user.id;
-    return `<div class="fixture-block"><h3>Risultato da confermare</h3>
+    return `${schedule}<div class="fixture-block"><h3>Risultato da confermare</h3>
       <p>${playerLink(fixture.a)} <strong>${scoreA} – ${scoreB}</strong> ${playerLink(fixture.b)} · ${formatDate(date)}
       ${mission ? ` · ${escapeHtml(mission)}` : ''}</p>
         <p>${state.league.paused ? 'La proposta resta in attesa fino alla ripresa.'
@@ -252,12 +253,12 @@ function resultPanel(fixture) {
         </form>`}</div>`;
   }
   if (state.league.paused) return '<div class="fixture-block"><p>Potrai proporre un risultato alla ripresa del campionato.</p></div>';
-  if(state.rosters?.settings&&(!fixture.lineups?.mine||!fixture.lineups?.opponent))return '<div class="fixture-block"><h3>Risultato</h3><p>Consegnate entrambe le liste verificate prima di proporre il risultato.</p></div>';
-  return `<div class="fixture-block"><h3>Proponi il risultato</h3>
+  if(state.rosters?.settings&&(!fixture.lineups?.mine||!fixture.lineups?.opponent))return schedule+'<div class="fixture-block"><h3>Risultato</h3><p>Consegnate entrambe le liste verificate prima di proporre il risultato.</p></div>';
+  return `${schedule}<div class="fixture-block"><h3>Registra la partita disputata</h3>
     <form class="result-form">
       <div>${playerLink(fixture.a)}<label>Punti<input type="number" name="scoreA" aria-label="Punti di ${player(fixture.a)}" min="0" max="100" required></label></div>
       <div>${playerLink(fixture.b)}<label>Punti<input type="number" name="scoreB" aria-label="Punti di ${player(fixture.b)}" min="0" max="100" required></label></div>
-      <label>Data della partita<input type="date" name="date" max="${state.today}" value="${state.today}" required></label>
+      <label>Data effettiva della partita<input type="date" name="date" max="${state.today}" value="${state.today}" required></label>
       <label>Missione (facoltativa)<input name="mission" maxlength="120"></label>
       <p>L’avversario dovrà confermare il risultato.</p>
       ${action('leaguePropose', 'Invia il risultato')}
@@ -286,15 +287,16 @@ function fixtureRow(fixture) {
   const score = confirmed(fixture) ? `<strong>${fixture.result.scoreA} – ${fixture.result.scoreB}</strong>
     <time datetime="${fixture.result.date}">${formatDate(fixture.result.date)}</time>` : '';
   const status = fixture.result?.void ? 'Annullata' : state.league.closed ? 'Non disputata' : fixture.awaiting ? 'Da confermare' : 'Da giocare';
+  const canSchedule=mine(fixture)&&!fixture.result&&!state.league.closed&&!state.league.paused;
   const contents = `<span class="pair"><strong>${playerLink(fixture.a)}${playerArmy(fixture.a)}</strong><span>vs</span><strong>${playerLink(fixture.b)}${playerArmy(fixture.b)}</strong></span>
-    <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}</span>`;
+    <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${score || status}${canSchedule?'<button type="button" class="secondary fixture-schedule-shortcut" data-schedule-fixture="'+fixture.id+'">Programma data</button>':''}</span>`;
   if (!playable(fixture)) {
     return `<div class="fixture row bye"><span>${playerLink(fixture.a)}</span><span>Riposa</span></div>`;
   }
   if (!mine(fixture) && !fixture.listsReadable && !fixture.result?.photo) return `<div class="fixture row">${contents}</div>`;
   return `<details class="fixture" data-fixture="${fixture.id}"${fixture.id === openFixture ? ' open' : ''}>
     <summary class="row">${contents}<span class="expand" aria-hidden="true">+</span></summary>
-    ${schedulePanel(fixture)}${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}${photoPanel(fixture)}
+    ${listPanel(fixture)}${mine(fixture)?resultPanel(fixture):''}${photoPanel(fixture)}
   </details>`;
 }
 
@@ -536,6 +538,15 @@ $('season-board').addEventListener('click', event => {
 });
 
 $('round').addEventListener('click', async event => {
+  const scheduleButton=event.target.closest('[data-schedule-fixture]');
+  if(scheduleButton?.dataset.scheduleFixture){
+    event.preventDefault();
+    const fixture=state.fixtures.find(item=>item.id===scheduleButton.dataset.scheduleFixture);
+    if(!fixture)return;
+    openLeagueFixture(fixture.id,fixture.round);
+    scheduleButton.closest('[data-fixture]')?.querySelector('.fixture-schedule input[type="date"], .fixture-schedule button')?.focus();
+    return;
+  }
   const button = event.target.closest('[data-lineup]');
   if (!button) return;
   const fixture = button.closest('[data-fixture]').dataset.fixture;
