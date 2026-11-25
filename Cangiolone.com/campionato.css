@@ -260,6 +260,7 @@ details.fixture > summary:hover, details[open] > summary { background-color: var
 .fixture-status strong { display: inline-block; color: var(--gold-light); font: 600 1rem/1.3 var(--mono); white-space: nowrap; }
 .fixture-status time { display: block; margin-top: 3px; font-size: .75rem; }
 .fixture-status.pending { color: var(--gold-light); }
+.fixture-schedule-shortcut { display: block; margin: 8px 0 0 auto; padding: 7px 9px; font-size: .75rem; white-space: normal; }
 .bye { font-style: italic; }
 .expand { position: absolute; right: 9px; color: var(--gold-light); font: 400 1.2rem/1 var(--mono); transition: transform .17s ease; }
 details[open] .expand { transform: rotate(45deg); }
