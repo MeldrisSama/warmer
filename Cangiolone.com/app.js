@@ -227,7 +227,7 @@ async function refresh(){
 
 function page(){
 
-  return location.hash.slice(1).split('?')[0]||'classifica';
+  return location.hash.slice(1).split('?')[0]||'home';
 
 }
 
@@ -296,7 +296,9 @@ function render(){
 
   nav.innerHTML=[
 
-    ['classifica','Classifica'],
+    ['home','Home'],
+    ['giocatori','Giocatori'],
+    ['storico','Partite'],
     ['campionati','Campionati'],
     ['partita','Nuova partita'],
 
@@ -346,13 +348,17 @@ function render(){
     emailAccountPage(p);
   }else if(p==='campionati'){
     leaguesPage();
+  }else if(p==='giocatori'){
+    playersPage();
+  }else if(p==='storico'){
+    matchHistoryPage();
   }else if(p==='inviti'&&state.user.admin){
 
     invitePage();
 
   }else{
 
-    standings();
+    homePage();
 
   }
 
@@ -376,7 +382,7 @@ function emailAccountPage(route){
       ${fields}
       <button class="primary" type="submit">${title}</button>
     </form>
-    <p class="actions"><a href="#classifica">Torna a Cronache del settore</a></p>
+    <p class="actions"><a href="#home">Torna a Cronache del settore</a></p>
   </section>`;
   bindForm('email-account-form',async form=>{
     const data=Object.fromEntries(new FormData(form));
@@ -386,7 +392,7 @@ function emailAccountPage(route){
       notify('Se l’indirizzo è associato a un account, riceverai un link per reimpostare la password.');
       return;
     }
-    location.hash=action==='emailVerify'&&state.user?'profilo':'classifica';
+    location.hash=action==='emailVerify'&&state.user?'profilo':'home';
     await refresh();
     notify(action==='emailVerify'?'Indirizzo email verificato.':'Password aggiornata. Accedi con quella nuova.');
   });
@@ -483,7 +489,7 @@ function openProfilePhoto(trigger){
 function publicProfilePage(id){
   const player=state.users.find(user=>user.id===id);
   if(!player){
-    main.innerHTML='<section class="panel profile-page"><h1>Giocatore non trovato</h1><p><a href="#classifica">Torna alla classifica</a></p></section>';
+    main.innerHTML='<section class="panel profile-page"><h1>Giocatore non trovato</h1><p><a href="#giocatori">Torna ai giocatori</a></p></section>';
     return;
   }
   main.innerHTML=`<section class="panel profile-page">
@@ -570,7 +576,7 @@ function recentMatchRow(match){
   const photo=match.photo?`<button class="small-button" data-photo="${esc(match.photo)}" type="button" aria-label="Vedi foto della partita tra ${esc(name(match.a))} e ${esc(name(match.b))}">Foto</button>`:'<span class="muted" aria-label="Nessuna foto">—</span>';
   const canChange=!match.leagueLocked&&(state.user.admin||match.by===state.user.id);
   const lists=(state.readableLists||[]).some(list=>list.match===match.id)?`<button class="small-button" type="button" data-match-lists="${esc(match.id)}">Liste</button>`:'';
-  return `<tr class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${playerLink(match.a)}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${playerLink(match.b)}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${lists}${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
+  return `<tr data-match-id="${esc(match.id)}" class="${match.void?'cancelled':''}"><td>${dateLabel(match.date)}</td><td>${playerLink(match.a)}</td><td><strong class="result">${match.scoreA} – ${match.scoreB}</strong>${match.void?'<br><small>Annullata</small>':''}</td><td>${playerLink(match.b)}</td><td>${esc(match.mission||'—')}</td><td class="match-photo">${photo}</td><td><div class="match-actions">${lists}${canChange?`<button class="small-button" data-void="${esc(match.id)}" data-value="${!match.void}" type="button">${match.void?'Ripristina':'Annulla'}</button>`:''}</div></td></tr>`;
 }
 
 
@@ -628,7 +634,7 @@ function auth(){
 
               ? (emailInvite?'Crea il tuo account con l’indirizzo a cui è stato inviato l’invito.':'Crea il tuo account personale con il codice ricevuto da un amico.')
 
-              : 'Accedi per consultare la classifica, registrare le battaglie e condividere le tue liste.'
+              : 'Accedi per consultare le partite, registrare le battaglie e condividere le tue liste.'
 
         }
 
@@ -852,7 +858,7 @@ function auth(){
 
             <div class="actions">
 
-              <a href="#${register?'classifica':'registrati'}">
+              <a href="#${register?'home':'registrati'}">
 
                 ${
 
@@ -911,7 +917,7 @@ function auth(){
 
 
 
-      history.replaceState(history.state,'',response.mailFailed?'#profilo':'#classifica');
+      history.replaceState(history.state,'',response.mailFailed?'#profilo':'#home');
       await refresh();
       if(response.mailFailed) {
         notify('Account creato. Invio non riuscito, puoi richiedere un nuovo link dal Profilo.',true);
@@ -1057,266 +1063,47 @@ function leaguesPage(){
   </section>`;
 }
 
-function standings(){
-  const rows=rankStandings(state.users,state.matches);
+function playersPage(){
+  const users=[...state.users].sort((a,b)=>a.name.localeCompare(b.name,'it',{sensitivity:'base'}));
+  const played=new Map(state.users.map(user=>[user.id,0]));
+  for(const match of state.matches.filter(match=>!match.void)){
+    played.set(match.a,(played.get(match.a)||0)+1);
+    played.set(match.b,(played.get(match.b)||0)+1);
+  }
+  main.innerHTML=`<section class="panel players-page"><div class="heading"><h1>Giocatori</h1>${state.user.admin?'<a class="button primary" href="#inviti">+ Giocatore</a>':''}</div>
+    <p class="intro">Tutti i giocatori del settore, in ordine alfabetico.</p>
+    ${users.length?`<ul class="player-directory">${users.map(user=>`<li><span class="profile-symbol">${profileImage(user)}</span><div>${playerLink(user.id)}<small>${played.get(user.id)} ${played.get(user.id)===1?'partita giocata':'partite giocate'}</small></div></li>`).join('')}</ul>`:empty('battle','Nessun giocatore','I giocatori compariranno qui dopo la registrazione.')}
+  </section>`;
+}
 
+function homePage(){
+  const matches=[...state.matches].filter(match=>!match.void).sort((a,b)=>b.date.localeCompare(a.date)||b.created.localeCompare(a.created)).slice(0,5);
+  main.innerHTML=`${leagueBanner()}<div id="next-fixture"></div><section class="panel"><div class="heading"><h1>Ultime dal settore</h1><a href="#storico">Tutte le partite</a></div>
+    <h2>Ultimi risultati</h2>${matches.length?`<ul class="recent-results">${matches.map(match=>`<li><span class="muted">${dateLabel(match.date)}</span><span>${playerLink(match.a)} <strong>${match.scoreA} – ${match.scoreB}</strong> ${playerLink(match.b)}</span><small>${esc(match.leagueId?state.leagues.find(league=>league.id===match.leagueId)?.name||'Campionato':'Partita libera')}</small></li>`).join('')}</ul>`:empty('battle','Nessuna partita disputata','Le ultime battaglie appariranno qui.')}
+  </section>`;
+  const league=state.leagues.find(item=>item.joined&&item.start&&!item.closed&&!item.paused);
+  if(!league)return;
+  const target=main.querySelector('#next-fixture');
+  networkApi('league&id='+encodeURIComponent(league.id)).then(data=>{
+    if(page()!=='home'||!target.isConnected)return;
+    const fixture=data.fixtures.find(item=>item.lineups!==null&&!item.result);
+    if(!fixture)return;
+    const other=fixture.a===state.user.id?fixture.b:fixture.a;
+    target.innerHTML=`<section class="panel next-fixture"><h2>La tua prossima partita</h2><p>${playerLink(state.user.id)} contro ${playerLink(other)} · Giornata ${fixture.round}</p><a class="button primary" href="${esc(leagueLink(league))}#giornate">${fixture.pending&&fixture.pending.by!==state.user.id?'Conferma il risultato':fixture.lineups&&!fixture.lineups.mine?'Consegna la lista':'Apri l’incontro'}</a></section>`;
+  }).catch(()=>{});
+}
 
+function matchHistoryPage(){
   main.innerHTML=`
-
-    ${leagueBanner()}
-    <section class="panel standings">
-
-
-
-      <div class="heading">
-
-
-
-        <h1>Classifica</h1>
-
-
-
-        ${
-
-          state.user.admin
-
-            ? '<button id="invite" class="primary">+ Giocatore</button>'
-
-            : ''
-
-        }
-
-
-
-      </div>
-
-
-
-      <div class="table-scroll">
-
-
-
-        <table>
-
-
-
-          <thead>
-
-            <tr>
-
-              <th>#</th>
-
-              <th>Giocatore</th>
-
-
-
-              <th class="number">
-
-                <abbr title="Partite giocate">PG</abbr>
-
-              </th>
-
-
-
-              <th class="number">
-
-                <abbr title="Vittorie">V</abbr>
-
-              </th>
-
-
-
-              <th class="number">
-
-                <abbr title="Pareggi">P</abbr>
-
-              </th>
-
-
-
-              <th class="number">
-
-                <abbr title="Sconfitte">S</abbr>
-
-              </th>
-
-
-
-              <th class="number">Diff.</th>
-
-              <th class="number">Punti</th>
-
-            </tr>
-
-          </thead>
-
-
-
-          <tbody>
-
-
-
-            ${
-
-              rows.map(
-
-                u=>{
-                  return `
-
-                    <tr>
-
-
-
-                      <td class="muted">
-
-                        ${u.rank}
-                      </td>
-
-
-
-                      <td>
-
-                        ${u.avatar?'<img class="standings-avatar" src="'+esc(u.avatar)+'" width="28" height="28" alt="" loading="lazy">':''}${playerLink(u.id)}
-
-                        ${
-
-                          u.id===state.user.id
-
-                            ? ' <small>(tu)</small>'
-
-                            : ''
-
-                        }
-
-                      </td>
-
-
-
-                      <td class="number">
-
-                        ${u.played}
-
-                      </td>
-
-
-
-                      <td class="number">
-
-                        ${u.w}
-
-                      </td>
-
-
-
-                      <td class="number">
-
-                        ${u.d}
-
-                      </td>
-
-
-
-                      <td class="number">
-
-                        ${u.l}
-
-                      </td>
-
-
-
-                      <td class="number">
-
-                        ${u.diff>0?'+':''}${u.diff}
-
-                      </td>
-
-
-
-                      <td class="number points">
-
-                        ${u.points}
-
-                      </td>
-
-
-
-                    </tr>
-
-                  `;
-
-                }
-
-              ).join('')
-
-            }
-
-
-
-          </tbody>
-
-
-
-        </table>
-
-
-
-        ${
-
-          !rows.length
-
-            ? empty(
-
-                'trophy',
-
-                'La campagna deve ancora iniziare.',
-
-                'Invita i giocatori e registra la prima partita per vedere la classifica.'
-
-              )
-
-            : ''
-
-        }
-
-
-
-      </div>
-
-
-
-      <div class="rules">
-
-
-
-        <span>
-
-          Vittoria 3 · Pareggio 1 · Sconfitta 0
-
-        </span>
-
-
-
-        <span>
-
-          A parità di punti: differenza punti vittoria
-
-        </span>
-
-
-
-      </div>
-
-
-
-    </section>
-
-
-
     <section class="panel">
+      <div class="heading"><h1>Tutte le partite</h1><a href="#home">Torna alla home</a></div>
+      <label class="field history-filter">Filtra le partite
+        <select id="history-type"><option value="all">Tutte</option><option value="free">Partite libere</option>${state.leagues.map(league=>`<option value="${esc(league.id)}">${esc(league.name)}</option>`).join('')}</select>
+      </label>
 
 
 
-      <h2>Ultime partite</h2>
+      <h2>Storico risultati</h2>
 
 
 
@@ -1424,6 +1211,11 @@ function standings(){
 
 
 
+  const historyRows=[...main.querySelectorAll('tbody tr')];
+  main.querySelector('#history-type').onchange=event=>{
+    const filter=event.target.value;
+    for(const row of historyRows){const match=state.matches.find(item=>item.id===row.dataset.matchId);if(match)row.hidden=filter!=='all'&&(filter==='free'?!!match.leagueId:match.leagueId!==filter);}
+  };
   document.querySelectorAll('[data-match-lists]').forEach(button=>button.onclick=()=>openArmyLists((state.readableLists||[]).filter(list=>list.match===button.dataset.matchLists),'Liste della partita'));
 
   document
@@ -2034,7 +1826,7 @@ function matchPage(){
 
 
 
-      location.hash='classifica';
+      location.hash='home';
 
 
 
@@ -2127,9 +1919,9 @@ function invitePage(){
 
       <div class="actions">
 
-        <a href="#classifica">
+        <a href="#home">
 
-          Torna alla classifica
+          Torna ai giocatori
 
         </a>
 
