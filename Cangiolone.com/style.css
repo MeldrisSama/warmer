@@ -139,3 +139,12 @@
 .nav-tools-menu a{display:block;padding:10px 12px;text-decoration:none;white-space:nowrap}
 .nav-tools-menu a:hover,.nav-tools-menu a.active{background:var(--input)}
 @media(max-width:650px){#nav{justify-content:space-between;gap:0 4px}#nav>a{font-size:13px;padding:12px 5px}.nav-tools{width:100%;margin-left:0;border-top:1px solid var(--line)}.nav-tools summary{font-size:13px;padding:7px 5px}.nav-tools-menu{position:static;box-shadow:none;border:0;border-top:1px solid var(--line);padding:0 0 6px}.home-actions{justify-content:stretch}.home-new-match{width:100%}}
+
+.calendar-filters{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin:1.5rem 0}
+.calendar-filters .field{flex:1 1 200px;min-width:0}
+.calendar-signup,.calendar-fixtures li{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;padding:1rem 0;border-bottom:1px solid currentColor}
+.calendar-signup h3,.calendar-signup p,.calendar-fixtures p{margin:.3rem 0;overflow-wrap:anywhere}
+.calendar-fixtures{list-style:none;padding:0}
+.calendar-fixtures li>div{flex:1 1 200px;min-width:0}
+.calendar-league{margin-top:2rem}
+.calendar-page h3{overflow-wrap:anywhere}
