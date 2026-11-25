@@ -102,7 +102,7 @@ test('League observers can read revealed lists without receiving participant con
   const source=fs.readFileSync(path.join(__dirname,'../Cangiolone.com/campionato.js'),'utf8');
   const c=vm.createContext({state:{user:{id:'observer'},users:[{id:'a',name:'a'},{id:'b',name:'b'}],league:{}},mine:f=>f.lineups!==null,escapeHtml:s=>s,confirmed:()=>false,playable:()=>true,playerArmy:()=>'',openFixture:null});
   vm.runInContext(source.slice(source.indexOf('const player ='),source.indexOf('};',source.indexOf('const playerLink ='))+2),c);
-  vm.runInContext(source.slice(source.indexOf('function listPanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function photoPanel('),source.indexOf('function renderRounds(')),c);
+  vm.runInContext(source.slice(source.indexOf('function schedulePanel('),source.indexOf('function resultPanel('))+source.slice(source.indexOf('function photoPanel('),source.indexOf('function renderRounds(')),c);
   c.fixture={id:'fixture',a:'one',b:'two',lineups:null,listsReadable:true};
   let html=vm.runInContext('fixtureRow(fixture)',c);assert.match(html,/data-lineup="one"/);assert.match(html,/data-lineup="two"/);assert.doesNotMatch(html,/<form|leaguePropose|leagueConfirm/);
   c.fixture.listsReadable=false;html=vm.runInContext('fixtureRow(fixture)',c);assert.doesNotMatch(html,/data-lineup|<details/);
@@ -144,3 +144,4 @@ test('Profile photo controls, compression and removal preserve existing account 
 });
 
 test('Crop geometry keeps the square covered at every zoom and drag offset',()=>{const c=context();for(const [w,h] of [[800,600],[300,900],[256,256]])for(const zoom of [1,2,4]){const box=c.profileCropBounds({naturalWidth:w,naturalHeight:h},{zoom,x:9999,y:-9999});assert.ok(box.width>=256&&box.height>=256);assert.ok(Math.abs(box.x)<=(box.width-256)/2);assert.ok(Math.abs(box.y)<=(box.height-256)/2);}});
+

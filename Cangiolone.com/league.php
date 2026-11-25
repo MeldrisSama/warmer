@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/calendar-model.php';
 
 const LEAGUE_LIFECYCLE_ACTIONS=['leagueClose','leagueReopen','leaguePause','leagueResume'];
 
@@ -83,6 +84,8 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         $lineups=$submitted[$fixture['id']]??[];
         $fixtures[]=[
             'id'=>$fixture['id'],'round'=>$fixture['round'],'a'=>$fixture['a'],'b'=>$fixture['b'],
+            'schedule'=>calendarSchedule($db,$fixture['id']),
+            'scheduleProposal'=>$mine ? calendarProposalState($db,$fixture['id'],$myId) : null,
             'result'=>$match ? array_intersect_key($match,array_flip(['scoreA','scoreB','date','mission','void']))+['photo'=>empty($match['photo']) ? null : 'api.php?action=photo&id='.rawurlencode($match['id'])] : null,
             'pending'=>$mine ? $pending : null,
             'awaiting'=>$pending!==null,
@@ -326,3 +329,4 @@ function leagueMatchLocks(array $db): array {
     }
     return $matches;
 }
+
