@@ -270,6 +270,10 @@ details[open] .expand { transform: rotate(45deg); }
 .fixture-list-action { display: grid; justify-items: start; gap: 4px; }
 .tournament-advance { display: grid; gap: 12px; margin-block: 16px; }
 .tournament-advance > button { justify-self: start; }
+.tournament-management { border: 1px solid var(--rule); padding: 12px 14px; }
+.tournament-management h2 { font-size: 1.125rem; margin: 0; }
+.tournament-management > p { color: var(--muted); margin: 4px 0 0; }
+.tournament-management > form { margin-bottom: 0; }
 .tournament-options { min-width: 0; border: 1px solid var(--rule); padding: 10px 14px 14px; }
 .tournament-options p { margin-block: 4px 10px; }
 .tournament-options label { margin-block: 4px; }
@@ -364,7 +368,7 @@ tbody td:last-child { color: var(--gold-light); font-weight: 750; }
   .hero-layout { grid-template-columns: minmax(0, 1fr); padding-block: 25px; }
   #season-actions { margin-top: 17px; }
   .matchup { min-height: 80px; }
-  .matchup > strong { font-size: clamp(1.55rem, 6.7vw, 2.25rem); }
+  .matchup > strong { font-size: clamp(1.15rem, 5vw, 1.65rem); text-wrap: balance; }
   .league-grid { padding-block: 24px 48px; }
   .row { padding-inline: 7px 26px; gap: 7px; }
   .pair { display: flex; flex-wrap: wrap; gap: 3px 7px; font-size: .875rem; }

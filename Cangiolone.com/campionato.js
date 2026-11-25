@@ -21,6 +21,9 @@ let openingToken;
 let announcementToken;
 let builderArmies=[];
 let builderListsLoaded=false;
+let leagueSubmitting=false;
+let leagueRefreshing=false;
+let tournamentRefreshTimer=null;
 function builderListOptions(pool=false){return `<option value="">${pool?'Scegli un pool del campionato':'Scegli una lista salvata'}</option>`+builderArmies.filter(a=>(a.purpose==='pool')===pool).map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} · ${escapeHtml(a.factionName||a.edition+'ª ed.')}</option>`).join('');}
 
 async function request(name, data) {
@@ -79,16 +82,22 @@ function initialDrawFields(players) {
 
 function tournamentAction() {
   const tournament = state.tournament;
-  if (!tournament || !state.user.admin || !tournament.ready) return '';
+  if (!tournament || !state.user.admin) return '';
+  const fixtures=state.fixtures.filter(fixture=>fixture.round===tournament.round && playable(fixture));
+  const progress=`<p>${fixtures.filter(confirmed).length} di ${fixtures.length} risultati confermati</p>`;
   const ties = state.fixtures.filter(fixture => tournament.ties.includes(fixture.id));
-  return `<form class="tournament-advance"><input type="hidden" name="round" value="${tournament.round}">
+  return `<section class="tournament-management" aria-labelledby="tournament-management-heading">
+    <h2 id="tournament-management-heading">Gestione turno · ${roundLabel(tournament.round)}</h2>
+    ${progress}
+    ${tournament.ready?`<form class="tournament-advance"><input type="hidden" name="round" value="${tournament.round}">
     ${ties.length ? `<fieldset class="tournament-options"><legend>Spareggi</legend>
       <p>Indica chi passa per ogni incontro in parità. Il punteggio giocato resta nel registro.</p>
       ${ties.map(({id,a,b}) => `<label>${player(a)} – ${player(b)}<select name="winner-${id}" required>
         <option value="">Scegli chi passa</option><option value="${a}">${player(a)}</option><option value="${b}">${player(b)}</option>
       </select></label>`).join('')}</fieldset>` : ''}
     ${action('leagueAdvance', tournament.final ? 'Pubblica il risultato finale' : 'Pubblica il turno successivo')}
-  </form>`;
+    </form>`:''}
+  </section>`;
 }
 
 function renderOverview(total, current) {
@@ -136,6 +145,7 @@ function renderOverview(total, current) {
     board.innerHTML = `<p class="eyebrow">Iscrizioni aperte</p>
       <strong class="display-number">${players.length}</strong>
       <p>${players.length === 1 ? 'Giocatore iscritto' : 'Giocatori iscritti'}</p>`;
+    const joinLabel=state.rosters?.settings?'Conferma iscrizione e roster':state.tournament && user.admin?'Iscriviti come giocatore':'Iscriviti al campionato';
     actions.innerHTML = league.joined
       ? `<p>Iscrizione confermata.${armyLabel(user.id) ? ' · ' + escapeHtml(armyLabel(user.id)) : ''}</p>`
       : `<form class="army-signup${state.rosters?.settings?' roster-form':''}"><label>Il tuo esercito<select name="army" required>
@@ -143,7 +153,7 @@ function renderOverview(total, current) {
           ${Object.entries(state.armyGroups).map(([group, armies]) => `<optgroup label="${escapeHtml(group)}">
             ${Object.entries(armies).map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('')}
           </optgroup>`).join('')}
-        </select></label>${state.rosters?.settings?rosterFormFields(true):''}${action('leagueJoin', state.rosters?.settings?'Conferma iscrizione e roster':'Iscriviti al campionato')}</form>`;
+        </select></label>${state.rosters?.settings?rosterFormFields(true):''}${action('leagueJoin', joinLabel)}</form>`;
     if (user.admin && players.length < 2) {
       actions.insertAdjacentHTML('beforeend', '<p>Servono almeno due iscritti per pubblicare il calendario.</p>');
     }
@@ -161,11 +171,12 @@ function renderOverview(total, current) {
   actions.innerHTML = tournamentAction() + lifecycleForm;
 
   if (next) {
+    const matchStatus=next.pending?.by===user.id?'In attesa dell’avversario':next.awaiting?'Risultato da confermare':'Da giocare';
     board.innerHTML = `
       <div class="board-top"><h2 class="eyebrow">Prossimo incontro</h2><span>${roundLabel(next.round)}${twoLegs() ? (next.leg===2?' · Ritorno':' · Andata') : ''}</span></div>
       <div class="matchup"><strong>${playerLink(user.id)}</strong><span>vs</span><strong>${playerLink(next.a === user.id ? next.b : next.a)}</strong></div>
       <div class="board-bottom">
-        <span>${next.awaiting ? 'Risultato da confermare' : 'Da giocare'}</span>
+        <span>${matchStatus}</span>
         <a href="#giornate" class="jump" data-round="${next.round}" data-fixture="${next.id}">Apri l’incontro <span aria-hidden="true">↗</span></a>
       </div>`;
   } else if (state.tournament && state.fixtures.some(f => f.round===total && !playable(f) && f.a===user.id)) {
@@ -442,6 +453,13 @@ function render() {
     ? (state.tournament.ready ? undefined : state.tournament.round)
     : state.fixtures.find(fixture => playable(fixture) && !fixture.result)?.round;
   renderOverview(total, current);
+  const refreshEnabled=state.tournament && state.user.admin && !state.league.closed;
+  if(refreshEnabled && tournamentRefreshTimer===null){
+    tournamentRefreshTimer=window.setInterval(refreshTournament,8000);
+  } else if(!refreshEnabled && tournamentRefreshTimer!==null) {
+    window.clearInterval(tournamentRefreshTimer);
+    tournamentRefreshTimer=null;
+  }
   renderRoster();
   if (state.league && state.user.admin && state.mailEnabled && state.players.length) {
     $('season-actions').insertAdjacentHTML('beforeend', `<details class="season-mail">
@@ -473,6 +491,39 @@ function render() {
   renderRounds(total, liveCurrent);
   goToRound(selectedRound ?? current ?? total);
 }
+
+function canRefreshTournament(){
+  return state?.tournament && state.user.admin && !state.league.closed && !document.hidden &&
+    !leagueSubmitting && !document.activeElement?.closest('form') && !document.querySelector('form[data-league-draft], dialog[open]');
+}
+
+async function refreshTournament(){
+  if(leagueRefreshing || !canRefreshTournament()) return;
+  leagueRefreshing=true;
+  const before=state;
+  try {
+    const next=await request('league');
+    if(!next || state!==before || !canRefreshTournament() || JSON.stringify(next)===JSON.stringify(before)) return;
+    const panel=$('round');
+    const scrollTop=panel.scrollTop;
+    openFixture=panel.querySelector('details[open]')?.dataset.fixture;
+    state=next;
+    if(next.tournament.round!==before.tournament.round) selectedRound=undefined;
+    render();
+    if(next.tournament.round===before.tournament.round) panel.scrollTop=scrollTop;
+  } catch {
+    // A temporary connection failure must not replace the current view.
+  } finally {
+    leagueRefreshing=false;
+  }
+}
+
+const markLeagueDraft=event=>{
+  if(event.target.matches('input,textarea,select') && event.target.form) event.target.form.dataset.leagueDraft='';
+};
+document.addEventListener('input',markLeagueDraft);
+document.addEventListener('change',markLeagueDraft);
+document.addEventListener('visibilitychange',refreshTournament);
 
 const notices = {
   leagueRosterSave: 'Nuova versione del roster consegnata.',
@@ -524,11 +575,12 @@ document.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
   const button = event.submitter || form.querySelector('button[type=submit]');
-  if (!button || form.getAttribute('aria-busy') === 'true') return;
+  if (!button || leagueSubmitting) return;
   const name = button.value;
   if (name === 'leagueClose' &&
       !window.confirm('Chiudere il campionato? Classifica e calendario resteranno consultabili. Per completare gli incontri aperti dovrai riaprirlo.')) return;
-  const buttons = [...form.querySelectorAll('button')];
+  leagueSubmitting = true;
+  const buttons = [...document.querySelectorAll('form button[type=submit]:enabled')];
   buttons.forEach(control => control.disabled = true);
   form.setAttribute('aria-busy', 'true');
   const fields = new FormData(form);
@@ -601,6 +653,7 @@ document.addEventListener('submit', async event => {
     notify(error.message, true);
     $('league-notice').scrollIntoView({ block: 'nearest' });
   } finally {
+    leagueSubmitting = false;
     buttons.forEach(control => control.disabled = false);
     form.removeAttribute('aria-busy');
   }
