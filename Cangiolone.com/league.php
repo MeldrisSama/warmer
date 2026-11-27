@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/league-tournament.php';
+require_once __DIR__.'/calendar-model.php';
 
 const LEAGUE_LIFECYCLE_ACTIONS=['leagueClose','leagueReopen','leaguePause','leagueResume'];
 
@@ -100,6 +101,8 @@ function leagueState(array $db, array $me, ?string $id=null, bool $create=false)
         }
         $fixtures[]=[
             'id'=>$fixture['id'],'round'=>$fixture['round'],'a'=>$fixture['a'],'b'=>$fixture['b'],
+            'schedule'=>calendarSchedule($db,$fixture['id']),
+            'scheduleProposal'=>$mine ? calendarProposalState($db,$fixture['id'],$myId) : null,
             'slot'=>$fixture['slot'],'leg'=>$fixture['leg'],'winner'=>$fixture['winner'],
             'decision'=>$decision,
             'result'=>$match ? array_intersect_key($match,array_flip(['id','scoreA','scoreB','date','mission','void']))+['photo'=>empty($match['photo']) ? null : 'api.php?action=photo&id='.rawurlencode($match['id'])] : null,

@@ -425,6 +425,22 @@ function renderRoster() {
     ${state.user.admin&&state.league.start&&!state.league.closed&&!state.league.paused?`<form class="action-row"><input name="open" type="hidden" value="${settings.windowOpen?'false':'true'}">${action('leagueRosterWindow',settings.windowOpen?'Chiudi finestra roster':'Apri finestra roster','secondary')}</form>`:''}`;
 }
 
+function schedulePanel(fixture) {
+  if(!mine(fixture)||fixture.result||state.league.closed||state.league.paused)return '';
+  const schedule=fixture.schedule,proposal=fixture.scheduleProposal||{version:0,pending:null};
+  const pending=proposal.pending,own=pending?.by===state.user.id;
+  const active=schedule&&!schedule.cancelled;
+  return '<div class="fixture-block fixture-schedule"><h3>Programma la partita</h3>'+
+    (active?'<p>Data concordata: <strong>'+escapeHtml(formatDate(schedule.date))+(schedule.time?' · '+escapeHtml(schedule.time):'')+'</strong> · <a href="index.php#calendario">Apri calendario</a></p>':'<p>Concorda la data prima di preparare le liste. Non è necessario averle già consegnate.</p>')+
+    (pending?'<p><strong>Proposta di '+player(pending.by)+': '+escapeHtml(formatDate(pending.event.date))+(pending.event.time?' · '+escapeHtml(pending.event.time):'')+'</strong></p><p>La data comparirà nel calendario dopo l’approvazione dell’altro giocatore.</p>'+
+      '<form class="action-row"><input type="hidden" name="proposalVersion" value="'+proposal.version+'">'+
+      (own?action('calendarWithdraw','Ritira proposta','secondary'):action('calendarApprove','Approva data')+action('calendarReject','Rifiuta data','secondary'))+'</form>':'')+
+    (!pending||own?'<form class="schedule-form"><input type="hidden" name="id" value="'+escapeHtml(schedule?.id||'')+'"><input type="hidden" name="version" value="'+(schedule?.version||0)+'"><input type="hidden" name="proposalVersion" value="'+proposal.version+'">'+
+      '<label>Data futura proposta<input type="date" name="date" min="'+state.today+'" max="2100-12-31" value="'+escapeHtml(pending?.event.date||schedule?.date||state.today)+'" required></label>'+
+      '<label>Orario italiano (facoltativo)<input type="time" name="time" value="'+escapeHtml(pending?.event.time||schedule?.time||'')+'"></label>'+
+      action('calendarSave',pending?'Aggiorna proposta':'Proponi data','secondary')+'</form>':'')+'</div>';
+}
+
 function listPanel(fixture) {
   const listAction = id => `<div class="fixture-list-action">${playerLink(id)}<button type="button" class="secondary" data-lineup="${id}" aria-label="Leggi la lista di ${player(id)}">Leggi lista</button></div>`;
   if (!mine(fixture)) return fixture.listsReadable ? `<div class="fixture-block"><h3>Liste esercito</h3><div class="action-row">${[fixture.a,fixture.b].map(listAction).join('')}</div></div>` : '';
@@ -462,6 +478,7 @@ function listPanel(fixture) {
 }
 
 function resultPanel(fixture) {
+  const schedule=schedulePanel(fixture);
   if (fixture.result) {
     return `<div class="fixture-block"><h3>Risultato</h3>
       <p>${fixture.result.void ? 'Partita annullata' : 'Risultato confermato'} · ${formatDate(fixture.result.date)}
@@ -472,7 +489,7 @@ function resultPanel(fixture) {
   if (fixture.pending) {
     const { by, scoreA, scoreB, date, mission, token } = fixture.pending;
     const own = by === state.user.id;
-    return `<div class="fixture-block"><h3>Risultato da confermare</h3>
+    return `${schedule}<div class="fixture-block"><h3>Risultato da confermare</h3>
       <p>${playerLink(fixture.a)} <strong>${scoreA} – ${scoreB}</strong> ${playerLink(fixture.b)} · ${formatDate(date)}
       ${mission ? ` · ${escapeHtml(mission)}` : ''}</p>
         <p>${state.league.paused ? 'La proposta resta in attesa fino alla ripresa.'
@@ -484,12 +501,12 @@ function resultPanel(fixture) {
         </form>`}</div>`;
   }
   if (state.league.paused) return '<div class="fixture-block"><p>Potrai proporre un risultato alla ripresa del campionato.</p></div>';
-  if(state.rosters?.settings&&(!fixture.lineups?.mine||!fixture.lineups?.opponent))return '<div class="fixture-block"><h3>Risultato</h3><p>Consegnate entrambe le liste verificate prima di proporre il risultato.</p></div>';
-  return `<div class="fixture-block"><h3>Proponi il risultato</h3>
+  if(state.rosters?.settings&&(!fixture.lineups?.mine||!fixture.lineups?.opponent))return schedule+'<div class="fixture-block"><h3>Risultato</h3><p>Consegnate entrambe le liste verificate prima di proporre il risultato.</p></div>';
+  return `${schedule}<div class="fixture-block"><h3>Registra la partita disputata</h3>
     <form class="result-form">
       <div>${playerLink(fixture.a)}<label>Punti<input type="number" name="scoreA" aria-label="Punti di ${player(fixture.a)}" min="0" max="100" required></label></div>
       <div>${playerLink(fixture.b)}<label>Punti<input type="number" name="scoreB" aria-label="Punti di ${player(fixture.b)}" min="0" max="100" required></label></div>
-      <label>Data della partita<input type="date" name="date" max="${state.today}" value="${state.today}" required></label>
+      <label>Data effettiva della partita<input type="date" name="date" max="${state.today}" value="${state.today}" required></label>
       <label>Missione (facoltativa)<input name="mission" maxlength="120"></label>
       <p>L’avversario dovrà confermare il risultato.</p>
       ${action('leaguePropose', 'Invia il risultato')}
@@ -550,9 +567,11 @@ function fixtureRow(fixture) {
     : state.rosters?.settings && fixture.lineupCount<2 ? `Liste ${fixture.lineupCount}/2` : 'Da giocare';
   const leg = state.league.format==='knockout_legs' ? `<small>${fixture.leg===2?'Ritorno':'Andata'}</small>` : '';
   const rematch=state.tournament?.rematches.includes(fixture.id);
+  const canSchedule=mine(fixture)&&!fixture.result&&!fixture.decision&&!state.league.closed&&!state.league.paused;
+  const scheduleButton=canSchedule?'<button type="button" class="secondary fixture-schedule-shortcut" data-schedule-fixture="'+fixture.id+'">Programma data</button>':'';
   const contents = `<span class="pair"><strong>${playerLink(fixture.a)}${playerArmy(fixture.a)}</strong><span>vs</span><strong>${playerLink(fixture.b)}${playerArmy(fixture.b)}</strong></span>
     <span class="fixture-status${fixture.awaiting ? ' pending' : ''}">${leg}${score || (fixture.decision?'':status)}
-    ${fixture.decision?`<small>${decisionLabel(fixture.decision)}</small>`:''}${rematch?'<small>Rivincita</small>':''}</span>`;
+    ${fixture.decision?`<small>${decisionLabel(fixture.decision)}</small>`:''}${rematch?'<small>Rivincita</small>':''}${scheduleButton}</span>`;
   if (!playable(fixture)) {
     return `<div class="fixture row bye"><span>${playerLink(fixture.a)}</span><span>${fixture.decision?'Ritiro':knockout()?'Riposo · passa il turno':'Riposa'}</span></div>`;
   }
@@ -720,6 +739,10 @@ document.addEventListener('change',markLeagueDraft);
 document.addEventListener('visibilitychange',()=>refreshTournament());
 
 const notices = {
+  calendarSave: 'Data proposta. In attesa dell’approvazione dell’avversario.',
+  calendarApprove: 'Data approvata e pubblicata nel calendario.',
+  calendarReject: 'Proposta rifiutata.',
+  calendarWithdraw: 'Proposta ritirata.',
   leagueRosterSave: 'Nuova versione del roster consegnata.',
   leagueRosterWindow: 'Finestra dei roster aggiornata.',
   leaguePhoto: 'Foto della partita salvata.',
@@ -802,6 +825,11 @@ document.addEventListener('submit', async event => {
   form.setAttribute('aria-busy', 'true');
   const fields = new FormData(form);
   const data = Object.fromEntries(fields);
+  if(name.startsWith('calendar')){
+    if(name==='calendarSave'&&!data.id)data.id=window.crypto.randomUUID().replaceAll('-','').slice(0,24);
+    if('version' in data)data.version=Number(data.version);
+    data.proposalVersion=Number(data.proposalVersion);
+  }
   if (state.league) data.league = state.league.id;
   if (name === 'leagueOpen') {
     openingToken ??= window.crypto.randomUUID().replaceAll('-', '').slice(0, 24);
@@ -969,6 +997,15 @@ $('season-board').addEventListener('click',openRoundLink);
 $('league-standings').addEventListener('click',openRoundLink);
 
 $('round').addEventListener('click', async event => {
+  const scheduleButton=event.target.closest('[data-schedule-fixture]');
+  if(scheduleButton?.dataset.scheduleFixture){
+    event.preventDefault();
+    const fixture=state.fixtures.find(item=>item.id===scheduleButton.dataset.scheduleFixture);
+    if(!fixture)return;
+    openLeagueFixture(fixture.id,fixture.round);
+    scheduleButton.closest('[data-fixture]')?.querySelector('.fixture-schedule input[type="date"], .fixture-schedule button')?.focus();
+    return;
+  }
   const button = event.target.closest('[data-lineup]');
   if (!button) return;
   const fixture = button.closest('[data-fixture]').dataset.fixture;
@@ -1203,7 +1240,7 @@ request('builderArmies&summary=1').then(data=>{
 request('league').then(data => {
   state = data;
   render();
-  const fixture = state?.fixtures.find(item => item.id === leagueQuery.get('fixture') && mine(item));
+  const fixture = state?.fixtures.find(item => item.id === leagueQuery.get('fixture'));
   if (fixture) openLeagueFixture(fixture.id, fixture.round);
 }).catch(() => {
   $('season-actions').textContent = 'Campionato non disponibile. Ricarica la pagina per riprovare.';

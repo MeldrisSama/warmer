@@ -299,6 +299,7 @@ function render(){
     ['home','Home'],
     ['storico','Partite'],
     ['campionati','Tornei e campionati'],
+    ['calendario','Calendario'],
     ['giocatori','Giocatori']
 
   ].map(
@@ -347,6 +348,8 @@ function render(){
     emailAccountPage(p);
   }else if(p==='campionati'){
     leaguesPage();
+  }else if(p==='calendario'){
+    calendarPage();
   }else if(p==='giocatori'){
     playersPage();
   }else if(p==='storico'){
@@ -1035,6 +1038,54 @@ function leagueBanner(){
       ${label}<span aria-hidden="true">→</span>
     </a>
   </aside>`;
+}
+
+function calendarFixtureStatus(fixture){
+  if(fixture.b===null)return 'riposo';
+  if(fixture.result&&!fixture.result.void)return 'giocato';
+  return fixture.awaiting?'conferma':'da-giocare';
+}
+
+async function calendarPage(){
+  main.innerHTML='<section class="panel"><h1>Calendario</h1><p role="status">Caricamento degli incontri…</p></section>';
+  const container=main.firstElementChild;
+  try{
+    const data=await api('calendar');
+    if(page()!=='calendario'||main.firstElementChild!==container)return;
+    container.classList.add('calendar-page');
+    container.innerHTML=`<div class="heading"><h1>Calendario</h1><a href="#campionati">Tutti i campionati</a></div>
+      <p>Gli incontri sono organizzati per giornata. Il campionato non assegna date o orari alle partite.</p>
+      <section aria-labelledby="calendar-signup-title"><h2 id="calendar-signup-title">Iscrizioni aperte</h2>
+      ${data.leagues.filter(l=>!l.start&&!l.closed&&!l.paused).map(l=>`<article class="calendar-signup"><div><h3>${esc(l.name)}</h3><p>${l.entrants} iscritti${l.joined?' · Sei già iscritto':''}</p></div><a class="button ${l.joined?'':'primary'}" href="${esc(leagueLink(l))}">${l.joined?'Apri campionato':'Iscriviti al campionato'}</a></article>`).join('')||'<p>Non ci sono campionati con iscrizioni aperte.</p>'}
+      <p class="muted">Per iscriverti scegli l’esercito e, se richiesto, consegna il roster nella pagina del campionato.</p></section>
+      <section aria-labelledby="calendar-fixtures-title"><h2 id="calendar-fixtures-title">Incontri dei campionati</h2>
+      <form class="calendar-filters">
+        <label class="field">Campionato<select name="league"><option value="">Tutti i campionati</option>${data.leagues.map(l=>`<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}</select></label>
+        <label class="field">Stato incontro<select name="status"><option value="">Tutti gli stati</option><option value="da-giocare">Da giocare</option><option value="conferma">Da confermare</option><option value="giocato">Giocati</option><option value="riposo">Riposi</option></select></label>
+        <label><input type="checkbox" name="mine"> Solo i miei incontri</label>
+      </form><div id="calendar-results" aria-live="polite"></div></section>`;
+    const form=container.querySelector('form');
+    form.onsubmit=event=>event.preventDefault();
+    const draw=()=>{
+      const selected=form.elements.league.value,status=form.elements.status.value,mine=form.elements.mine.checked;
+      const fixtures=data.fixtures.filter(f=>(!selected||f.leagueId===selected)&&(!status||calendarFixtureStatus(f)===status)&&(!mine||[f.a,f.b].includes(state.user.id)));
+      const labels={'da-giocare':'Da giocare',conferma:'Risultato da confermare',giocato:'Giocato',riposo:'Riposo'};
+      container.querySelector('#calendar-results').innerHTML=fixtures.length?data.leagues.map(l=>{
+        const matches=fixtures.filter(f=>f.leagueId===l.id).sort((a,b)=>a.round-b.round||a.id.localeCompare(b.id));
+        if(!matches.length)return '';
+        return `<section class="calendar-league"><h3><a href="${esc(leagueLink(l))}">${esc(l.name)}</a></h3><p>${l.closed?'Campionato concluso':l.paused?'Campionato in pausa':'Campionato in corso'}</p>
+          ${[...new Set(matches.map(f=>f.round))].map(round=>`<h4>Giornata ${esc(round)}</h4><ul class="calendar-fixtures">${matches.filter(f=>f.round===round).map(f=>{
+            const status=calendarFixtureStatus(f),url=leagueLink(l)+'&fixture='+encodeURIComponent(f.id);
+            return `<li><div><strong>${esc(name(f.a))}${f.b===null?' · Riposo':' vs '+esc(name(f.b))}</strong><p>${labels[status]}${status==='giocato'?' · '+esc(f.result.scoreA)+' : '+esc(f.result.scoreB)+' · '+esc(dateLabel(f.result.date)):''}</p></div><a href="${esc(url)}">Apri ${f.b===null?'campionato':'incontro'}</a></li>`;
+          }).join('')}</ul>`).join('')}</section>`;
+      }).join(''):'<p>Nessun incontro corrisponde ai filtri. I calendari compaiono quando vengono pubblicati.</p>';
+    };
+    form.onchange=draw;draw();
+  }catch(error){
+    if(page()!=='calendario'||main.firstElementChild!==container)return;
+    container.innerHTML=`<h1>Calendario</h1><p role="alert">${esc(error.message)}</p><button type="button">Riprova</button>`;
+    container.querySelector('button').onclick=()=>calendarPage();
+  }
 }
 
 function leaguesPage(){
