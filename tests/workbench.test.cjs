@@ -67,6 +67,48 @@ test('Weapon buttons increment and decrement safely without changing squad size'
   assert.equal(vm.runInContext(`wbEntry(workbench.selected).weaponCounts.unknown`,c),undefined);
   assert.equal(vm.runInContext(`wbEntry(workbench.selected).models`,c),5);
 });
+test('Weapon preview includes every mode in the chosen loadout without changing the army',()=>{
+  const c=context();
+  c.esc=value=>String(value??'').replaceAll('<','&lt;');
+  let content;
+  c.wbModal=(_title,html)=>{content=html;return {classList:{add(){}}};};
+  vm.runInContext(`
+    const unit=fixture.units[0],entry=builderUi.army.entries[0],rifle=unit.weapons[0];
+    unit.weapons.push({...rifle,line:'2',name:'Launcher - Frag',A:'D6'},
+      {...rifle,line:'3',name:'Launcher - Krak',D:'D3'});
+    const alternate={id:'launcher',name:'Launcher',weapons:{launcher:1}};
+    unit.loadoutRecipe={weapons:[{id:'launcher',name:'Launcher',lines:['2','3']}],
+      groups:[{id:'arm',choices:[alternate]}]};
+    const original=JSON.stringify(builderUi.army);
+    wbOpenEquipmentProfile({dataset:{wbProfilePreview:entry.entryId,previewGroup:'arm',previewOption:'launcher'}});
+    if(original!==JSON.stringify(builderUi.army))throw Error('Preview changed the army');
+  `,c);
+  for(const text of ['Launcher - Frag','Launcher - Krak','D6','D3','Gittata','BS/WS']) assert.ok(content.includes(text),text);
+  assert.doesNotMatch(content,/Rifle/);
+});
+test('Browsing compact equipment alternatives leaves the saved selection intact',()=>{
+  const c=context();
+  c.esc=value=>String(value??'');
+  let content;
+  const select={},result={};
+  c.wbModal=(_title,html)=>{
+    content=html;
+    return {classList:{add(){}},querySelector:selector=>selector==='[data-wb-profile-option]'?select:result};
+  };
+  vm.runInContext(`
+    const unit=fixture.units[0],entry=builderUi.army.entries[0],rifle=unit.weapons[0];
+    unit.weapons.push({...rifle,line:'2',name:'Alternative'});
+    unit.loadoutRecipe={weapons:[{id:'rifle',name:'Rifle',lines:['1']},{id:'other',name:'Alternative',lines:['2']}],
+      groups:[{id:'arm',choices:[{id:'base',weapons:{rifle:1}},{id:'other',weapons:{other:1}}]}]};
+    const original=JSON.stringify(builderUi.army);
+    wbOpenEquipmentProfile({dataset:{wbProfilePreview:entry.entryId,previewGroup:'arm'}});
+  `,c);
+  assert.match(content,/data-wb-profile-option/);
+  select.onchange({target:{value:'other'}});
+  assert.match(result.innerHTML,/Alternative/);
+  assert.doesNotMatch(result.innerHTML,/Rifle/);
+  assert.ok(vm.runInContext('JSON.stringify(builderUi.army)===original',c));
+});
 test('Attachment choices contain compatible copies and reserve one leader and one support',()=>{
   const c=context();
   assert.equal(vm.runInContext(`wbAttachmentTargets(builderUi.army.entries[3]).length`,c),3);

@@ -115,4 +115,39 @@ $ranked=tournamentSwissStandings(['a','b','c','d'],[
     'small'=>['void'=>false,'scoreA'=>40,'scoreB'=>30]
 ]);
 check(array_column($ranked,'id')===['a','c','d','b'],'Point differential must break a tie on the match record');
+
+$bye=tournamentDraw('knockout',3,['p2','p4','p9'],['p9'=>1]);
+check($bye[1]['b']===null && $bye[1]['a']==='p4','A former bye must give way to a player with fewer byes');
+
+// Exhaustive search provides an independent oracle for small general graphs.
+function maximumPairs(array $players, array $opponents): int {
+    if(!$players) return 0;
+    $first=array_shift($players);
+    $best=maximumPairs($players,$opponents);
+    foreach($players as $index=>$second) if(!isset($opponents[$first][$second])) {
+        $remaining=$players;
+        unset($remaining[$index]);
+        $best=max($best,1+maximumPairs($remaining,$opponents));
+    }
+    return $best;
+}
+mt_srand(193);
+for($size=2;$size<=10;$size++) {
+    $players=array_map(fn($number)=>'p'.$number,range(1,$size));
+    for($trial=0;$trial<32;$trial++) {
+        $opponents=[];
+        foreach($players as $index=>$a) foreach(array_slice($players,$index+1) as $b) {
+            if(mt_rand(0,99)<55) $opponents[$a][$b]=$opponents[$b][$a]=true;
+        }
+        [$pairs,$unpaired]=tournamentMaximumUnplayed($players,$opponents);
+        check(count($pairs)===maximumPairs($players,$opponents),'Must minimize rematches in non-bipartite history');
+        $assigned=$unpaired;
+        foreach($pairs as [$a,$b]) {
+            check(!isset($opponents[$a][$b]),'Maximum matching contains a rematch');
+            array_push($assigned,$a,$b);
+        }
+        sort($assigned); $expected=$players; sort($expected);
+        check($assigned===$expected,'Maximum matching must assign each entrant exactly once');
+    }
+}
 echo "Tournament model passed\n";

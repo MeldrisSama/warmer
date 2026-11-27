@@ -3,6 +3,23 @@
 // Catalog metadata and army drafts stay separate from the old .txt list archive.
 const builderUi={edition:'11',active:null,catalog:null,armies:[],army:null,search:'',pending:false,view:'archive',sort:'updated',baseline:null,defaults:[]};
 const builderClone=value=>JSON.parse(JSON.stringify(value));
+function builderCompetitionParams(){
+  if(typeof location==='undefined')return null;
+  const params=new URLSearchParams(location.search);
+  return /^[a-f0-9]{24}$/.test(params.get('leagueReturn'))?params:null;
+}
+function builderCompetitionLink(){
+  const params=builderCompetitionParams();
+  if(!params)return '';
+  const returnTo=new URLSearchParams({id:params.get('leagueReturn')});
+  if(builderUi.army?.purpose==='pool' && builderUi.army.id)returnTo.set('pool',builderUi.army.id);
+  return `<a class="wb-competition-link" href="campionato.php?${esc(returnTo)}">Torna alla competizione</a>`;
+}
+function builderBindCompetitionLink(root){
+  root.querySelector('.wb-competition-link')?.addEventListener('click',event=>{
+    if(!builderDiscard())event.preventDefault();
+  });
+}
 const builderPlayableFactions=()=> (builderUi.catalog?.factions||[]).filter(f=>!/^Unbound Adversaries$/i.test(f.name.trim()));
 function builderHasUnsaved(){
   return Boolean(builderUi.army && (builderUi.catalog?.schemaVersion===2 ? workbench.dirty : builderUi.baseline!==JSON.stringify(builderUi.army)));
@@ -46,12 +63,15 @@ function builderOpenFactionGroup(group,trigger){
 }
 function builderCreationRender(){
   const factions=builderPlayableFactions(),groups=['Xenos','Chaos','Imperium','Adeptus Astartes','Altri eserciti'];
+  const poolLimit=Number(builderCompetitionParams()?.get('poolLimit'));
+  const preferredPool=Number.isInteger(poolLimit)&&poolLimit>=100&&poolLimit<=20000;
   main.innerHTML=`<section class="workbench builder-archive"><div class="wb-heading"><div><p class="wb-muted">Warhammer 40.000 · 11ª edizione</p><h1>Crea nuova lista</h1></div><button id="builder-create-back" type="button">Torna alle armate</button></div>
+    ${builderCompetitionLink()}
     <form id="builder-create" class="wb-library builder-creation">
       <label>Nome lista<input name="armyName" maxlength="100" required value="${esc(builderUi.creationName||'Nuova armata')}" autocomplete="off"></label>
       <fieldset><legend>Scegli il tuo esercito</legend><input type="hidden" name="faction" value="${esc(builderUi.creationFaction||'')}"><div class="builder-faction-groups">${groups.map(group=>{const rows=factions.filter(f=>builderFactionGroup(f)===group);return rows.length?`<button type="button" data-create-group="${esc(group)}" aria-haspopup="dialog">${esc(group)} <small>${rows.length} eserciti</small></button>`:'';}).join('')}</div><p id="builder-chosen-faction" class="builder-chosen-faction" aria-live="polite">${builderUi.creationFaction?builderFactionIcon(builderUi.creationFaction)+esc(factions.find(f=>f.id===builderUi.creationFaction)?.name||''):'Nessun esercito selezionato'}</p></fieldset>
-      <fieldset><legend>Formato</legend><div class="builder-battle-sizes">${[[1000,'Incursion'],[2000,'Strike Force'],[3000,'Onslaught'],['pool','Pool del campionato']].map(([points,name])=>`<label class="builder-battle-size"><input type="radio" name="battleSize" value="${points}" ${points===2000?'checked':''}><span><strong>${name}</strong><small>${points==='pool'?'Bacino di unità':points+' punti'}</small></span></label>`).join('')}</div>
-      <div id="builder-pool-limit" hidden><p class="wb-muted">Dichiara le copie e gli equipaggiamenti extra disponibili per il campionato. Warlord, distaccamenti e potenziamenti si scelgono nelle liste degli incontri.</p><label>Limite pool · punti<input id="builder-create-pool-limit" type="number" min="100" max="20000" step="1" value="3000"></label></div><div id="builder-custom-dp" hidden><p class="wb-muted">Onslaught: formato da 3000 punti del gruppo. Concordate i DP prima della partita.</p><label>Detachment Points (DP)<input id="builder-create-dp" type="text" inputmode="numeric" pattern="[0-9]+" value="3"></label></div></fieldset>
+      <fieldset><legend>Formato</legend><div class="builder-battle-sizes">${[[1000,'Incursion'],[2000,'Strike Force'],[3000,'Onslaught'],['pool','Pool del campionato']].map(([points,name])=>`<label class="builder-battle-size"><input type="radio" name="battleSize" value="${points}" ${points===(preferredPool?'pool':2000)?'checked':''}><span><strong>${name}</strong><small>${points==='pool'?'Bacino di unità':points+' punti'}</small></span></label>`).join('')}</div>
+      <div id="builder-pool-limit" ${preferredPool?'':'hidden'}><p class="wb-muted">Dichiara le copie e gli equipaggiamenti extra disponibili per il campionato. Warlord, distaccamenti e potenziamenti si scelgono nelle liste degli incontri.</p><label>Limite pool · punti<input id="builder-create-pool-limit" type="number" min="100" max="20000" step="1" value="${preferredPool?poolLimit:3000}"></label></div><div id="builder-custom-dp" hidden><p class="wb-muted">Onslaught: formato da 3000 punti del gruppo. Concordate i DP prima della partita.</p><label>Detachment Points (DP)<input id="builder-create-dp" type="text" inputmode="numeric" pattern="[0-9]+" value="3"></label></div></fieldset>
       <button class="primary" type="submit">Apri il builder</button>
     </form></section>`;
   builderCreationBind();
@@ -59,6 +79,7 @@ function builderCreationRender(){
 function builderCreationBind(){
   const form=main.querySelector('#builder-create');
   main.querySelector('#builder-create-back').onclick=builderArchive;
+  builderBindCompetitionLink(main);
   form.querySelectorAll('[data-create-group]').forEach(button=>button.onclick=()=>builderOpenFactionGroup(button.dataset.createGroup,button));
   form.addEventListener('change',()=>{const format=form.querySelector('[name=battleSize]:checked').value;main.querySelector('#builder-custom-dp').hidden=format!=='3000';main.querySelector('#builder-pool-limit').hidden=format!=='pool';});
   form.addEventListener('submit',event=>{
@@ -114,7 +135,7 @@ function builderArchiveRender(){
   const groups=new Map();for(const army of builderSortedArmies()){const key=army.edition+':'+(army.factionId||army.factionName);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(army);}
   main.innerHTML=`<section class="workbench builder-archive" aria-label="Archivio armate">
     <div class="wb-heading"><div><p class="wb-muted">Warhammer 40.000 · Le tue liste</p><h1>Army Builder</h1></div><span>${builderUi.armies.length} / 100 armate</span></div>
-    <div id="offline-panel"></div>${builderUi.catalog?.schemaVersion===2?'<p><button type="button" data-wb-quick-search>Ricerca rapida</button></p>':''}<section class="wb-library"><h2>La prossima partita</h2>${canCreate?'<button id="builder-create-new" class="primary" type="button">Crea nuova lista</button>':'<p>Per creare un’armata importa un catalogo 11ª nel nuovo formato. Le liste salvate restano consultabili.</p>'}</section>
+    ${builderCompetitionLink()}<div id="offline-panel"></div>${builderUi.catalog?.schemaVersion===2?'<p><button type="button" data-wb-quick-search>Ricerca rapida</button></p>':''}<section class="wb-library"><h2>La prossima partita</h2>${canCreate?'<button id="builder-create-new" class="primary" type="button">Crea nuova lista</button>':'<p>Per creare un’armata importa un catalogo 11ª nel nuovo formato. Le liste salvate restano consultabili.</p>'}</section>
     <section class="wb-library"><div class="wb-heading"><h2>Armate salvate</h2><label>Ordina per<select id="builder-sort"><option value="updated" ${builderUi.sort==='updated'?'selected':''}>Ultima modifica · più recenti</option><option value="created" ${builderUi.sort==='created'?'selected':''}>Creazione · più recenti</option><option value="faction" ${builderUi.sort==='faction'?'selected':''}>Fazione · A–Z</option></select></label></div>
     <div class="builder-archive-list">${[...groups.values()].map(rows=>`<details class="builder-army-group" open><summary>${builderFactionIcon(rows[0].factionId)}<span>${esc(rows[0].factionName||rows[0].factionId)}</span><small>${rows.length} liste · ${esc(rows[0].edition)}ª</small></summary>${rows.map(a=>`<article class="builder-archive-row"><div><h3>${esc(a.name)}</h3><p>${a.purpose==='pool'?'Pool del campionato · ':''}${esc(a.limit)} pt</p><dl><div><dt>Creazione</dt><dd>${esc(builderDate(a.created))}</dd></div><div><dt>Ultima modifica</dt><dd>${esc(builderDate(a.updated))}</dd></div></dl></div><div class="builder-actions"><button data-archive-open="${esc(a.id)}" aria-label="Apri ${esc(a.name)}">Apri</button><button data-archive-delete="${esc(a.id)}" aria-label="Elimina ${esc(a.name)}">Elimina</button></div></article>`).join('')}</details>`).join('')||'<div class="wb-empty"><h3>Nessuna armata salvata</h3><p>Crea la tua prima armata scegliendo una fazione.</p></div>'}</div></section>
     <details class="wb-library"><summary>Catalogo e backup</summary><p>Nella PWA le liste si aggiornano al catalogo disponibile alla sincronizzazione. Le selezioni non più compatibili restano conservate e vengono segnalate.</p><label>Ripristina backup JSON<input id="wb-restore" type="file" accept=".json,application/json"></label>${state.user.admin?'<label>Importa catalogo JSON<input id="wb-import-file" type="file" accept=".json,application/json"></label><button id="wb-import">Importa catalogo</button>':''}</details><p class="builder-icon-credit">Icone: <a href="https://github.com/Certseeds/wh40k-icon" target="_blank" rel="noopener noreferrer">wh40k-icon · autori e licenza</a>.</p>
@@ -213,6 +234,18 @@ async function builderLoad(){
   builderUi.armies=armies.armies;
   builderUi.defaults=defaults.defaults||[];
   builderUi.army=null;builderUi.view='archive';
+  const competition=builderCompetitionParams();
+  if((competition?.has('poolLimit') || competition?.get('newArmy')==='1') && builderUi.active?.schemaVersion===2) {
+    const edit=competition.get('poolEdit');
+    if(edit && builderUi.armies.some(army=>army.id===edit && army.purpose==='pool')) {
+      await builderOpen(edit);
+      return;
+    }
+    const normalize=name=>String(name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const requested=normalize(competition.get('leagueFaction'));
+    builderUi.creationFaction=builderPlayableFactions().find(faction=>normalize(faction.name)===requested)?.id||'';
+    builderUi.view='create';
+  }
   builderRender();
 }
 function builderPage(){

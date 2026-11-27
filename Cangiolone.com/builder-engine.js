@@ -261,6 +261,20 @@ function beEntryBasePrice(unit,entry,ordinal){
 }
 function beChoiceCost(recipe,choice){return Object.entries(choice.weapons).reduce((sum,[id,n])=>sum+n*Number(recipe.weapons.find(w=>w.id===id)?.cost||0),0);}
 function beChoiceLabel(recipe,choice){return Object.entries(choice.weapons).map(([id,n])=>n+' '+(recipe.weapons.find(w=>w.id===id)?.name||id)).join(' + ')||choice.name;}
+function beChoiceProfiles(unit,choice){
+  const lines=new Set(unit.loadoutRecipe.weapons
+    .filter(weapon=>choice.weapons[weapon.id]>0).flatMap(weapon=>weapon.lines));
+  return (unit.weapons||[]).filter(weapon=>lines.has(weapon.line));
+}
+function beProfileButton(entry,label,attributes){
+  return `<button type="button" class="wb-profile-preview" data-wb-profile-preview="${esc(entry.entryId)}" ${attributes}
+    aria-label="${esc(label)}" title="${esc(label)}" aria-haspopup="dialog"><span class="wb-eye-icon" aria-hidden="true"></span></button>`;
+}
+function beChoiceProfileButton(unit,entry,group,choice){
+  if(!beChoiceProfiles(unit,choice).length)return '';
+  return beProfileButton(entry,'Mostra profilo: '+beChoiceLabel(unit.loadoutRecipe,choice).replace(/^1 /,''),
+    `data-preview-group="${esc(group.id)}" data-preview-option="${esc(choice.id)}"`);
+}
 function beSingleChoice(unit,entry,g){
   const recipe=unit.loadoutRecipe,model=recipe.models.find(m=>m.id===g.model);
   // Keep counts for squads, equipment-defined bearers and repeated weapon slots.
@@ -269,10 +283,13 @@ function beSingleChoice(unit,entry,g){
   return g.choices.every(c=>Object.values(c.weapons).reduce((s,n)=>s+n,0)<=1&&Object.keys(c.weapons).every(id=>!recipe.groups.some(other=>other!==g&&other.choices.some(choice=>choice.weapons[id]))));
 }
 function beLoadoutGroupHtml(unit,entry,g){
-  if(beSingleChoice(unit,entry,g))return `<fieldset class="wb-loadout-group"><legend>${esc(g.name)}</legend>${g.choices.map(c=>{const selected=(entry.loadoutSelections[g.id]?.[c.id]||0)>0,cost=beChoiceCost(unit.loadoutRecipe,c);return `<label class="wb-check wb-loadout-radio"><input type="radio" name="loadout-${esc(entry.entryId+'-'+g.id)}" data-wb-choice-radio="${esc(g.id)}" value="${esc(c.id)}" ${selected?'checked':''} ${selected||beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}><span>${esc(beChoiceLabel(unit.loadoutRecipe,c).replace(/^1 /,''))}${cost?`<small class="wb-gear-cost">+${cost} pt ${g.unitGear?'per unità':'per modello'}</small>`:''}</span></label>`;}).join('')}</fieldset>`;
+  if(beSingleChoice(unit,entry,g))return `<fieldset class="wb-loadout-group"><legend>${esc(g.name)}</legend>${g.choices.map(c=>{const selected=(entry.loadoutSelections[g.id]?.[c.id]||0)>0,cost=beChoiceCost(unit.loadoutRecipe,c);return `<div class="wb-profile-choice"><label class="wb-check wb-loadout-radio"><input type="radio" name="loadout-${esc(entry.entryId+'-'+g.id)}" data-wb-choice-radio="${esc(g.id)}" value="${esc(c.id)}" ${selected?'checked':''} ${selected||beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}><span>${esc(beChoiceLabel(unit.loadoutRecipe,c).replace(/^1 /,''))}${cost?`<small class="wb-gear-cost">+${cost} pt ${g.unitGear?'per unità':'per modello'}</small>`:''}</span></label>${beChoiceProfileButton(unit,entry,g,c)}</div>`;}).join('')}</fieldset>`;
   const compact=g.choices.length>12,shown=compact?g.choices.filter(c=>c.id===g.default||(entry.loadoutSelections[g.id]?.[c.id]||0)>0):g.choices;
-  const choiceRow=c=>{const n=entry.loadoutSelections[g.id]?.[c.id]||0;return `<div class="wb-loadout-choice"><span>${esc(beChoiceLabel(unit.loadoutRecipe,c))}${beChoiceCost(unit.loadoutRecipe,c)?`<small class="wb-gear-cost">+${beChoiceCost(unit.loadoutRecipe,c)} pt ${g.unitGear?"per unità":"per modello"}</small>`:""}</span><div class="wb-quantity"><button id="choice-${g.id}-${c.id}-minus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="-1" aria-label="Diminuisci ${esc(g.name+' '+beChoiceLabel(unit.loadoutRecipe,c))}" ${!beChoiceAllowed(unit,entry,g,c.id,-1)?'disabled':''}>−</button><output>${n}</output><button id="choice-${g.id}-${c.id}-plus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="1" aria-label="Aumenta ${esc(g.name+' '+beChoiceLabel(unit.loadoutRecipe,c))}" ${!beChoiceAllowed(unit,entry,g,c.id,1)?'disabled':''}>+</button></div></div>`;};
-  const picker=compact?`<label>Altra configurazione<select data-wb-loadout-picker="${g.id}"><option value="">Scegli equipaggiamento</option>${g.choices.filter(c=>!shown.includes(c)).map(c=>`<option value="${c.id}" ${beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}>${esc(beChoiceLabel(unit.loadoutRecipe,c))}${beChoiceCost(unit.loadoutRecipe,c)?" (+"+beChoiceCost(unit.loadoutRecipe,c)+" pt "+(g.unitGear?"per unità":"per modello")+")":""}</option>`).join('')}</select></label>`:'';
+  const choiceRow=c=>{const n=entry.loadoutSelections[g.id]?.[c.id]||0;return `<div class="wb-loadout-choice"><span class="wb-profile-choice"><span>${esc(beChoiceLabel(unit.loadoutRecipe,c))}${beChoiceCost(unit.loadoutRecipe,c)?`<small class="wb-gear-cost">+${beChoiceCost(unit.loadoutRecipe,c)} pt ${g.unitGear?"per unità":"per modello"}</small>`:""}</span>${beChoiceProfileButton(unit,entry,g,c)}</span><div class="wb-quantity"><button id="choice-${g.id}-${c.id}-minus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="-1" aria-label="Diminuisci ${esc(g.name+' '+beChoiceLabel(unit.loadoutRecipe,c))}" ${!beChoiceAllowed(unit,entry,g,c.id,-1)?'disabled':''}>−</button><output>${n}</output><button id="choice-${g.id}-${c.id}-plus" data-wb-choice="${g.id}" data-wb-option="${c.id}" data-wb-delta="1" aria-label="Aumenta ${esc(g.name+' '+beChoiceLabel(unit.loadoutRecipe,c))}" ${!beChoiceAllowed(unit,entry,g,c.id,1)?'disabled':''}>+</button></div></div>`;};
+  const otherChoices=compact?g.choices.filter(c=>!shown.includes(c)):[];
+  const browse=otherChoices.some(c=>beChoiceProfiles(unit,c).length)
+    ? beProfileButton(entry,'Esplora i profili delle alternative',`data-preview-group="${esc(g.id)}"`) : '';
+  const picker=compact?`<div class="wb-profile-choice wb-profile-picker"><label>Altra configurazione<select data-wb-loadout-picker="${g.id}"><option value="">Scegli equipaggiamento</option>${otherChoices.map(c=>`<option value="${c.id}" ${beChoiceAllowed(unit,entry,g,c.id,1)?'':'disabled'}>${esc(beChoiceLabel(unit.loadoutRecipe,c))}${beChoiceCost(unit.loadoutRecipe,c)?" (+"+beChoiceCost(unit.loadoutRecipe,c)+" pt "+(g.unitGear?"per unità":"per modello")+")":""}</option>`).join('')}</select></label>${browse}</div>`:'';
   return `<fieldset class="wb-loadout-group"><legend>${esc(compact?(unit.loadoutRecipe.models.find(m=>m.id===g.model)?.name||unit.name)+' · Equipaggiamento':g.name)}${g.sharedPer?' · massimo '+Math.floor(entry.models/g.sharedPer)+' nella squadra':''}</legend>${shown.map(choiceRow).join('')}${picker}</fieldset>`;
 }
 function beLoadoutHtml(unit,entry){
@@ -291,7 +308,9 @@ function beEnhancementsHtml(unit,entry){
     const rows=allowed.filter(x=>(x.upgrade==='true'?'Upgrade':'Enhancement')===kind);
     return rows.length?`<h4>${kind}</h4>${rows.map(x=>{
       const selected=entry.enhancementIds.includes(x.id);
-      return `<label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${selected?'checked':''} ${!selected&&(locked||entry.enhancementIds.length)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt${x.upgrade==='true'&&!beUpgradeAllowed(unit)?' · Da rimuovere':''}</span></label>${x.upgrade!=='true'&&selected&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${beCharacterModels(unit).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`;
+      const preview=unit.weapons.some(weapon=>weapon.enhancement_id===x.id)
+        ? beProfileButton(entry,'Mostra profilo: '+x.name,`data-preview-enhancement="${esc(x.id)}"`) : '';
+      return `<div class="wb-profile-choice"><label class="wb-check"><input data-wb-enhancement="${esc(x.id)}" type="checkbox" ${selected?'checked':''} ${!selected&&(locked||entry.enhancementIds.length)?'disabled':''}><span>${esc(x.name)} · ${esc(x.cost)} pt${x.upgrade==='true'&&!beUpgradeAllowed(unit)?' · Da rimuovere':''}</span></label>${preview}</div>${x.upgrade!=='true'&&selected&&entry.models>1?`<label>Modello portatore<select data-wb-enhancement-model="${esc(x.id)}"><option value="">Scegli il modello</option>${beCharacterModels(unit).map(m=>`<option value="${esc(m.line)}" ${entry.enhancementModels?.[x.id]===m.line?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>`:''}`;
     }).join('')}`:'';
   }).join('');
   return list&&locked?`<p class="wb-muted">Il gruppo attached ha già un Enhancement o Upgrade.</p>${list}`:list;

@@ -347,13 +347,53 @@ function wbOpenRule(button){
   wbCloseOnBackdrop(dialog);
   dialog.addEventListener('close',()=>{dialog.remove();if(button.isConnected)button.focus();},{once:true});dialog.showModal();
 }
+function wbWeaponStats(weapon){
+  return [['Gittata',/^\d+$/.test(weapon.range)?weapon.range+'"':weapon.range],['A',weapon.A],
+    ['BS/WS',wbPlus(weapon.BS_WS)],['S',weapon.S],['AP',weapon.AP],['D',weapon.D]];
+}
+function wbEquipmentProfiles(unit,weapons){
+  return weapons.map(weapon=>`<section class="wb-equipment-profile">
+    <h3>${wbText(weapon.name)}</h3>
+    <dl>${wbWeaponStats(weapon).map(([label,value])=>`<div><dt>${label}</dt><dd>${wbText(value)||'—'}</dd></div>`).join('')}</dl>
+    <div class="wb-weapon-keywords">${wbWeaponKeywords(wbDescription(weapon),unit.id)}</div>
+  </section>`).join('');
+}
+function wbOpenEquipmentProfile(trigger){
+  const entry=wbEntry(trigger.dataset.wbProfilePreview);
+  if(!entry)return;
+  const unit=wbUnits().get(entry.unitId);
+  if(!unit)return;
+  const {previewGroup,previewOption,previewLine,previewEnhancement}=trigger.dataset;
+  const group=unit.loadoutRecipe?.groups?.find(item=>item.id===previewGroup);
+  if(group&&!previewOption){
+    const recipe=unit.loadoutRecipe;
+    const choices=group.choices.filter(choice=>beChoiceProfiles(unit,choice).length);
+    if(!choices.length)return;
+    const dialog=wbModal('Profili dell’equipaggiamento',`<label>Equipaggiamento<select data-wb-profile-option>
+      ${choices.map(choice=>`<option value="${esc(choice.id)}">${esc(beChoiceLabel(recipe,choice).replace(/^1 /,''))}</option>`).join('')}
+      </select></label><div data-wb-profile-result>${wbEquipmentProfiles(unit,beChoiceProfiles(unit,choices[0]))}</div>`,trigger);
+    dialog.classList.add('wb-equipment-dialog');
+    dialog.querySelector('[data-wb-profile-option]').onchange=event=>{
+      const choice=choices.find(item=>item.id===event.target.value);
+      if(choice)dialog.querySelector('[data-wb-profile-result]').innerHTML=wbEquipmentProfiles(unit,beChoiceProfiles(unit,choice));
+    };
+    return dialog;
+  }
+  const choice=group?.choices.find(item=>item.id===previewOption);
+  const weapons=choice?beChoiceProfiles(unit,choice):previewLine?beWeaponModes(unit,previewLine)
+    : unit.weapons.filter(weapon=>previewEnhancement && weapon.enhancement_id===previewEnhancement);
+  if(!weapons.length)return;
+  const dialog=wbModal('Profilo dal catalogo',wbEquipmentProfiles(unit,weapons),trigger);
+  dialog.classList.add('wb-equipment-dialog');
+  return dialog;
+}
 function wbWeaponTable(rows){
   const grouped=new Map();
   for(const row of rows){const w=row.weapon,key=JSON.stringify([row.unitId,row.origin,w.name,w.type,w.range,w.A,w.BS_WS,w.S,w.AP,w.D,wbDescription(w),w._addedKeywords||[],w._changed||[],w.enhancement_id||'']);const existing=grouped.get(key);if(existing){existing.count+=row.count;if(row.model&&!existing.models.includes(row.model))existing.models.push(row.model);}else grouped.set(key,{...row,models:row.model?[row.model]:[]});}
   rows=[...grouped.values()].map(row=>({...row,model:row.models.join(', ')}));
   const families=new Map();
   for(const row of rows){const parts=row.weapon.name.split(/\s+[–—-]\s+/),base=parts.length>1?parts[0]:row.weapon.name,key=JSON.stringify([row.unitId,row.origin,row.model,row.count,row.weapon.type,base,row.weapon.enhancement_id||'']);if(!families.has(key))families.set(key,[]);families.get(key).push({...row,base,mode:parts.slice(1).join(' – ')});}
-  const renderRow=({weapon:w,count,origin,model,unitId,mode},multi)=>`<tr class="${multi?'wb-weapon-mode':''}"><th scope="row">${origin||model?`<small class="wb-weapon-origin">${[origin,model].filter(Boolean).map(wbText).join(' · ')}</small>`:''}<span class="wb-weapon-name">${multi?`<span class="wb-mode-marker" aria-label="Profilo alternativo">↳</span> ${wbText(w.name.replace(/\s+[–—-]\s+/g," - "))}`:wbText(w.name)}${count>1?` <strong class="wb-weapon-count">(×${count})</strong>`:''}</span><div class="wb-weapon-keywords">${wbWeaponKeywords(wbDescription(w),unitId,w._addedKeywords||[])}</div></th>${[/^\d+$/.test(w.range)?w.range+'"':w.range,w.A,wbPlus(w.BS_WS),w.S,w.AP,w.D].map((v,i)=>`<td class="${w._changed?.includes(['range','A','BS_WS','S','AP','D'][i])?'wb-bonus':''}">${wbText(v)}</td>`).join('')}</tr>`;
+  const renderRow=({weapon:w,count,origin,model,unitId,mode},multi)=>`<tr class="${multi?'wb-weapon-mode':''}"><th scope="row">${origin||model?`<small class="wb-weapon-origin">${[origin,model].filter(Boolean).map(wbText).join(' · ')}</small>`:''}<span class="wb-weapon-name">${multi?`<span class="wb-mode-marker" aria-label="Profilo alternativo">↳</span> ${wbText(w.name.replace(/\s+[–—-]\s+/g," - "))}`:wbText(w.name)}${count>1?` <strong class="wb-weapon-count">(×${count})</strong>`:''}</span><div class="wb-weapon-keywords">${wbWeaponKeywords(wbDescription(w),unitId,w._addedKeywords||[])}</div></th>${wbWeaponStats(w).map(([,v],i)=>`<td class="${w._changed?.includes(['range','A','BS_WS','S','AP','D'][i])?'wb-bonus':''}">${wbText(v)}</td>`).join('')}</tr>`;
   return `<div class="wb-table wb-weapon-table" tabindex="0" role="region" aria-label="Profili delle armi, tabella scorrevole"><table><thead><tr>${['Arma','Gittata','A','BS/WS','S','AP','D'].map(h=>`<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${[...families.values()].map(family=>{const multi=family.length>1&&family.some(row=>row.mode);return family.map(row=>renderRow(row,multi)).join('');}).join('')}</tbody></table></div>`;
 }
 function wbModelCards(rows){
@@ -458,7 +498,7 @@ function wbUnitControls(u,e){
       return `<option value="${esc(x.entryId)}" ${e.attachedTo===x.entryId?'selected':conflict?'disabled':''}>${esc(wbInstanceName(x))}${conflict?' · Potenziamento già presente':''}</option>`;
     }).join('')}</select></label>${!targets.length?'<p class="wb-muted">Nessuna destinazione compatibile disponibile nella lista.</p>':''}${unresolved?'<p class="wb-warning">L’associazione salvata richiede verifica. Puoi rimuoverla o scegliere una destinazione compatibile.</p>':''}`:''}
     ${beCompositionHtml(u,e)}<div class="wb-loadout">${beLoadoutHtml(u,e)}
-    ${u.weapons.filter(w=>w.name&&(!w.enhancement_id||e.enhancementIds.includes(w.enhancement_id))&&((u.options.length>0&&(!e.loadoutSelections||!beManagedWeapon(u.loadoutRecipe,w.line)))||w.enhancement_id)).filter(w=>beWeaponModes(u,w.line)[0]?.line===w.line).map(w=>{const n=e.weaponCounts[w.line]||0;return `<div class="wb-weapon"><span>${wbText(w.name)}<small>${wbText(w.type)} · ${wbText(wbDescription(w))}</small></span>${w.enhancement_id?`<span>1 · ${u.enhancements.find(x=>x.id===w.enhancement_id)?.upgrade==='true'?'Upgrade':'Enhancement'}</span>`:`<div class="wb-quantity" role="group" aria-label="Quantità ${esc(w.name)}"><button id="wb-weapon-${esc(w.line)}-minus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="-1" aria-label="Diminuisci ${esc(w.name)}" ${n===0?'disabled':''} type="button">−</button><output aria-label="Quantità ${esc(w.name)}">${n}</output><button id="wb-weapon-${esc(w.line)}-plus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="1" aria-label="Aumenta ${esc(w.name)}" ${n>=beWeaponLimit(u,e,w.line)?'disabled':''} type="button">+</button></div>`}</div>`;}).join('')}
+    ${u.weapons.filter(w=>w.name&&(!w.enhancement_id||e.enhancementIds.includes(w.enhancement_id))&&((u.options.length>0&&(!e.loadoutSelections||!beManagedWeapon(u.loadoutRecipe,w.line)))||w.enhancement_id)).filter(w=>beWeaponModes(u,w.line)[0]?.line===w.line).map(w=>{const n=e.weaponCounts[w.line]||0;return `<div class="wb-weapon"><span class="wb-profile-choice"><span>${wbText(w.name)}<small>${wbText(w.type)} · ${wbText(wbDescription(w))}</small></span>${beProfileButton(e,'Mostra profilo: '+w.name,`data-preview-line="${esc(w.line)}"`)}</span>${w.enhancement_id?`<span>1 · ${u.enhancements.find(x=>x.id===w.enhancement_id)?.upgrade==='true'?'Upgrade':'Enhancement'}</span>`:`<div class="wb-quantity" role="group" aria-label="Quantità ${esc(w.name)}"><button id="wb-weapon-${esc(w.line)}-minus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="-1" aria-label="Diminuisci ${esc(w.name)}" ${n===0?'disabled':''} type="button">−</button><output aria-label="Quantità ${esc(w.name)}">${n}</output><button id="wb-weapon-${esc(w.line)}-plus" data-wb-weapon-line="${esc(w.line)}" data-wb-weapon-step="1" aria-label="Aumenta ${esc(w.name)}" ${n>=beWeaponLimit(u,e,w.line)?'disabled':''} type="button">+</button></div>`}</div>`;}).join('')}
     </div>${upgrades?`<section class="wb-upgrades">${upgrades}</section>`:''}
     ${u.options.length?`<details class="wb-loadout-source"><summary>Opzioni di equipaggiamento</summary><p class="wb-rule-text">${wbText(u.loadout)}</p>${u.options.map(o=>`<p class="wb-rule-text">${wbText(wbDescription(o))}</p>`).join('')}</details>`:''}
     ${new Set(u.points.map(p=>[p.models,p.points,p.first??1,p.last??200].join(':'))).size>1||u.composition.length>1?`<details><summary>Costi e composizione</summary>${wbCosts(u)}</details>`:''}</section>`;
@@ -477,6 +517,7 @@ function builderWorkbenchRender(){
   const roots=workbench.mode==='play'?a.entries.filter(e=>!e.attachedTo):a.entries;
   main.innerHTML=`<section class="workbench" data-mode="${workbench.mode}" data-pane="${workbench.pane}" aria-label="Army Builder 11ª edizione">
     ${wbMobileHeader(totals)}
+    ${builderCompetitionLink()}
     <div class="wb-heading"><button id="wb-archive">Torna alle armate</button><div><p class="wb-muted">Warhammer 40.000 · 11ª edizione</p><h1>Army Builder</h1></div><div class="wb-mode" role="group" aria-label="Modalità"><button data-wb-mode="build" aria-pressed="${workbench.mode==='build'}">Build</button><button ${beIsPool()?'disabled':''} data-wb-mode="play" aria-pressed="${workbench.mode==='play'}">Play mode</button></div></div>
     <div class="wb-toolbar"><label class="wb-name">Nome armata<input id="wb-name" maxlength="100" value="${esc(a.name)}"></label><div class="wb-score" role="status"><strong>${totals.total}<small> / ${a.limit} pt</small></strong><span>${esc(wbDpSummary())}${totals.issues.length?` · ${totals.issues.length} avvisi`:''}</span></div><div class="wb-toolbar-actions"><span id="wb-save-state" role="status">${workbench.dirty?'Modifiche non salvate':'Bozza'}</span><button id="wb-save" class="primary" ${builderUi.pending?'disabled':''}>${builderUi.pending?'Salvataggio…':'Salva armata'}</button>${workbench.mode==='play'?'<button id="wb-stratagems">Stratagemmi</button>':''}<button type="button" data-wb-quick-search>Ricerca rapida</button><button id="wb-export">Esporta lista</button><button id="wb-backup">Backup JSON</button></div></div>
     ${workbench.mode==='build'?wbArmySettings(configurationOpen??false):''}
@@ -516,6 +557,8 @@ function wbBind(container=null){
   on('[data-wb-return-roster]','click',()=>{workbench.pane='roster';workbench.selected=null;workbench.preview=null;builderWorkbenchRender();});
   on('[data-wb-mode]','click',el=>wbSetMode(el.dataset.wbMode));
   on('[data-wb-rule]','click',wbOpenRule);
+  builderBindCompetitionLink(root);
+  on('[data-wb-profile-preview]','click',wbOpenEquipmentProfile);
   on('[data-wb-unit-options]','click',el=>wbOpenUnitOptions(el.dataset.wbUnitOptions,el));
   on('[data-wb-dismiss-error]','click',el=>{workbench.hiddenErrors.push(el.dataset.wbDismissError);builderWorkbenchRender();main.querySelector('.wb-validation>summary')?.focus({preventScroll:true});});
   on('[data-wb-detachment-rule]','click',el=>{const d=wbDetachments().find(d=>d.id===el.dataset.wbDetachmentRule);if(d)wbModal(d.name,wbDetachmentSections(d),el);});

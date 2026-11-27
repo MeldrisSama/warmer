@@ -124,7 +124,7 @@ function builderGetCatalog(PDO $pdo, string $edition, ?string $catalogId=null): 
     if(($catalog['featuresVersion']??0)>=3){$catalog=builderRestoreRuleParameters($catalog);$catalog=builderRefreshEnhancementEffects($catalog);$catalog['factions']=builderBuildAllies($catalog);}
     return ['catalog'=>$catalog+['catalogId'=>$row['id'],'created'=>$row['created']]];
 }
-function builderGetArmies(PDO $pdo, string $user): array {
+function builderGetArmies(PDO $pdo, string $user, bool $summary=false): array {
     $stmt=$pdo->prepare('SELECT id,name,edition,catalog_id,payload,updated FROM w40k_builder_armies WHERE owner=? ORDER BY updated DESC');
     $stmt->execute([$user]);
     $armies=[];
@@ -136,6 +136,12 @@ function builderGetArmies(PDO $pdo, string $user): array {
             $catalog=$catalogRow ? json_decode($catalogRow['payload'],true,40,JSON_THROW_ON_ERROR) : [];
             $factionNames[$row['catalog_id']]=array_column($catalog['factions']??[],'name','id');
             unset($catalog);
+        }
+        if($summary) {
+            $armies[]=['id'=>$row['id'],'name'=>$row['name'],'edition'=>$row['edition'],'catalogId'=>$row['catalog_id'],
+                'factionId'=>$army['factionId'],'factionName'=>$factionNames[$row['catalog_id']][$army['factionId']]??$army['factionId'],
+                'purpose'=>$army['purpose']??null];
+            continue;
         }
         if (($army['schemaVersion']??null)===2) {
             // Preserve an empty JSON map: [] would turn later numeric weapon keys into an array.
@@ -191,16 +197,21 @@ function builderValidateArmy(array $catalog, array $in): array {
     }
     return ['points'=>$total,'limit'=>$limit,'valid'=>count($issues)===0,'issues'=>$issues,'entries'=>$clean,'factionId'=>$factionId,'detachmentId'=>$detachmentId];
 }
-function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
+function builderSavedArmyText(PDO $pdo,string $owner,string $id, ?int $pointLimit=null): string {
     builderId($id,'armata');
     $stmt=$pdo->prepare('SELECT * FROM w40k_builder_armies WHERE id=? AND owner=?');$stmt->execute([$id,$owner]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) builderInvalid('Armata non disponibile nel tuo profilo.');
     $army=json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR);$source=builderCatalogRow($pdo,$row['edition'],$row['catalog_id']);
     if (!$source) builderInvalid('Catalogo della lista non disponibile.');
-    $catalog=builderRestoreCatalogCosts(json_decode($source['payload'],true,40,JSON_THROW_ON_ERROR));$units=array_column($catalog['units'],null,'id');$faction=array_column($catalog['factions'],null,'id')[$army['factionId']]??[];
+    return builderArmyText(builderRestoreCatalogCosts(json_decode($source['payload'],true,40,JSON_THROW_ON_ERROR)),$army,$pointLimit);
+}
+function builderArmyText(array $catalog,array $army, ?int $pointLimit=null): string {
+    if($pointLimit!==null && (($army['purpose']??'')==='pool' || empty($army['entries']))) builderInvalid('Per l’incontro scegli una lista da partita con almeno un’unità.');
+    $units=array_column($catalog['units'],null,'id');$faction=array_column($catalog['factions'],null,'id')[$army['factionId']]??[];
     $total=0;$unknown=false;$counts=[];
     foreach($army['entries'] as $entry){
         $u=$units[$entry['unitId']]??[];$ordinal=($counts[$entry['unitId']]??0)+1;$counts[$entry['unitId']]=$ordinal;$points=$entry['manualPoints']??null;
+        if($pointLimit!==null && $points!==null) builderInvalid('Rimuovi i punti manuali per verificare il limite della partita.');
         if($points===null)$points=builderEntryBasePrice($u,$entry,$ordinal);
         $quantity=$entry['quantity']??1;
         if($points===null)$unknown=true;else $total+=$points*$quantity;
@@ -208,7 +219,11 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
         if(!isset($entry['manualPoints'])&&!empty($entry['loadoutSelections'])&&!empty($u['loadoutRecipe']))$total+=builderLoadoutCounts($u['loadoutRecipe'],$entry['loadoutSelections'],$entry['models'])['cost'];
         foreach($u['enhancements']??[] as $e)if(in_array($e['id'],$entry['enhancementIds']??[],true))$total+=(int)$e['cost'];
     }
-    $lines=[$army['name'].' ('.$total.($unknown?' + unknown':'').' Points)',($faction['name']??'').' · '.($army['limit']??'').' Points'];
+    if($pointLimit!==null) {
+        if($unknown) builderInvalid('Completa i costi della lista nel Builder per verificare il limite della partita.');
+        if($total>$pointLimit) builderInvalid('La lista supera il limite della partita di '.$pointLimit.' punti (totale '.$total.').');
+    }
+    $lines=[$army['name'].' ('.$total.($unknown?' + unknown':'').' Points)',($faction['name']??'').' · '.($pointLimit??$army['limit']??'').' Points'];
     $detachments=$army['detachmentIds']??[$army['detachmentId']??''];
     foreach ($faction['detachments']??[] as $d) if (in_array($d['id'],$detachments,true))$lines[]=$d['name'];
     if (!empty($army['disposition']))$lines[]='Force Disposition: '.$army['disposition'];
@@ -228,9 +243,10 @@ function builderSavedArmyText(PDO $pdo,string $owner,string $id): string {
             foreach($gear['lines'] as $line)$managed[$line]=true;
         }
         foreach($gearRows as $gear)$lines[]='  '.$gear['n'].'x '.$gear['name'].' · '.$gear['model'];
+        $weaponCounts=(array)($entry['weaponCounts']??[]);
         foreach ($u['weapons']??[] as $weapon) {
             if (isset($managed[$weapon['line']]))continue;
-            $n=$entry['weaponCounts'][$weapon['line']]??0;
+            $n=$weaponCounts[$weapon['line']]??0;
             if (!empty($weapon['enhancement_id'])&&in_array($weapon['enhancement_id'],$entry['enhancementIds']??[],true))$n=1;
             if ($n>0){$bearer=$entry['enhancementModels'][$weapon['enhancement_id']??'']??null;$model=$bearer?(array_column($u['models'],null,'line')[$bearer]['name']??''):'';$lines[]='  '.$n.'x '.$weapon['name'].($model?' · '.$model:'');}
         }
@@ -256,7 +272,7 @@ function builderHandle(PDO $pdo, string $action, array $me, array $data=[], ?arr
         }
         return builderGetCatalog($pdo,$edition,$catalogId);
     }
-    if ($action==='builderArmies') return builderGetArmies($pdo,$me['id']);
+    if ($action==='builderArmies') return builderGetArmies($pdo,$me['id'],($_GET['summary']??'')==='1');
     if ($action==='builderArmyText') return ['text'=>builderSavedArmyText($pdo,$me['id'],builderId($_GET['id']??null,'armata'))];
     if ($action==='builderDefaults') {
         $stmt=$pdo->prepare('SELECT unit_id,catalog_id,payload FROM w40k_builder_defaults WHERE owner=?');$stmt->execute([$me['id']]);$defaults=[];

@@ -56,12 +56,12 @@ final class SectorStorage {
 
     private bool $sqliteWrite=false;
     private ?string $mysqlLock=null;
-    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id','league_roster_settings'=>'id','league_rosters'=>'id','league_roster_lineups'=>'id'];
+    private const LEAGUE_KEYS=['league'=>'id','league_members'=>'id','league_fixtures'=>'id','league_lineups'=>'id','league_entry_lineups'=>'id','league_roster_settings'=>'id','league_rosters'=>'id','league_roster_lineups'=>'id'];
     private const KEYS=['users'=>'id','matches'=>'id','lists'=>'id','invites'=>'hash','attempts'=>'ip'];
 
     private const BOOLS=['users'=>['admin'],'matches'=>['void'],'invites'=>['used']];
 
-    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league'=>['round_limit'],'league_fixtures'=>['round','slot','leg'],'league_rosters'=>['version']];
+    private const INTS=['matches'=>['scoreA','scoreB'],'lists'=>['size'],'invites'=>['expires'],'attempts'=>['count','until'],'league'=>['round_limit','entry_list_limit','match_point_limit'],'league_members'=>['withdrawn_round'],'league_fixtures'=>['round','slot','leg'],'league_rosters'=>['version'],'league_entry_lineups'=>['points']];
     public function __construct(array $config) {
 
         $this->driver=$config['driver']??'mysql';
@@ -108,17 +108,18 @@ final class SectorStorage {
             'invites'=>'`hash` VARCHAR(64) PRIMARY KEY, `expires` BIGINT NOT NULL, `used` INT NOT NULL',
 
             'attempts'=>'`ip` VARCHAR(64) PRIMARY KEY, `count` INT NOT NULL, `until` BIGINT NOT NULL',
-            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10), `closed` VARCHAR(40), `paused` VARCHAR(40), `format` VARCHAR(16) NOT NULL DEFAULT \'round_robin\', `round_limit` INT NOT NULL DEFAULT 0, `finished` VARCHAR(40)',
+            'league'=>'`id` VARCHAR(24) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `start` VARCHAR(10), `closed` VARCHAR(40), `paused` VARCHAR(40), `format` VARCHAR(16) NOT NULL DEFAULT \'round_robin\', `round_limit` INT NOT NULL DEFAULT 0, `finished` VARCHAR(40), `entry_list_limit` INT NOT NULL DEFAULT 0, `match_point_limit` INT NOT NULL DEFAULT 0',
             'league_entries'=>'`player` VARCHAR(24) PRIMARY KEY, `joined` VARCHAR(40) NOT NULL',
-            'league_members'=>'`id` VARCHAR(49) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `joined` VARCHAR(40) NOT NULL, `army` VARCHAR(64)',
+            'league_members'=>'`id` VARCHAR(49) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `joined` VARCHAR(40) NOT NULL, `army` VARCHAR(64), `withdrawn_round` INT NOT NULL DEFAULT 0',
             'mail_accounts'=>'`id` VARCHAR(24) PRIMARY KEY, `email` VARCHAR(254) UNIQUE, `pending_email` VARCHAR(254), `verify_hash` VARCHAR(64), `verify_until` BIGINT NOT NULL, `reset_hash` VARCHAR(64), `reset_until` BIGINT NOT NULL, `version` INT NOT NULL',
             'mail_jobs'=>'`id` VARCHAR(64) PRIMARY KEY, `recipient` VARCHAR(254), `payload` MEDIUMTEXT, `expires` BIGINT NOT NULL, `next_attempt` BIGINT NOT NULL, `attempts` INT NOT NULL',
             'schema_migrations'=>'`id` VARCHAR(64) PRIMARY KEY',
-            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL, `slot` INT NOT NULL DEFAULT 0, `leg` INT NOT NULL DEFAULT 1, `winner` VARCHAR(24)',
+            'league_fixtures'=>'`id` VARCHAR(24) PRIMARY KEY, `round` INT NOT NULL, `a` VARCHAR(24) NOT NULL, `b` VARCHAR(24), `pending` TEXT, `match_id` VARCHAR(24), `league_id` VARCHAR(24) NOT NULL, `slot` INT NOT NULL DEFAULT 0, `leg` INT NOT NULL DEFAULT 1, `winner` VARCHAR(24), `walkover` VARCHAR(24)',
             'league_roster_settings'=>'`id` VARCHAR(24) PRIMARY KEY, `payload` TEXT NOT NULL',
             'league_rosters'=>'`id` VARCHAR(24) PRIMARY KEY, `league_id` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `version` INT NOT NULL, `created` VARCHAR(40) NOT NULL, `payload` MEDIUMTEXT NOT NULL',
             'league_roster_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `roster_id` VARCHAR(24) NOT NULL, `payload` MEDIUMTEXT NOT NULL',
-            'league_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `fixture` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `text` MEDIUMTEXT NOT NULL'
+            'league_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `fixture` VARCHAR(24) NOT NULL, `player` VARCHAR(24) NOT NULL, `text` MEDIUMTEXT NOT NULL',
+            'league_entry_lineups'=>'`id` VARCHAR(49) PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `points` INT NOT NULL, `text` MEDIUMTEXT NOT NULL'
         ];
 
         foreach($definitions as $name=>$columns) $this->pdo->exec('CREATE TABLE IF NOT EXISTS `w40k_'.$name.'` ('.$columns.')'.($this->driver==='mysql'?' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci':''));
@@ -131,7 +132,7 @@ final class SectorStorage {
     }
 
     private function migrateLeagues(): void {
-        $marker='league-tournament-legs';
+        $marker='league-match-points';
         $check=$this->pdo->prepare('SELECT 1 FROM w40k_schema_migrations WHERE id=?');
         $check->execute([$marker]);
         if($check->fetchColumn()) return;
@@ -147,8 +148,11 @@ final class SectorStorage {
                     ['league','paused','VARCHAR(40)'],['league_members','army','VARCHAR(64)'],
                     ['league','format',"VARCHAR(16) NOT NULL DEFAULT 'round_robin'"],
                     ['league','round_limit','INT NOT NULL DEFAULT 0'],['league','finished','VARCHAR(40)'],
+                    ['league','entry_list_limit','INT NOT NULL DEFAULT 0'],
+                    ['league','match_point_limit','INT NOT NULL DEFAULT 0'],
                     ['league_fixtures','slot','INT NOT NULL DEFAULT 0'],['league_fixtures','leg','INT NOT NULL DEFAULT 1'],
-                    ['league_fixtures','winner','VARCHAR(24)']
+                    ['league_fixtures','winner','VARCHAR(24)'],['league_fixtures','walkover','VARCHAR(24)'],
+                    ['league_members','withdrawn_round','INT NOT NULL DEFAULT 0']
                 ];
                 foreach($columnsToAdd as [$name,$column,$type]) {
                     $table='w40k_'.$name;
@@ -202,6 +206,7 @@ final class SectorStorage {
     public function load(string $scope='archive'): array {
         $keys=match($scope) {
             'league'=>['users'=>'id','matches'=>'id']+self::LEAGUE_KEYS,
+            'roster-check'=>['users'=>'id','league'=>'id','league_roster_settings'=>'id'],
             'state'=>self::KEYS+self::LEAGUE_KEYS,
             default=>self::KEYS
         };
@@ -210,7 +215,11 @@ final class SectorStorage {
         foreach($keys+['mail_accounts'=>'id'] as $table=>$key) {
             $data[$table]=[];
 
-            $columns=$table==='league_lineups' ? '`id`, `fixture`, `player`' : '*';
+            $columns=match($table) {
+                'league_lineups'=>'`id`, `fixture`, `player`',
+                'league_entry_lineups'=>'`id`, `name`, `points`',
+                default=>'*'
+            };
             foreach($this->pdo->query('SELECT '.$columns.' FROM `w40k_'.$table.'`') as $row) {
                 foreach(self::BOOLS[$table]??[] as $c) $row[$c]=(bool)$row[$c];
 
@@ -251,8 +260,9 @@ final class SectorStorage {
         return $claim->rowCount()===1 ? $job : null;
     }
 
-    public function leagueLineupText(string $id): string {
-        $statement=$this->pdo->prepare('SELECT `text` FROM `w40k_league_lineups` WHERE `id`=?');
+    public function leagueLineupText(string $id, bool $entry=false): string {
+        $table=$entry?'w40k_league_entry_lineups':'w40k_league_lineups';
+        $statement=$this->pdo->prepare('SELECT `text` FROM `'.$table.'` WHERE `id`=?');
         $statement->execute([$id]);
         $text=$statement->fetchColumn();
         if(!is_string($text)) throw new RuntimeException('League lineup missing');
@@ -290,7 +300,7 @@ final class SectorStorage {
 
                 }
 
-                if(in_array($table,['attempts','invites'],true)) foreach($this->snapshot[$table]??[] as $id=>$row) if(!isset($next[$id])) $this->pdo->prepare('DELETE FROM `w40k_'.$table.'` WHERE `'.$key.'`=?')->execute([$id]);
+                if(in_array($table,['attempts','invites','league_members','league_rosters','league_entry_lineups'],true)) foreach($this->snapshot[$table]??[] as $id=>$row) if(!isset($next[$id])) $this->pdo->prepare('DELETE FROM `w40k_'.$table.'` WHERE `'.$key.'`=?')->execute([$id]);
 
                 $pending[$table]=$next;
 
