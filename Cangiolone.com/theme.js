@@ -25,7 +25,7 @@ window.SectorTheme = (() => {
     { id: 'space-wolves', name: 'Space Wolves', bg: '#18252d', surface: '#304957', accent: '#efc45b' }
   ];
   const orkMenus = {
-    'Classifica': 'Ki è il più tosto', 'Campionati': 'Le WAAAGH!',
+    'Classifica': 'Ki è il più tosto', 'Campionati': 'Le WAAAGH!', 'Tornei e campionati': 'Le WAAAGH!',
     'Nuova partita': 'Nuova zuffa', 'Liste': 'Lizte', 'Army Builder': 'Officina dei Mek',
     'Profilo': 'Il tuo muzo', 'Esci': 'Zlogga', 'Tutti i campionati': 'Tutte le WAAAGH!',
     'Giornate': 'Giorni di zuffa', 'Tema': 'Kolori del klan'

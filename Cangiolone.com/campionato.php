@@ -28,7 +28,7 @@ require_once __DIR__.'/assets.php';
   <header class="nav masthead">
     <nav class="wrap masthead-inner" aria-label="Navigazione del campionato">
       <a href="index.php" class="wordmark">Cronache del settore</a>
-      <a href="index.php#campionati" class="back"><span aria-hidden="true">←</span> <span data-theme-menu="Tutti i campionati">Tutti i campionati</span></a>
+      <a href="index.php#campionati" class="back"><span aria-hidden="true">←</span> <span data-theme-menu="Tornei e campionati">Tornei e campionati</span></a>
       <a href="index.php#profilo" class="league-profile-link" aria-label="Apri il tuo profilo" title="Profilo"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle cx="16" cy="11" r="5"/><path d="M5 28v-3c0-6 5-9 11-9s11 3 11 9v3"/></svg></a>
     </nav>
   </header>
@@ -54,7 +54,7 @@ require_once __DIR__.'/assets.php';
         <div class="section-head">
           <h2 id="round-heading">Calendario</h2>
           <div class="round-pick">
-            <label for="round-picker">Giornata</label>
+            <label for="round-picker" id="round-picker-label">Giornata</label>
             <select id="round-picker"></select>
           </div>
         </div>

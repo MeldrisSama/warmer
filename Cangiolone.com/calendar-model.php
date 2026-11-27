@@ -19,6 +19,10 @@ function calendarCheckFixture(array $db, string $id, array $me): array {
     [$fixture,$league]=calendarFixtureData($db,$id);
     if(!$me['admin'] && !in_array($me['id'],[$fixture['a'],$fixture['b']],true)) fail('Solo i partecipanti o un amministratore possono programmare questo incontro.',403);
     if($fixture['b']===null || $fixture['match_id']!==null) fail('Questo incontro non può essere programmato.',409);
+    if(leagueIsTournament($league)) {
+        $draw=array_column(tournamentFixtures($db,$league['id']),null,'id');
+        if($draw[$id]['decision']) fail('Questo incontro non può essere programmato.',409);
+    }
     if(!$league['start'] || $league['closed']!==null || $league['paused']!==null) fail('Il campionato non è attivo.',409);
     return $fixture;
 }
@@ -98,8 +102,18 @@ function calendarUpdateFixtureDate(string $action, array $in, array $me, array &
 
 function calendarLineupState(array $db, array $event, array $me): array {
     $submitted=[];
-    foreach($event['fixture']!==null ? $db['league_lineups'] : ($db['calendar_lineups']??[]) as $row) {
-        if($event['fixture']!==null ? $row['fixture']===$event['fixture'] : ($row['event']===$event['id']&&$row['active']))$submitted[$row['player']]=true;
+    if($event['fixture']!==null) {
+        [, $league]=calendarFixtureData($db,$event['fixture']);
+        if($league['entry_list_limit']>0) {
+            $entries=array_column($db['league_entry_lineups'],null,'id');
+            foreach(array_filter([$event['a'],$event['b']]) as $player) {
+                if(isset($entries[$league['id'].':'.$player])) $submitted[$player]=true;
+            }
+        } else {
+            foreach($db['league_lineups'] as $row) if($row['fixture']===$event['fixture']) $submitted[$row['player']]=true;
+        }
+    } else {
+        foreach($db['calendar_lineups'] as $row) if($row['event']===$event['id']&&$row['active']) $submitted[$row['player']]=true;
     }
     $mine=in_array($me['id'],[$event['a'],$event['b']],true);
     return ['mine'=>$mine&&isset($submitted[$me['id']]),'opponent'=>$mine&&isset($submitted[$event['a']===$me['id']?$event['b']:$event['a']]),

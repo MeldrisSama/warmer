@@ -43,6 +43,28 @@ foreach([8,9] as $count) {
 }
 
 $directory = $argv[1];
+for($count=2;$count<=20;$count++) {
+    $players=array_map('strval',range(1,$count));
+    $rounds=$count%2===0 ? $count-1 : $count;
+    $fixtures=leagueSchedule($players,true);
+    $half=intdiv(count($fixtures),2);
+    $matches=0;
+    $ids=[];
+    foreach($fixtures as $index=>$fixture) {
+        check(!isset($ids[$fixture['id']]),'Each leg needs its own fixture ID');
+        $ids[$fixture['id']]=true;
+        if($index>=$half) continue;
+        $return=$fixtures[$index+$half];
+        check($return['round']===$fixture['round']+$rounds && $return['leg']===2,'Return starts after the first leg');
+        if($fixture['b']===null) {
+            check($return['a']===$fixture['a'] && $return['b']===null,'Bye survives the return leg');
+        } else {
+            $matches+=2;
+            check($return['a']===$fixture['b'] && $return['b']===$fixture['a'],'Return reverses the same pair');
+        }
+    }
+    check($matches===$count*($count-1),'Each pair plays twice');
+}
 $legacyConfig = ['driver'=>'sqlite','path'=>$directory.'/legacy.sqlite'];
 $legacy = new PDO('sqlite:'.$legacyConfig['path'],null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $legacy->exec("CREATE TABLE w40k_league (id TEXT PRIMARY KEY, name TEXT NOT NULL, start TEXT);
@@ -60,6 +82,8 @@ check($seasons['league'][0]['closed']===null && $seasons['league'][0]['paused']=
 check(array_column($seasons['league_members'],'id')===['legacy:alice','legacy:bob'],'Legacy signups must carry over');
 check($seasons['league_members'][0]['army']===null,'Legacy signups must keep an unspecified army');
 check($seasons['league_fixtures'][0]['league_id']==='legacy' && $seasons['league_fixtures'][0]['match_id']==='match','Legacy fixture and result link must carry over');
+check($seasons['league'][0]['format']==='round_robin' && $seasons['league'][0]['round_limit']===0,'Legacy season must remain a round robin');
+check($seasons['league'][0]['match_point_limit']===0,'The migration must not invent historical point limits');
 check($migrated->leagueLineupText('fixture:alice')==='Army list','Legacy list must remain readable');
 $seasons['league'][]=['id'=>'new','name'=>'Nuovo campionato','start'=>null,'closed'=>null];
 $migrated->save($seasons);
@@ -71,17 +95,21 @@ $previous->exec("ALTER TABLE w40k_league RENAME TO old_lifecycle;
 CREATE TABLE w40k_league (id TEXT PRIMARY KEY, name TEXT NOT NULL, start TEXT, closed TEXT);
 INSERT INTO w40k_league SELECT id, name, start, closed FROM old_lifecycle;
 DROP TABLE old_lifecycle;
-DELETE FROM w40k_schema_migrations WHERE id='league-army';");
+DELETE FROM w40k_schema_migrations WHERE id='league-match-points';");
 $previous = null;
 $seasons = (new SectorStorage($legacyConfig))->load('league');
 check(count($seasons['league'])===2 && $seasons['league'][1]['paused']===null,'Adding pause must preserve existing seasons');
 $previous = new PDO('sqlite:'.$legacyConfig['path'],null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $previous->exec("ALTER TABLE w40k_league_members DROP COLUMN army;
-DELETE FROM w40k_schema_migrations WHERE id='league-army';");
+ALTER TABLE w40k_league_members DROP COLUMN withdrawn_round;
+ALTER TABLE w40k_league_fixtures DROP COLUMN walkover;
+DELETE FROM w40k_schema_migrations WHERE id='league-match-points';");
 $previous = null;
 $armyStorage = new SectorStorage($legacyConfig);
 $seasons = $armyStorage->load('league');
 check(count($seasons['league_members'])===2 && $seasons['league_members'][0]['army']===null,'Army migration must preserve existing members');
+check($seasons['league_members'][0]['withdrawn_round']===0 && $seasons['league_fixtures'][0]['walkover']===null,
+    'Existing matches and players must default to a played tournament without withdrawals');
 $seasons['league_members'][0]['army']='dark_angels';
 $armyStorage->save($seasons);
 $seasons = (new SectorStorage($legacyConfig))->load('league');

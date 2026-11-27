@@ -298,7 +298,7 @@ function render(){
 
     ['home','Home'],
     ['storico','Partite'],
-    ['campionati','Campionati'],
+    ['campionati','Tornei e campionati'],
     ['calendario','Calendario'],
     ['giocatori','Giocatori']
 
@@ -1091,13 +1091,13 @@ async function calendarPage(){
 function leaguesPage(){
   const groups=[
     ['In corso',league=>league.start && !league.closed && !league.paused],
-    ['Da iniziare',league=>!league.start && !league.closed && !league.paused],
+    ['Iscrizioni aperte',league=>!league.start && !league.closed && !league.paused],
     ['In pausa',league=>league.paused && !league.closed],
     ['Conclusi',league=>league.closed]
   ];
   main.innerHTML=`<section class="panel league-directory">
-    <div class="heading"><h1>Campionati</h1>
-      ${state.user.admin ? '<a class="button primary" href="campionato.php?new=1">Crea campionato</a>' : ''}
+    <div class="heading"><h1>Tornei e campionati</h1>
+      ${state.user.admin ? '<a class="button primary" href="campionato.php?new=1">Crea campionato o torneo</a>' : ''}
     </div>
     ${state.leagues.length ? groups.map(([title,filter])=>{
       const leagues=state.leagues.filter(filter);
@@ -1105,7 +1105,7 @@ function leaguesPage(){
       return `<section class="league-group"><h2>${title}</h2><ul>
         ${leagues.map(league=>`<li><a href="${leagueLink(league)}">
           <strong>${esc(league.name)}</strong>
-          <small>${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
+          <small>${({round_robin_legs:'Girone · andata e ritorno · ',swiss:'Svizzero · ',knockout:'Eliminazione diretta · ',knockout_legs:'Eliminazione diretta · andata e ritorno · '})[league.format]||''}${league.entrants} ${league.entrants===1?'iscritto':'iscritti'}${league.joined?' · Sei iscritto':''}</small>
           <span aria-hidden="true">→</span>
         </a></li>`).join('')}
       </ul></section>`;
@@ -2163,4 +2163,3 @@ refresh().catch(
   }
 
 );
-

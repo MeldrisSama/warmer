@@ -196,13 +196,18 @@ require __DIR__.'/builder-model.php';
 require __DIR__.'/league-roster.php';
 $action=$_GET['action']??'state';
 if(!is_string($action)) fail('Richiesta non valida.');
-$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueStart','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow'];
+$leagueWrites=[...LEAGUE_LIFECYCLE_ACTIONS,'leagueOpen','leagueJoin','leagueLeave','leagueRetire','leagueUndoRetire','leagueStart','leagueAdvance','leagueAnnounce','leagueLineup','leaguePropose','leagueConfirm','leagueReject','leagueWithdraw','leaguePhoto','leagueRosterSave','leagueRosterWindow','leagueResetResult','leagueWalkover','leagueUndoWalkover'];
 $leagueWrite=in_array($action,$leagueWrites,true);
 $calendarWrite=in_array($action,CALENDAR_WRITES,true);
 try {
     $storage=new SectorStorage($config['database']);
     if(($leagueWrite || $calendarWrite || in_array($action,['avatarSave','void','login','setup','register','invite',...ACCOUNT_ACTIONS],true)) && $_SERVER['REQUEST_METHOD']==='POST') $storage->beginLeagueUpdate();
-    $scope=($leagueWrite || $calendarWrite || $action==='calendar' || $action==='calendarDownload' || $action==='league' || $action==='leagueDownload' || $action==='void') ? 'league' : ($action==='state' ? 'state' : 'archive');
+    $scope=match(true) {
+        $leagueWrite || $calendarWrite || in_array($action,['league','leagueDownload','calendar','calendarDownload','void'],true)=>'league',
+        $action==='leagueRosterCompatibility'=>'roster-check',
+        $action==='state'=>'state',
+        default=>'archive'
+    };
     $db=$storage->load($scope);
     $db['mail_accounts']=array_column($db['mail_accounts'],null,'id');
 }
@@ -265,11 +270,13 @@ if($action==='state') {
     $leagues=leagueSummaries($db,$me['id']);
     $locked=leagueMatchLocks($db);
     $matchLeagues=[];
+    $fixtureLeagues=[];
     foreach($db['league_fixtures'] as $fixture) {
         if($fixture['match_id']!==null) $matchLeagues[$fixture['match_id']]=$fixture['league_id'];
+        $fixtureLeagues[$fixture['id']]=$fixture['league_id'];
     }
-    $matches=array_map(function(array $match) use($locked,$matchLeagues): array {
-        $match['leagueId']=$matchLeagues[$match['id']]??null;
+    $matches=array_map(function(array $match) use($locked,$matchLeagues,$fixtureLeagues): array {
+        $match['leagueId']=$matchLeagues[$match['id']]??(str_starts_with($match['request'],'league:') ? ($fixtureLeagues[substr($match['request'],7)]??null) : null);
         if(isset($locked[$match['id']])) $match['leagueLocked']=true;
         if(!empty($match['photo'])) $match['photo']='api.php?action=photo&id='.rawurlencode($match['id']);
         return $match;
@@ -364,13 +371,14 @@ if($action==='download') {
 
 }
 
-if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText','leagueRosterPreview'],true)) {
+if(in_array($action,['builderCatalog','builderArmies','builderDefaults','builderArmyText','leagueRosterPreview','leagueRosterCompatibility'],true)) {
     if($_SERVER['REQUEST_METHOD']!=='GET') fail('Metodo non consentito.',405);
     if(!$me) fail('Accedi per continuare.',401);
 
     if(isset($_GET['offlineOwner'])&&$_GET['offlineOwner']!==$me['id'])fail('Accedi con l’account delle liste offline.',401);
     try {
         builderSchema($storage->builderConnection(),$storage->builderDriver());
+        if($action==='leagueRosterCompatibility') result(leagueRosterCompatibility($storage->builderConnection(),$db,$me,$_GET));
         if($action==='leagueRosterPreview') result(leagueRosterPreview($storage->builderConnection(),$me['id'],builderId($_GET['id']??null,'armata')));
         result(builderHandle($storage->builderConnection(),$action,$me));
     } catch(BuilderInputError $e) { fail($e->getMessage()); }
@@ -549,13 +557,13 @@ try {
             }
             result(['ok'=>true]);
         }
-        if ($action==='leagueLineup'&&!empty($in['builderArmyId'])) {
-            if (!empty($in['filename'])||!is_string($in['text']??'')||trim($in['text']??'')!=='') fail('Scegli una sola fonte per la lista.');
-            try {$in['text']=builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));}
-            catch(BuilderInputError $e){fail($e->getMessage());}
-        }
         try {
-            if($action==='leagueLineup') leagueRosterCheckDelivery($in,$me,$db,$storage->builderConnection());
+            if($action==='leagueLineup') {
+                $fromBuilder=!empty($in['builderArmyId']);
+                if($fromBuilder && (!empty($in['filename'])||!is_string($in['text']??'')||trim($in['text']??'')!=='')) fail('Scegli una sola fonte per la lista.');
+                $prepared=leagueRosterCheckDelivery($in,$me,$db,$storage->builderConnection());
+                if($fromBuilder) $in['text']=$prepared??builderSavedArmyText($storage->builderConnection(),$me['id'],builderId($in['builderArmyId'],'armata'));
+            }
             $leagueId=updateLeague($action,$in,$me,$db,$mail,$storage->builderConnection());
         } catch(BuilderInputError $e) {fail($e->getMessage());}
         save();
@@ -601,6 +609,7 @@ try {
 
         $details=matchDetails($in);
         $request=field($in,'request',64);
+        if(str_starts_with($request,'league:')) fail('Identificativo della richiesta non valido.');
 
         foreach($db['matches'] as $m) if($m['request']===$request && $m['by']===$me['id']) result(['ok'=>true]);
 
@@ -700,4 +709,3 @@ try {
     fail('Azione non trovata.',404);
 
 } catch(Throwable $e) { error_log('Warhammer archive operation failed: '.$e->getMessage()); fail('Salvataggio non riuscito. Riprova; se il problema continua contatta l’amministratore.',503); }
-

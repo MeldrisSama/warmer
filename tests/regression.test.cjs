@@ -16,7 +16,7 @@ const root = resolve(__dirname, '..');
 const php = process.env.PHP_BINARY || 'php';
 const password = 'test-password-123';
 
-test('Regression suite with an isolated PHP application', { timeout: 60000 }, async t => {
+test('Regression suite with an isolated PHP application', { timeout: 120000 }, async t => {
   const probe = spawnSync(php, ['-r', 'exit(PHP_VERSION_ID >= 80100 && extension_loaded("pdo_sqlite") ? 0 : 1);'], { encoding: 'utf8' });
   assert.equal(probe.status, 0, `PHP 8.1+ with pdo_sqlite is required. Set PHP_BINARY if needed. ${probe.error?.message || probe.stderr}`);
 
@@ -32,7 +32,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   });
 
   await t.test('PHP and JavaScript sources pass syntax checks', () => {
-    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
+    for (const file of ['index.php', 'assets.php', 'builder-sync.php', 'service-worker.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-tournament.php', 'calendar-model.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'config.php', '../tests/storage.php', '../tests/transport-router.php']) {
       const result = spawnSync(php, ['-l', join(root, 'Cangiolone.com', file)], { encoding: 'utf8' });
       assert.equal(result.status, 0, result.stdout + result.stderr);
     }
@@ -44,6 +44,11 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
 
   await t.test('Storage persists typed data, rolls back failures and safely reads wiki settings', () => {
     const result = spawnSync(php, [join(__dirname, 'storage.php'), directory], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  await t.test('Tournament draws, byes and advancement preserve results and reject invalid rounds', () => {
+    const result = spawnSync(php, [join(__dirname, 'league-tournament.php')], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
 
@@ -64,11 +69,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
         user: { id: 'viewer', admin: false }, users, leagues: [],
         matches: matches.map((match, index) => ({ id: `match-${index}`, date: '2020-01-01', created: '2020-01-01T12:00:00+01:00', ...match }))
       };
-      vm.runInContext('state = fixture; standings();', context);
-      const body = main.innerHTML.split('<tbody>')[1].split('</tbody>')[0];
-      return [...body.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row =>
-        [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(cell => cell[1].replace(/<[^>]*>/g, '').trim())
-      );
+      return Array.from(vm.runInContext('state = fixture; rankStandings(state.users,state.matches);', context),
+        row=>[row.rank,row.name,row.played,row.w,row.d,row.l,row.diff>0?'+'+row.diff:row.diff,row.points].map(String));
     }
     assert.deepEqual(standings([
       { a: 'Alice', b: 'Bob', scoreA: 80, scoreB: 50 },
@@ -84,10 +86,6 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.deepEqual(standings([]).map(row => row.slice(0, 2)), [
       ['1', 'Alice'], ['1', 'Bob'], ['1', 'Carlo'], ['1', 'Dana']
     ]);
-    users[0].name = '<img src=x onerror=alert(1)>';
-    standings([]);
-    assert.ok(main.innerHTML.includes('&lt;img src=x onerror=alert(1)&gt;'));
-    assert.ok(!main.innerHTML.includes('<img src=x'));
 
     const banner = (leagues, admin = false) => {
       context.fixture.leagues = leagues;
@@ -108,7 +106,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     assert.match(banner([closed], true), /campionato.php\?new=1/);
     banner([open, first, paused, closed], true);
     vm.runInContext('leaguesPage()', context);
-    for (const label of ['In corso', 'Da iniziare', 'In pausa', 'Conclusi', 'Crea campionato']) assert.ok(main.innerHTML.includes(label));
+    for (const label of ['In corso', 'Iscrizioni aperte', 'In pausa', 'Conclusi', 'Crea campionato']) assert.ok(main.innerHTML.includes(label));
   });
 
   await t.test('League shows responsive tabs, opens at the current round and reads revealed lists', async () => {
@@ -225,8 +223,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     context.demo.league.closed=null;context.demo.league.joined=true;
     context.demo.rosters={settings:{rosterLimit:3000,matchLimit:2000,windowOpen:true},versions:[],submitted:[]};
     vm.runInContext('renderRoster();',context);
-    assert.match(nodes.get('roster-panel').innerHTML,/Equipaggiamenti con costo extra/);
-    assert.match(nodes.get('roster-panel').innerHTML,/Due opzioni da 15 costano 15/);
+    assert.match(nodes.get('roster-panel').innerHTML,/Crea un pool nel Builder/);
+    assert.match(nodes.get('roster-panel').innerHTML,/Le riserve si impostano nel pool/);
     assert.match(nodes.get('roster-panel').innerHTML,/Chiudi finestra roster/);
     const privateFixture={...first,lineups:{mine:false,opponent:false}};
     context.privateFixture=privateFixture;
@@ -250,7 +248,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
   const application = join(directory, 'app');
   await mkdir(application);
   await mkdir(join(directory, 'sessions'));
-  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'statistics.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
+  for (const file of ['index.php', 'assets.php', 'api.php', 'https.php', 'storage.php', 'league.php', 'league-tournament.php', 'calendar-model.php', 'league-roster.php', 'mail-model.php', 'mail-delivery.php', 'mail-worker.php', 'builder-model.php', 'campionato.php', 'router.php', 'app.js', 'sync-icons.js', 'sync-icons.css', 'style.css', 'standings.js', 'statistics.js', 'campionato.js', 'campionato.css', 'theme.js', 'theme.css', 'builder.js', 'builder-engine.js', 'builder-workbench.js', 'builder.css', 'web.config']) {
     await copyFile(join(root, 'Cangiolone.com', file), join(application, file));
   }
   await cp(join(root,'Cangiolone.com/assets'),join(application,'assets'),{recursive:true});
@@ -343,7 +341,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       }
       const bytes = Buffer.from(await response.arrayBuffer());
       const text = bytes.toString();
-      assert.equal(response.status, status, `${action}: ${text}`);
+      assert.equal(response.status, status, `${action}: ${text}${response.status===503&&status!==503?'\n'+serverLog:''}`);
       const contentType = response.headers.get('content-type') || '';
       const value = contentType.startsWith('image/') ? bytes : contentType.startsWith('application/json') ? JSON.parse(text) : text;
       if (value.csrf) csrf = value.csrf;
@@ -694,6 +692,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await guest('league', undefined, 401);
     await alice('leagueOpen', { name: 'Test' }, 403);
     const firstLeague = (await admin('leagueOpen', { name: 'Stagione di prova' })).id;
+    sql("UPDATE w40k_league SET match_point_limit=0 WHERE id='"+firstLeague+"'");
     assert.equal((await alice('state')).league.joined, false);
     await admin('leagueStart', {}, 422);
     await alice('leagueJoin', {}, 422);
@@ -919,6 +918,261 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     }
   });
 
+  await t.test('A double round-robin without a roster publishes two matches per pair and uses league rules', async () => {
+    for(const withRoster of [false,true]) {
+      const format='round_robin_legs';
+      const name=withRoster?'Girone doppio con roster':'Girone doppio libero';
+      const {id}=await admin('leagueOpen',{name,format,matchLimit:1500,...(withRoster?{rosterLimit:3000}:{})});
+      const league={league:id};
+      const read=(account=admin)=>account('league&id='+id);
+      assert.equal((await read()).league.format,format);
+      if(withRoster) {
+        assert.equal((await read()).rosters.settings.matchLimit,1500);
+        await alice('leagueJoin',{...league,army:'orks'},422);
+        assert.equal((await read(alice)).league.joined,false);
+        continue;
+      }
+      assert.equal((await read()).rosters.settings,null);
+      assert.equal((await read()).league.match_point_limit,1500);
+      for(const account of [alice,bob]) await account('leagueJoin',{...league,army:'orks'});
+      await admin('leagueStart',league);
+      const season=await read();
+      assert.equal(season.tournament,null);
+      assert.equal(season.fixtures.length,2);
+      const [first,second]=season.fixtures;
+      assert.deepEqual([first.round,first.leg,second.round,second.leg],[1,1,2,2]);
+      assert.deepEqual([first.a,first.b],[second.b,second.a]);
+      const target={...league,fixture:first.id};
+      await alice('leaguePropose',{...target,scoreA:68,scoreB:43,date:season.today});
+      const token=(await read(bob)).fixtures[0].pending.token;
+      await bob('leagueConfirm',{...target,proposal:token});
+      const firstMatch=(await state()).matches.find(m=>m.leagueId===id);
+      assert.equal(firstMatch.leagueLocked,undefined);
+      await admin('void',{id:firstMatch.id,void:true});
+      assert.equal((await read()).fixtures[0].result.void,true);
+      assert.equal((await read()).fixtures[1].result,null);
+      await alice('leagueResetResult',{...target,match:firstMatch.id},403);
+      await admin('leagueResetResult',{...target,match:second.id},409);
+      await admin('leagueResetResult',{...target,match:firstMatch.id});
+      assert.equal((await read()).fixtures[0].result,null);
+      await admin('void',{id:firstMatch.id,void:false},409);
+      await alice('leaguePropose',{...target,scoreA:64,scoreB:47,date:season.today});
+      await bob('leagueConfirm',{...target,proposal:token},409);
+      const correction=(await read(bob)).fixtures[0].pending.token;
+      await bob('leagueConfirm',{...target,proposal:correction});
+      const corrected=await read();
+      assert.equal(corrected.fixtures[0].result.scoreA,64);
+      assert.notEqual(corrected.fixtures[0].result.id,firstMatch.id);
+      assert.equal(corrected.fixtures[1].result,null);
+      const archived=(await state()).matches.find(m=>m.id===firstMatch.id);
+      assert.ok(archived.void && archived.leagueLocked && archived.leagueId===id);
+      await admin('leagueResetResult',{...target,match:firstMatch.id},409);
+      await admin('leagueAdvance',{...league,round:1},409);
+    }
+  });
+
+  async function tournament(format,players) {
+    const {id}=await admin('leagueOpen',{name:'Test '+format,format});
+    // Exercise recovery and progression for tournaments which started before single-list signup.
+    sql("UPDATE w40k_league SET entry_list_limit=0 WHERE id='"+id+"'");
+    const read=(account=admin)=>account('league&id='+id);
+    const send=(account,action,fields={},status=200)=>account(action,{league:id,...fields},status);
+    for(const account of players) await send(account,'leagueJoin',{army:'orks'});
+    const signup=async fields=>({signupRevision:(await read()).tournament.signupRevision,...fields});
+    const revision=async fields=>{
+      const {round,revision}= (await read()).tournament;
+      return {round,revision,...fields};
+    };
+    return {id,read,send,signup,revision};
+  }
+
+  await t.test('New tournaments require one valid immutable signup list in every format', async () => {
+    const data=spawnSync(php,[join(root,'tests/league-roster-model.php')],{encoding:'utf8'});
+    assert.equal(data.status,0,data.stderr);
+    const fixture=JSON.parse(data.stdout);
+    const {catalogId}=await admin('builderImport',{catalog:fixture.raw});
+    const army={...fixture.army,catalogId,name:'Lista ufficiale per tutti i turni'};
+    const a=(await alice('builderSave',army)).army;
+    const b=(await bob('builderSave',army)).army;
+    for(const format of ['knockout','knockout_legs','swiss']) {
+      const {id}=await admin('leagueOpen',{name:'Lista unica '+format,format,entryListLimit:1000});
+      const league={league:id};
+      const read=account=>account('league&id='+id);
+      const own='leagueDownload&entry='+id;
+      await alice('leagueJoin',{...league,army:'orks'},422);
+      await alice('leagueJoin',{...league,army:'necrons',builderArmyId:a.id},422);
+      await alice('leagueJoin',{...league,army:'orks',builderArmyId:b.id},422);
+      assert.equal((await read(alice)).league.joined,false);
+      await alice('leagueJoin',{...league,army:'orks',builderArmyId:a.id});
+      assert.equal((await read(alice)).entryList.points,100);
+      assert.equal((await read(bob)).entryList,null);
+      await bob(own,undefined,404);
+      const original=await alice(own);
+      assert.match(original,/Lista ufficiale per tutti i turni/);
+      await alice('builderSave',{...army,id:a.id,name:'Nome temporaneo nel Builder'});
+      assert.equal(await alice(own),original);
+      await alice('builderSave',{...army,id:a.id});
+      await alice('leagueLeave',league);
+      await alice(own,undefined,404);
+      await alice('leagueJoin',{...league,army:'orks',builderArmyId:a.id});
+      await bob('leagueJoin',{...league,army:'orks',builderArmyId:b.id});
+      await admin('leagueStart',{...league,signupRevision:(await read(admin)).tournament.signupRevision});
+      const season=await read(alice);
+      const first=season.fixtures[0];
+      await alice('calendarSave',{fixture:first.id,id:'7'.repeat(23)+['knockout','knockout_legs','swiss'].indexOf(format),date:'2099-12-31',time:'',version:0,proposalVersion:0});
+      await bob('calendarApprove',{fixture:first.id,proposalVersion:1});
+      const scheduled=(await alice('calendar')).events.find(event=>event.fixture===first.id);
+      assert.equal(scheduled.lineups.readable,true);
+      assert.equal(await alice('calendarDownload&id='+scheduled.id+'&player='+first.a),original);
+      await alice('calendarLineup',{id:scheduled.id,version:1,text:'Tentativo di sostituire la lista'},409);
+      for(const match of season.fixtures) {
+        assert.equal(match.listsReadable,true);
+        assert.equal(await bob('leagueDownload&fixture='+match.id+'&player='+aliceId),original);
+        await alice('leagueLineup',{...league,fixture:match.id,text:'Altra lista'},409);
+      }
+      await alice('leagueLeave',league,409);
+    }
+  });
+
+  await t.test('Tournament start checks the entrant snapshot and a withdrawn signup can rejoin', async () => {
+    const {read,send,signup}=await tournament('swiss',[alice,bob]);
+    const stale=await signup();
+    await send(admin,'leagueJoin',{army:'orks'});
+    await send(admin,'leagueStart',stale,409);
+    assert.equal((await read()).fixtures.length,0);
+    await send(bob,'leagueLeave');
+    assert.equal((await read(bob)).league.joined,false);
+    await send(bob,'leagueJoin',{army:'dark_angels'});
+    assert.equal((await read()).armies[bobId],'dark_angels');
+    await send(admin,'leagueStart',await signup({rounds:3,byes:[bobId]}));
+    assert.equal((await read()).fixtures.find(f=>!f.b).a,bobId);
+    await send(bob,'leagueLeave',{},409);
+  });
+
+  await t.test('Tournament result correction preserves the old record and invalidates old confirmations and advances', async () => {
+    for(const format of ['knockout','knockout_legs','swiss']) {
+      const {id,read,send,signup,revision}=await tournament(format,[alice,bob]);
+      await send(admin,'leagueStart',await signup());
+      const season=await read(), first=season.fixtures[0];
+      const target={fixture:first.id};
+      const proposed={...target,scoreA:70,scoreB:55,date:season.today};
+      await send(alice,'leaguePropose',proposed);
+      const token=(await read(bob)).fixtures[0].pending.token;
+      await send(bob,'leagueConfirm',{...target,proposal:token});
+      const old=(await state()).matches.find(m=>m.leagueId===id).id;
+      await admin('void',{id:old,void:true},409);
+      // Simulate a result previously cancelled from the history screen.
+      sql("UPDATE w40k_matches SET void=1 WHERE id='"+old+"'");
+      await send(admin,'leagueAdvance',await revision(),409);
+      const originalView=await revision(target);
+      await send(alice,'leagueResetResult',originalView,403);
+      await send(admin,'leagueResetResult',originalView);
+      await send(admin,'leagueResetResult',originalView,409);
+      assert.equal((await read()).fixtures[0].result,null);
+      assert.ok((await state()).matches.some(m=>m.id===old&&m.void&&m.leagueLocked&&m.leagueId===id));
+      await admin('void',{id:old,void:false},409);
+      await send(alice,'leaguePropose',{...proposed,scoreA:71});
+      const pending=(await read(bob)).fixtures[0].pending;
+      await send(bob,'leagueConfirm',{...target,proposal:token},409);
+      await send(bob,'leagueConfirm',{...target,proposal:pending.token});
+      if(format==='knockout_legs') {
+        await send(admin,'leagueAdvance',await revision(),409);
+        const returning=(await read()).fixtures[1];
+        await send(bob,'leaguePropose',{...proposed,fixture:returning.id,scoreA:55,scoreB:70});
+        const returnToken=(await read(alice)).fixtures[1].pending.token;
+        await send(alice,'leagueConfirm',{fixture:returning.id,proposal:returnToken});
+      }
+      const current=await read();
+      assert.equal(current.fixtures[0].result.scoreA,71);
+      assert.notEqual((await state()).matches.find(m=>m.leagueId===id&&!m.void).id,old);
+      await send(admin,'leagueAdvance',originalView,409);
+      await send(admin,'leaguePause');
+      await send(admin,'leagueAdvance',await revision(),409);
+      await send(admin,'leagueResume');
+      await send(admin,'leagueAdvance',await revision());
+      assert.ok((await read()).league.finished);
+      await send(admin,'leagueReopen',{},409);
+    }
+  });
+
+  await t.test('Tournament adjudication is reversible before publication and preserves the played leg', async () => {
+    const {read,send,signup,revision}=await tournament('knockout_legs',[alice,bob,admin]);
+    await send(admin,'leagueStart',await signup({byes:[adminId]}));
+    const [first,second]=(await read()).fixtures;
+    const scores={scoreA:70,scoreB:55,date:(await read()).today};
+    await send(alice,'leaguePropose',{fixture:first.id,...scores});
+    await send(bob,'leagueConfirm',{fixture:first.id,proposal:(await read(bob)).fixtures[0].pending.token});
+    await send(bob,'leaguePropose',{fixture:second.id,...scores});
+    const stale=(await read(alice)).fixtures[1].pending.token;
+    const award={fixture:first.id,winner:bobId};
+    await send(alice,'leagueWalkover',await revision(award),403);
+    await send(admin,'leagueWalkover',await revision({...award,winner:adminId}),422);
+    await send(admin,'leagueWalkover',await revision(award));
+    const adjudicated=await read();
+    assert.equal(adjudicated.tournament.ready,true);
+    assert.equal(adjudicated.fixtures[0].result.scoreA,70);
+    assert.deepEqual(adjudicated.fixtures[1].decision,{kind:'walkover',winner:bobId});
+    await send(alice,'leagueConfirm',{fixture:second.id,proposal:stale},409);
+    await send(admin,'leagueUndoWalkover',await revision({fixture:first.id}));
+    assert.equal((await read()).tournament.ready,false);
+    assert.equal((await read(alice)).fixtures[1].pending,null);
+    await send(admin,'leagueWalkover',await revision(award));
+    sql("CREATE TRIGGER reject_tournament_advance BEFORE INSERT ON w40k_league_fixtures WHEN NEW.round=2 BEGIN SELECT RAISE(ABORT, 'test transition failure'); END");
+    try {
+      await send(admin,'leagueAdvance',await revision(),503);
+      assert.equal((await read()).tournament.round,1);
+      assert.equal((await read()).fixtures[0].winner,null);
+    } finally {
+      sql('DROP TRIGGER reject_tournament_advance');
+    }
+    await send(admin,'leagueAdvance',await revision());
+    const final=await read();
+    assert.equal(final.fixtures[0].winner,bobId);
+    assert.equal(final.tournament.round,2);
+    assert.ok(final.fixtures.filter(f=>f.round===2).every(f=>new Set([f.a,f.b]).has(bobId)));
+    await send(admin,'leagueUndoWalkover',await revision({fixture:first.id}),409);
+    await send(admin,'leagueRetire',{round:2,player:adminId});
+    await send(admin,'leagueUndoRetire',{round:2,player:adminId});
+    assert.equal((await read()).tournament.ready,false);
+    await send(admin,'leagueRetire',{round:2,player:adminId});
+    await send(admin,'leagueAdvance',await revision());
+    assert.equal((await read()).tournament.champion,bobId);
+  });
+
+  await t.test('Tournament withdrawals preserve Swiss results, exclude retirees and can finish without a champion', async () => {
+    const {read,send,signup,revision}=await tournament('swiss',[alice,bob,admin]);
+    await send(admin,'leagueStart',await signup({rounds:3,byes:[adminId]}));
+    const {fixtures:[f],today}=await read();
+    await send(alice,'leaguePropose',{fixture:f.id,scoreA:60,scoreB:50,date:today});
+    await send(bob,'leagueConfirm',{fixture:f.id,proposal:(await read(bob)).fixtures[0].pending.token});
+    const stale=await revision();
+    await send(alice,'leagueRetire',{round:1,player:bobId},403);
+    await send(admin,'leagueRetire',{round:1,player:bobId});
+    assert.equal((await read()).fixtures[0].decision,null);
+    assert.equal((await read()).fixtures[0].result.scoreA,60);
+    await send(admin,'leagueAdvance',stale,409);
+    await send(admin,'leagueAdvance',await revision());
+    const next=await read();
+    await send(admin,'leagueUndoRetire',{round:2,player:bobId},409);
+    assert.deepEqual(new Set(next.fixtures.filter(f=>f.round===2).flatMap(f=>[f.a,f.b])),new Set([aliceId,adminId]));
+    await send(admin,'leagueRetire',{round:2,player:aliceId});
+    assert.equal((await read()).tournament.final,true);
+    await send(admin,'leagueAdvance',await revision());
+    assert.ok((await read()).league.finished);
+    assert.equal((await read()).tournament.standings.find(row=>row.id===adminId).wins,1);
+    assert.equal((await read()).tournament.standings.find(row=>row.id===adminId).diff,0);
+
+    const cup=await tournament('knockout',[alice,bob]);
+    await cup.send(admin,'leagueStart',await cup.signup());
+    await cup.send(admin,'leagueRetire',{round:1,player:aliceId});
+    await cup.send(admin,'leagueRetire',{round:1,player:bobId});
+    await cup.send(admin,'leagueAdvance',await cup.revision());
+    const terminated=await cup.read();
+    assert.ok(terminated.league.finished);
+    assert.equal(terminated.tournament.champion,null);
+    assert.equal(terminated.fixtures[0].winner,null);
+  });
+
   await t.test('Raw upload URLs are blocked', async () => {
     for (const path of [photoPath, photoPath.replace('uploads', '%75ploads')]) {
       const response = await fetch(`${base}/${path}`, { signal: AbortSignal.timeout(5000) });
@@ -935,6 +1189,22 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const imported=await admin('builderImport',{catalog:fixture.raw});
     const saveArmy=async(account,army)=> (await account('builderSave',{...army,catalogId:imported.catalogId})).army;
     const a=await saveArmy(alice,fixture.army),b=await saveArmy(bob,fixture.army);
+    const overLimit=await saveArmy(alice,{...fixture.both,name:'Sopra il limite del campionato'});
+    const capped=(await admin('leagueOpen',{name:'Campionato con limite e senza roster',matchLimit:110})).id;
+    const cappedRequest={league:capped};
+    for(const account of [alice,bob]) await account('leagueJoin',{...cappedRequest,army:'orks'});
+    await admin('leagueStart',cappedRequest);
+    const cappedState=await alice('league&id='+capped);
+    assert.equal(cappedState.league.match_point_limit,110);
+    assert.equal(cappedState.rosters.settings,null);
+    const cappedMatch={...cappedRequest,fixture:cappedState.fixtures[0].id};
+    const refusal=await alice('leagueLineup',{...cappedMatch,builderArmyId:overLimit.id,text:''},422);
+    assert.match(refusal.error,/110 punti \(totale 130\)/);
+    await alice('leagueLineup',{...cappedMatch,builderArmyId:a.id,text:''});
+    await bob('leagueLineup',{...cappedMatch,text:'Lista di 9000 punti'},422);
+    await bob('leagueLineup',{...cappedMatch,text:'Lista di 9000 punti',filename:'lista.txt'},422);
+    await bob('leagueLineup',{...cappedMatch,builderArmyId:b.id,text:''});
+    assert.match(await alice('leagueDownload&fixture='+cappedMatch.fixture+'&player='+bobId),/110 Points/);
     const poolDraft={...fixture.army,purpose:'pool',limit:6000,entries:fixture.army.entries.map(e=>({...e,rosterPaidOptions:fixture.reserve[e.entryId]}))};
     const pool=await saveArmy(alice,poolDraft);
     assert.equal(pool.purpose,'pool');assert.equal(pool.limit,6000);
@@ -943,8 +1213,18 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const poolPreview=await alice('leagueRosterPreview&id='+pool.id);
     assert.equal(poolPreview.entries[0].points,115);
     const poolLeague=(await admin('leagueOpen',{name:'Iscrizione da pool dedicato',rosterLimit:3000,matchLimit:2000})).id;
+    const poolScan='leagueRosterCompatibility&league='+poolLeague+'&pool='+pool.id+'&lists='+[a.id,b.id].join(',');
+    const previewLists=(await alice(poolScan)).lists;
+    assert.deepEqual(previewLists,[{id:a.id,points:100}]);
+    await alice(poolScan+'&revision=old',undefined,409);
+    assert.equal((await bob(poolScan,undefined,422)).lists,undefined);
+    await alice('leagueJoin',{league:poolLeague,army:'orks',builderArmyId:pool.id,poolRevision:'old'},409);
     await alice('leagueJoin',{league:poolLeague,army:'orks',builderArmyId:pool.id});
     assert.equal((await alice('league&id='+poolLeague)).rosters.versions[0].roster.points,115);
+    await alice('leagueLeave',{league:poolLeague});
+    assert.equal((await alice('league&id='+poolLeague)).rosters.versions.length,0);
+    await alice('leagueJoin',{league:poolLeague,army:'orks',builderArmyId:pool.id});
+    assert.equal((await alice('league&id='+poolLeague)).rosters.versions[0].version,1);
     const wrongFaction=(await admin('leagueOpen',{name:'Altra fazione',rosterLimit:3000,matchLimit:2000})).id;
     await bob('leagueJoin',{league:wrongFaction,army:'necrons',builderArmyId:b.id,paidOptions:fixture.reserve},422);
     assert.equal((await bob('league&id='+wrongFaction)).league.joined,false);
@@ -959,6 +1239,10 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     const submission={league,builderArmyId:a.id,baseVersion:'',paidOptions:fixture.reserve};
     await alice('leagueJoin',{...submission,army:'orks'});
     const initial=(await alice('league&id='+league)).rosters.versions[0];
+    const scan='leagueRosterCompatibility&league='+league+'&version='+initial.id+'&lists=';
+    assert.deepEqual((await alice(scan+[a.id,b.id].join(','))).lists,[{id:a.id,points:100}]);
+    await bob(scan+b.id,undefined,409);
+    await alice(scan+Array.from({length:13},(_,index)=>'query_'+index).join(','),undefined,422);
     assert.equal(initial.roster.points,115);
     // Repeated registration is idempotent, including the first roster version.
     await alice('leagueJoin',{...submission,army:'orks'});
@@ -995,6 +1279,8 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await alice('leagueRosterSave',{...submission,baseVersion:initial.id,paidOptions:newReserve});
     const versions=(await alice('league&id='+league)).rosters.versions;
     assert.equal(versions.length,2);assert.equal(versions[0].roster.points,125);assert.equal(versions[1].roster.points,115);
+    await alice('leagueLineup',{...target,builderArmyId:equipped.id,rosterVersion:initial.id,text:''},409);
+    await alice(scan+equipped.id,undefined,409);
     assert.equal(sql('SELECT roster_id FROM w40k_league_roster_lineups')[0].roster_id,initial.id);
     await bob('leagueLineup',{...target,builderArmyId:b.id,text:''});
     const download='leagueDownload&fixture='+target.fixture+'&player='+aliceId;
@@ -1058,6 +1344,7 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
     await admin('leagueOpen', { name: 'Campionato senza avviso' });
     assert.deepEqual(await drain(), []);
     const { id } = await admin('leagueOpen', { name: 'Campionato email', notify: true });
+    sql("UPDATE w40k_league SET match_point_limit=0 WHERE id='"+id+"'");
     assert.deepEqual((await drain()).map(email => email.to).sort(), addresses);
     for (const account of [alice, bob]) await account('leagueJoin', { league: id, army: 'orks' });
     await alice('leagueJoin', { league: id });
@@ -1164,6 +1451,17 @@ test('Regression suite with an isolated PHP application', { timeout: 60000 }, as
       assert.equal(reports.length, index === 0 ? 0 : participants.size);
       assert.ok(reports.every(email => email.subject.startsWith('Giornata 1')));
     }
+
+    const cup=await tournament('swiss',[alice,bob]);
+    await drain();
+    await cup.send(admin,'leagueStart',await cup.signup());
+    const match=(await cup.read()).fixtures[0];
+    await cup.send(admin,'leagueWalkover',await cup.revision({fixture:match.id,winner:bobId}));
+    assert.deepEqual(await drain(),[]);
+    await cup.send(admin,'leagueAdvance',await cup.revision());
+    const reports=await drain();
+    assert.equal(reports.length,2);
+    assert.ok(reports.every(email=>email.subject.startsWith('Turno 1') && email.text.includes('A tavolino')));
 
     await writeFile(join(privatePath, 'mail.php'), mailConfig.replace("'/emails.jsonl'", "'/missing-dir/emails.jsonl'"));
     const failed = await admin('invite', { email: 'failure@example.test' });

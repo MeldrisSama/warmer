@@ -11,7 +11,8 @@ function renderSectorEmail(array $message): array {
     $url=$esc($message['url']);
     $text=$message['subject']."\n\n".$message['body'];
     $report='';
-    foreach(['results'=>['Risultati',['Giocatore','Esito','Avversario']],'standings'=>['Classifica aggiornata',['Giocatore','Punti','Diff.']]] as $key=>[$heading,$columns]) {
+    foreach(['results'=>['Risultati',['Giocatore','Esito','Avversario']],'standings'=>['Classifica aggiornata',['Giocatore','Punti','Diff.']],
+        'records'=>['Classifica aggiornata',['Giocatore','V–P–S','Diff.']]] as $key=>[$heading,$columns]) {
         $rows=$message['report'][$key]??[];
         if(!$rows) continue;
         $report.='<h2 style="font:normal 20px Georgia,serif;color:#25523a;margin:24px 0 8px">'.$heading.'</h2><table width="100%" style="border-collapse:collapse;text-align:left"><thead><tr>';

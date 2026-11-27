@@ -206,6 +206,9 @@ test('Calendario API con sessioni reali e SQLite isolato via CGI',{timeout:60000
   const confirmedEvent=admin('calendar').events.find(e=>e.fixture===fixture.id);
   assert.equal(confirmedEvent.time,'21:00');
   const opponentId=fixture.a===users.alice?fixture.b:fixture.a;
+  assert.match(alice('calendarLineup',{id:assigned.id,version:2,text:'Lista da 9000 punti'},422).error,/limite in punti/);
+  const legacy=spawnSync(php,['-r','$db=new PDO("sqlite:".$argv[1]);$db->prepare("UPDATE w40k_league SET match_point_limit=0 WHERE id=?")->execute([$argv[2]]);',path.join(app,'calendar.sqlite'),league],{encoding:'utf8'});
+  assert.equal(legacy.status,0,legacy.stderr);
   alice('calendarLineup',{id:assigned.id,version:2,text:'Lista campionato Alice'});
   assert.equal(alice('league&id='+league).fixtures.find(f=>f.id===fixture.id).lineups.mine,true);
   opponent('calendarLineup',{id:assigned.id,version:2,text:'Lista campionato avversario'});

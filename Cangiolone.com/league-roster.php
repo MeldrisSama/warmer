@@ -87,17 +87,42 @@ function leagueRosterMatches(array $rosterEntry, array $entry, array $equipped):
     return true;
 }
 
-function leagueRosterValidateLineup(array $catalog, array $army, array $roster, int $limit): array {
+function leagueRosterUnitKey(array $entry,array $modelCounts): string {
+    ksort($modelCounts,SORT_STRING);
+    return json_encode([$entry['unitId'],$entry['models'],$modelCounts],JSON_THROW_ON_ERROR);
+}
+
+function leagueRosterCopies(array $roster): array {
+    $copies=[];
+    foreach($roster['entries'] as $index=>$entry) $copies[leagueRosterUnitKey($entry,$entry['modelCounts']??[])][]=$index;
+    return $copies;
+}
+
+function leagueRosterCandidate(array $army,array $roster,array $copies): void {
+    if(($army['purpose']??'')==='pool' || $army['factionId']!==$roster['factionId']) builderInvalid('Serve una lista da partita della stessa fazione del roster.');
+    if(empty($army['entries'])) builderInvalid('La lista dell’incontro è vuota.');
+    $used=[];
+    foreach($army['entries'] as $entry) {
+        if(isset($entry['manualPoints'])) builderInvalid('I punti manuali non sono ammessi nelle liste del campionato.');
+        $key=leagueRosterUnitKey($entry,$entry['loadoutSelections']['_models']??[]);
+        $used[$key]=($used[$key]??0)+1;
+        if($used[$key]>count($copies[$key]??[])) builderInvalid('Una copia, taglia o composizione non è disponibile nel roster.');
+    }
+}
+
+function leagueRosterValidateLineup(array $catalog, array $army, array $roster, int $limit, ?array $copies=null): array {
     if ($army['factionId']!==$roster['factionId']) builderInvalid('La fazione della lista deve coincidere con il roster.');
     $army['limit']=$limit;
     $validation=builderValidateArmy($catalog,$army);
     if ($validation['issues']) builderInvalid('Lista dell’incontro da correggere: '.implode(' ',$validation['issues']));
     if (!$validation['entries']) builderInvalid('La lista dell’incontro è vuota.');
     $units=array_column($catalog['units'],null,'id');$edges=[];
+    $copies??=leagueRosterCopies($roster);
     foreach ($validation['entries'] as $i=>$entry) {
         if (($entry['manualPoints']??null)!==null) builderInvalid('I punti manuali non sono ammessi nel campionato.');
         $equipped=leagueRosterEquipped($units[$entry['unitId']],$entry);$edges[$i]=[];
-        foreach ($roster['entries'] as $j=>$reserved) if (leagueRosterMatches($reserved,$entry,$equipped)) $edges[$i][]=$j;
+        $key=leagueRosterUnitKey($entry,$entry['loadoutSelections']['_models']??[]);
+        foreach($copies[$key]??[] as $j) if(leagueRosterMatches($roster['entries'][$j],$entry,$equipped)) $edges[$i][]=$j;
     }
     // Augmenting paths avoid greedy failures when two identical units reserve different options.
     $assigned=[];
@@ -123,6 +148,24 @@ function leagueRosterSavedArmy(PDO $pdo, string $owner, string $id): array {
     if (!$catalog) builderInvalid('Catalogo storico non disponibile.');
     return ['army'=>json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR),
         'catalog'=>$catalog,'catalogId'=>$row['catalog_id'],'edition'=>$row['edition']];
+}
+
+function leagueFactionKey(string $name): string {
+    return strtolower(preg_replace('/[^a-z0-9]/i','',$name));
+}
+
+function leagueBuildEntryList(PDO $pdo,string $owner,mixed $id,string $faction,int $limit): array {
+    $source=leagueRosterSavedArmy($pdo,$owner,builderId($id,'lista da partita'));
+    $army=$source['army']; $catalog=$source['catalog'];
+    if(($army['purpose']??'')==='pool' || !$army['entries']) builderInvalid('Scegli una lista da partita con almeno un’unità.');
+    $factions=array_column($catalog['factions'],'name','id');
+    if(leagueFactionKey($factions[$army['factionId']]??'')!==leagueFactionKey($faction)) builderInvalid('La fazione della lista deve coincidere con quella dichiarata.');
+    foreach($army['entries'] as $entry) if(isset($entry['manualPoints'])) builderInvalid('I punti manuali non sono ammessi nelle liste del torneo.');
+    $army['limit']=$limit;
+    $validation=builderValidateArmy($catalog,$army);
+    if($validation['issues']) builderInvalid('Lista del torneo da correggere: '.implode(' ',$validation['issues']));
+    $army['entries']=$validation['entries'];
+    return ['name'=>$army['name'],'points'=>$validation['points'],'text'=>builderArmyText($catalog,$army)];
 }
 
 function leagueRosterSettings(array $db, string $league): ?array {
@@ -158,7 +201,7 @@ function leagueRosterPreview(PDO $pdo, string $owner, string $id): array {
         $rows[]=$row;
         $rows[count($rows)-1]['options']=array_values($options);
     }
-    return ['name'=>$army['name'],'entries'=>$rows];
+    return ['name'=>$army['name'],'entries'=>$rows,'revision'=>builderRevision($army)];
 }
 
 function leagueRosterSave(array $in, array $me, array &$db, array $league, array $settings, PDO $pdo): void {
@@ -168,11 +211,11 @@ function leagueRosterSave(array $in, array $me, array &$db, array $league, array
     $versions=leagueRosterVersions($db,$league['id'],$player);$previous=$versions[0]??null;
     if (($in['baseVersion']??null)!==($previous['id']??'')) fail('Il roster è cambiato. Ricarica la pagina prima di salvarlo.',409);
     $source=leagueRosterSavedArmy($pdo,$player,builderId($in['builderArmyId']??null,'armata'));
+    if(isset($in['poolRevision']) && $in['poolRevision']!==builderRevision($source['army'])) fail('Il pool è cambiato. Controlla il nuovo riepilogo e conferma di nuovo.',409);
     $members=array_column($db['league_members'],null,'id');$member=$members[$league['id'].':'.$player];
     $groups=array_merge(...array_values(LEAGUE_ARMIES));
     $faction=array_column($source['catalog']['factions'],null,'id')[$source['army']['factionId']];
-    $key=static fn($name)=>strtolower(preg_replace('/[^a-z0-9]/i','',$name));
-    if ($key($faction['name'])!==$key($groups[$member['army']]??'')) builderInvalid('La fazione del roster deve coincidere con quella dichiarata all’iscrizione.');
+    if (leagueFactionKey($faction['name'])!==leagueFactionKey($groups[$member['army']]??'')) builderInvalid('La fazione del roster deve coincidere con quella dichiarata all’iscrizione.');
     $paid=$in['paidOptions']??[];
     if (!is_array($paid)) builderInvalid('Opzioni del roster non valide.');
     $roster=leagueRosterBuild($source['catalog'],$source['army'],$paid,$settings['rosterLimit']);
@@ -181,15 +224,27 @@ function leagueRosterSave(array $in, array $me, array &$db, array $league, array
         'created'=>date(DATE_ATOM),'payload'=>json_encode($roster,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)];
 }
 
-function leagueRosterCheckDelivery(array $in, array $me, array &$db, PDO $pdo): void {
+function leagueRosterCheckDelivery(array $in, array $me, array &$db, PDO $pdo): ?string {
     $index=leagueFixture($db['league_fixtures'],field($in,'fixture',24),$me['id']);$fixture=$db['league_fixtures'][$index];
+    $requested=field($in,'league',24,false);
+    if($requested!=='' && $requested!==$fixture['league_id']) fail('Incontro non trovato.',404);
+    $league=$db['league'][leagueIndex($db['league'],$fixture['league_id'])];
+    if($league['closed']!==null) fail('Il campionato è concluso.',409);
+    if($league['paused']!==null) fail('Il campionato è in pausa.',409);
+    if(($league['entry_list_limit']??0)>0) fail('In questo torneo vale la lista consegnata all’iscrizione.',409);
     $settings=leagueRosterSettings($db,$fixture['league_id']);
-    if (!$settings) return; // Seasons created before rosters preserve their existing workflow.
+    if (!$settings) {
+        $pointLimit=$league['match_point_limit']??0;
+        if(!$pointLimit) return null;
+        if(empty($in['builderArmyId'])) builderInvalid('Questo campionato ha un limite in punti. Consegna una lista salvata nel Builder.');
+        return builderSavedArmyText($pdo,$me['id'],builderId($in['builderArmyId'],'armata'),$pointLimit);
+    }
     $lists=array_column($db['league_lineups'],null,'id');$id=$fixture['id'].':'.$me['id'];
     if ($fixture['match_id']!==null) fail('Il risultato dell’incontro è già stato confermato.',409);
     if (isset($lists[$fixture['id'].':'.$fixture['a']],$lists[$fixture['id'].':'.$fixture['b']])) fail('Le liste sono già definitive.',409);
     $version=leagueRosterVersions($db,$fixture['league_id'],$me['id'])[0]??null;
     if (!$version) fail('Consegna il roster prima della lista dell’incontro.',409);
+    if(isset($in['rosterVersion']) && $in['rosterVersion']!==$version['id']) fail('Il roster è cambiato. Scegli di nuovo una lista compatibile.',409);
     if (empty($in['builderArmyId'])) builderInvalid('Questo campionato richiede una lista dal builder per verificare il roster.');
     $source=leagueRosterSavedArmy($pdo,$me['id'],builderId($in['builderArmyId'],'armata'));
     if(($source['army']['purpose']??'')==='pool') builderInvalid('Il pool è il bacino del campionato. Per l’incontro scegli una lista da partita.');
@@ -199,6 +254,57 @@ function leagueRosterCheckDelivery(array $in, array $me, array &$db, PDO $pdo): 
     $rows=array_column($db['league_roster_lineups'],null,'id');
     $rows[$id]=['id'=>$id,'roster_id'=>$version['id'],'payload'=>json_encode($validation,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)];
     $db['league_roster_lineups']=array_values($rows);
+    $army=$source['army'];
+    $army['limit']=$settings['matchLimit'];
+    $army['entries']=$validation['entries'];
+    return builderArmyText($source['catalog'],$army);
+}
+
+function leagueRosterCompatibility(PDO $pdo,array $db,array $me,array $query): array {
+    $league=$db['league'][leagueIndex($db['league'],builderId($query['league']??null,'campionato'))];
+    $settings=leagueRosterSettings($db,$league['id']);
+    if(!$settings) fail('Il campionato non prevede un roster.',409);
+    $owner=$me['id'];
+    $catalog=null;
+    if(isset($query['pool'])) {
+        if($league['closed'] || $league['paused'] || ($league['start'] && !$settings['windowOpen'])) fail('La consegna del roster è chiusa.',409);
+        $source=leagueRosterSavedArmy($pdo,$owner,builderId($query['pool'],'pool'));
+        if(($source['army']['purpose']??'')!=='pool') builderInvalid('Scegli un pool del campionato.');
+        if(isset($query['revision']) && $query['revision']!==builderRevision($source['army'])) fail('Il pool è cambiato durante la verifica. Ricarica la pagina.',409);
+        $catalog=$source['catalog'];
+        $roster=leagueRosterBuild($catalog,$source['army'],[],$settings['rosterLimit'])
+            + ['edition'=>$source['edition'],'catalogId'=>$source['catalogId']];
+    } else {
+        $queryVersion=$pdo->prepare('SELECT id,payload FROM w40k_league_rosters WHERE league_id=? AND player=? ORDER BY version DESC LIMIT 1');
+        $queryVersion->execute([$league['id'],$owner]);
+        $version=$queryVersion->fetch();
+        if(!$version || ($query['version']??null)!==$version['id']) fail('Il roster attivo è cambiato. Ricarica il campionato.',409);
+        $roster=json_decode($version['payload'],true,40,JSON_THROW_ON_ERROR);
+    }
+    $ids=$query['lists']??'';
+    if(!is_string($ids) || strlen($ids)>800) builderInvalid('Elenco di liste non valido.');
+    $ids=array_values(array_unique(array_filter(explode(',',$ids))));
+    if(count($ids)>12) builderInvalid('Verifica al massimo 12 liste per richiesta.');
+    if(!$ids) return ['lists'=>[]];
+    foreach($ids as $id) builderId($id,'lista');
+    $placeholders=implode(',',array_fill(0,count($ids),'?'));
+    $statement=$pdo->prepare('SELECT id,payload FROM w40k_builder_armies WHERE owner=? AND catalog_id=? AND id IN ('.$placeholders.')');
+    $statement->execute([$owner,$roster['catalogId'],...$ids]);
+    $copies=leagueRosterCopies($roster);
+    $results=[];
+    foreach($statement as $row) {
+        $army=json_decode($row['payload'],true,40,JSON_THROW_ON_ERROR);
+        try {
+            leagueRosterCandidate($army,$roster,$copies);
+            $catalog??=builderGetCatalog($pdo,$roster['edition'],$roster['catalogId'])['catalog'];
+            if(!$catalog) builderInvalid('Catalogo storico non disponibile.');
+            $validated=leagueRosterValidateLineup($catalog,$army,$roster,$settings['matchLimit'],$copies);
+            $results[]=['id'=>$row['id'],'points'=>$validated['points']];
+        } catch(BuilderInputError $error) {
+            $results[]=['id'=>$row['id'],'reason'=>$error->getMessage()];
+        }
+    }
+    return ['lists'=>$results];
 }
 
 function leaguePoolSave(PDO $pdo, array $me, array $in): array {
